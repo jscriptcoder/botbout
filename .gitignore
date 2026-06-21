@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.*
+/replays/
+__pycache__/
+.venv/
+.vitest/

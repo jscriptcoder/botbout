@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "name": "footsie-spacer",
+  "memory": {
+    "oppAttacks": 0
+  },
+  "rules": [
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "or",
+            "args": [
+              {
+                "op": "move_is",
+                "who": "opponent",
+                "move": "punch"
+              },
+              {
+                "op": "move_is",
+                "who": "opponent",
+                "move": "kick"
+              },
+              {
+                "op": "move_is",
+                "who": "opponent",
+                "move": "grab"
+              }
+            ]
+          },
+          {
+            "op": "phase",
+            "who": "opponent",
+            "is": "active"
+          },
+          {
+            "op": "eq",
+            "args": [
+              {
+                "op": "field",
+                "path": "opponent.phaseElapsed"
+              },
+              {
+                "op": "const",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "set": [
+        {
+          "cell": "oppAttacks",
+          "to": {
+            "op": "add",
+            "args": [
+              {
+                "op": "mem",
+                "cell": "oppAttacks"
+              },
+              {
+                "op": "const",
+                "value": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "when": {
+        "op": "lte",
+        "args": [
+          {
+            "op": "field",
+            "path": "self.canAct"
+          },
+          {
+            "op": "const",
+            "value": 0
+          }
+        ]
+      },
+      "do": {
+        "type": "idle"
+      }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "phase",
+            "who": "opponent",
+            "is": "recovery"
+          },
+          {
+            "op": "gt",
+            "args": [
+              {
+                "op": "field",
+                "path": "opponent.moveRecoveryRemaining"
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "latency",
+                    "of": "action"
+                  },
+                  {
+                    "op": "rule",
+                    "move": "punch",
+                    "stat": "startup"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "lte",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "op": "sub",
+                  "args": [
+                    {
+                      "op": "add",
+                      "args": [
+                        {
+                          "op": "field",
+                          "path": "opponent.x"
+                        },
+                        {
+                          "op": "mul",
+                          "args": [
+                            {
+                              "op": "field",
+                              "path": "opponent.vx"
+                            },
+                            {
+                              "op": "field",
+                              "path": "opponent.staleness"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "field",
+                      "path": "self.x"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "rule",
+                "move": "punch",
+                "stat": "range"
+              }
+            ]
+          }
+        ]
+      },
+      "do": {
+        "type": "punch"
+      }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "move_is",
+            "who": "opponent",
+            "move": "kick"
+          },
+          {
+            "op": "phase",
+            "who": "opponent",
+            "is": "startup"
+          },
+          {
+            "op": "gt",
+            "args": [
+              {
+                "op": "field",
+                "path": "self.stamina"
+              },
+              {
+                "op": "const",
+                "value": 10
+              }
+            ]
+          }
+        ]
+      },
+      "do": {
+        "type": "block"
+      }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lt",
+            "args": [
+              {
+                "op": "field",
+                "path": "self.stamina"
+              },
+              {
+                "op": "const",
+                "value": 20
+              }
+            ]
+          },
+          {
+            "op": "lte",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "op": "sub",
+                  "args": [
+                    {
+                      "op": "add",
+                      "args": [
+                        {
+                          "op": "field",
+                          "path": "opponent.x"
+                        },
+                        {
+                          "op": "mul",
+                          "args": [
+                            {
+                              "op": "field",
+                              "path": "opponent.vx"
+                            },
+                            {
+                              "op": "field",
+                              "path": "opponent.staleness"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "field",
+                      "path": "self.x"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "rule",
+                "move": "kick",
+                "stat": "range"
+              }
+            ]
+          }
+        ]
+      },
+      "do": {
+        "type": "move",
+        "dir": -1
+      }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lte",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "op": "sub",
+                  "args": [
+                    {
+                      "op": "add",
+                      "args": [
+                        {
+                          "op": "field",
+                          "path": "opponent.x"
+                        },
+                        {
+                          "op": "mul",
+                          "args": [
+                            {
+                              "op": "field",
+                              "path": "opponent.vx"
+                            },
+                            {
+                              "op": "field",
+                              "path": "opponent.staleness"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "field",
+                      "path": "self.x"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "rule",
+                "move": "punch",
+                "stat": "range"
+              }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              {
+                "op": "mem",
+                "cell": "oppAttacks"
+              },
+              {
+                "op": "const",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "op": "gt",
+            "args": [
+              {
+                "op": "field",
+                "path": "self.stamina"
+              },
+              {
+                "op": "rule",
+                "move": "grab",
+                "stat": "staminaCost"
+              }
+            ]
+          }
+        ]
+      },
+      "do": {
+        "type": "grab"
+      }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lte",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "op": "sub",
+                  "args": [
+                    {
+                      "op": "add",
+                      "args": [
+                        {
+                          "op": "field",
+                          "path": "opponent.x"
+                        },
+                        {
+                          "op": "mul",
+                          "args": [
+                            {
+                              "op": "field",
+                              "path": "opponent.vx"
+                            },
+                            {
+                              "op": "field",
+                              "path": "opponent.staleness"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "field",
+                      "path": "self.x"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "rule",
+                "move": "punch",
+                "stat": "range"
+              }
+            ]
+          },
+          {
+            "op": "gt",
+            "args": [
+              {
+                "op": "field",
+                "path": "self.stamina"
+              },
+              {
+                "op": "rule",
+                "move": "punch",
+                "stat": "staminaCost"
+              }
+            ]
+          }
+        ]
+      },
+      "do": {
+        "type": "punch"
+      }
+    }
+  ],
+  "default": {
+    "type": "move",
+    "dir": 1
+  }
+}
