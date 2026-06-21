@@ -22,4 +22,4 @@ The untrusted-bot validator + interpreter live in `packages/engine`; this servic
 calls them in-process via the shared package. **Keep the security boundary in one
 place** (the engine's `dsl.ts` allowlists).
 
-See `docs/COMBAT-DESIGN.md` (§P8) and `docs/BOT-DSL-v2.md`.
+See `docs/DESIGN.md` (§P8) and `docs/BOT-DSL.md`.

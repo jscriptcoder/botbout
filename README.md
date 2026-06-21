@@ -9,8 +9,8 @@ replayed and watched.
 > **Design direction:** BotBout is building a **deep karate** combat model (2D
 > fixed-point space, three height bands + technique-specific *uke* defense,
 > on-contact cancel combos, WKF points-only scoring, king-of-the-hill ladder).
-> Current source of truth: **`docs/COMBAT-DESIGN.md`** + **`docs/BOT-DSL-v2.md`**.
-> The engine code below is the lean v1 baseline, to be reworked for the deep model.
+> Source of truth: **`docs/DESIGN.md`** + **`docs/BOT-DSL.md`**. The engine code
+> below is early scaffold, built out toward that design via TDD slices.
 
 ## Why a DSL instead of running the LLM's code
 
@@ -40,23 +40,23 @@ npm test                           # vitest
 packages/engine/   TypeScript deterministic core (pure, no I/O)
   src/types.ts       state schema + action grammar + Rules (single source of truth)
   src/dsl.ts         bot AST, validator, interpreter  ← the trusted computing base
-  src/rules.ts       default frame table (L=6 "Footsies")
-  src/sim.ts         deterministic fight loop  ← NEXT TASK (stub)
+  src/rules.ts       frame table (scaffold; building out to the deep karate table)
+  src/sim.ts         deterministic fight loop  ← stub
   examples/          worked bot documents
 services/api/      all-TypeScript orchestration (planned; imports @botbout/engine)
 tools/frame-lab/   React frame-data vs perception-latency tuner (dev tool)
-docs/              COMBAT-DESIGN.md + BOT-DSL-v2.md (current); DESIGN.md + BOT-DSL.md (v1 baseline)
+docs/              DESIGN.md (combat + platform) + BOT-DSL.md (bot API)
 (planned) viewer   Vite + Pixi + SolidJS replay/fight viewer
 ```
 
 ## Status
 
-**Design phase complete** for the deep karate model + v2 DSL
-(`docs/COMBAT-DESIGN.md`, `docs/BOT-DSL-v2.md`). The lean v1 engine (state schema,
-DSL validator + interpreter, frame table, example bot) is done and tested, and
-serves as the **baseline to rework** for the deep model. **Next:** story-splitting
-→ planning for the first vertical slice, then the TDD build (deep frame table + 2D
-deterministic sim loop + telemetry result object + viewer).
+**Design resolved** for the deep karate model + bot API (`docs/DESIGN.md`,
+`docs/BOT-DSL.md`). The engine under `packages/engine` is early scaffold (validator
++ interpreter, frame table, example bot — green), built out toward the design via
+TDD. **Next:** story-splitting → planning for the first vertical slice, then the
+TDD build (deep frame table + 2D deterministic sim loop + telemetry result object
++ viewer).
 
-See `CLAUDE.md` for the invariants and current direction, `docs/COMBAT-DESIGN.md`
+See `.claude/CLAUDE.md` for the invariants and current direction, `docs/DESIGN.md`
 for the design rationale.
