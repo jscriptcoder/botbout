@@ -1,0 +1,129 @@
+# First Vertical Slice — Story Split
+
+> Splits design item **P9** (`docs/DESIGN.md`) into end-to-end child stories.
+> Source of truth for combat/platform: `docs/DESIGN.md` + `docs/BOT-DSL.md`.
+> Feeds `planning` (one child story → PR-sized TDD slices). **Created 2026-06-25.**
+
+## Parent (reframed)
+
+- **Actor:** a **bot author** — an LLM, or a developer hand-writing JSON during bring-up.
+- **Capability:** submit a **JSON bot (data, not code)** that fights a deterministic
+  opponent.
+- **Outcome:** get a **bit-reproducible** fight result they can read, learn from, and
+  iterate on.
+- **Current constraint:** the full deep-karate capability — 24-move arsenal, 3 bands +
+  vertical axis, *uke*/parry/cancel/throw/sweep, stamina, *yame* scoring, the
+  perception-latency meta, Pixi render, Vercel API, KotH ladder — is far too large for
+  one increment.
+
+## Recommended First Slice
+
+**Walking skeleton — a deterministic, reproducible *headless* fight.**
+
+> A developer submits two JSON bots and runs a fixed-length headless fight that is
+> **bit-reproducible** from its seed + inputs, with a minimal combat vocabulary
+> (1D approach + one *mid* strike that can score), and reads the outcome from a
+> **result object + integer event log**.
+
+**Why this first:** it burns down the three architectural risks that are brutal to
+retrofit — **(1) determinism / replay**, **(2) the validate-before-run TCB**, and
+**(3) the same-snapshot fight loop** — while deferring every *additive* combat feature
+and the render layer. It is the smallest end-to-end whole that exercises the real
+production path (intake → validate → interpret → deterministic sim → result/log →
+replay-verify). Everything after it is feature addition onto a proven spine.
+
+### Scope (included)
+- **Intake + TCB gate:** prototype-pollution-safe parse; validator over the op/field
+  allowlists + static `LIMITS`; structured reject `{path, reason}`; **validate before run**.
+- **Interpreter:** rules top-to-bottom, **one `Action`/tick**, memory cells + tracker
+  rules, the numeric/boolean op set the skeleton needs.
+- **Deterministic loop:** fixed timestep (`tickRate=60`); single seeded PRNG
+  (mulberry32); fixed-point integers (`SCALE=1000`); **one immutable tick-T snapshot**,
+  both bots decide, **resolve together** with a fixed documented tiebreak; commitment
+  (startup→recovery locked, `canAct`).
+- **Minimal combat:** 1D `x` only; moves `{ idle, move, block, one strike }`; a strike
+  whose active frame overlaps the opponent within `x`-reach while they are **not**
+  blocking scores **+1**; thin "most points / first-to-N" outcome.
+- **Result + replay:** result object (`winner`, `ticks`, integer **event log**);
+  persist `{ seed, rulesHash, botA, botB, initialConditions }`; re-running yields a
+  byte-identical event log.
+
+### Intentional deferrals (and why)
+- **Pixi render / viewer** — safe to defer: the renderer is a **pure function of the
+  integer event log** (LOCKED render/authority seam). The event log is the demonstrable
+  artifact for now.
+- **Perception latency** (`L_pos`/`L_act`, ring buffer, seeded jitter) — slice 2. The
+  skeleton runs at **L=0** (perfect info) to isolate loop determinism.
+- **Height bands + *uke* guards · vertical axis (y/gravity/jump/crouch) · parry ·
+  cancels/combos · throws/sweeps/okizeme · stamina · *yame* + full WKF 0–3 scoring +
+  penalties** — additive combat feature slices.
+- **Vercel API · KotH ladder · rich telemetry & replay file format** — platform slices.
+- **`let` bindings** — DSL verbosity sugar; memory cells suffice for the skeleton.
+
+> **Forward-compat rule:** keep the bot document format stable even where the skeleton
+> ignores a field (carry `band` but ignore it in resolution; expose latency but at 0)
+> so later slices don't break already-authored bots.
+
+### Acceptance examples
+1. **Reject malformed:** *Given* a bot doc using an op **not** on the allowlist,
+   *When* validated, *Then* it is rejected with a structured `{path, reason}` issue and
+   the fight does not run.
+2. **Accept + run:** *Given* two valid bot docs and a seed, *When* a fight runs for N
+   ticks, *Then* it returns a result object with a winner and an event log.
+3. **Bit-reproducible:** *Given* the same `{seed, rulesHash, botA, botB,
+   initialConditions}`, *When* the fight runs twice, *Then* the two event logs are
+   byte-identical.
+4. **Minimal scoring:** *Given* an aggressor that approaches and strikes an idle
+   opponent in reach, *When* the fight runs, *Then* the aggressor's points increase and
+   it wins.
+5. **Same-snapshot resolution:** *Given* both bots strike on the same tick, *When* the
+   tick resolves, *Then* both decisions are computed from the tick-T snapshot and
+   resolved by a fixed, documented tiebreak (order-independent).
+6. **Commitment:** *Given* a bot returns a new action while `canAct=0` (mid-recovery),
+   *When* the tick resolves, *Then* the action is ignored and logged as telemetry.
+
+**Release constraint:** internal / dev-only, **headless**. Demonstrable via the test
+suite (replay-equality + scoring) and a printed result/event-log trace. No deployment.
+
+## Split Candidates (near-term follow-ups)
+
+| Slice | Value | Includes | Defers | Acceptance example | Release |
+|---|---|---|---|---|---|
+| **2. Perception latency keystone** | Makes frame data *mean* something; the distinctive meta | Split `L_pos`/`L_act`, per-fighter history ring buffer, one coherent delayed snapshot, dead-reckoned `predictedDistance`, seeded clamped jitter | bands, y, parry | A strike with `startup < L_act+B` **cannot** be reaction-blocked; one with `startup ≥ L_act+B` **can** | dev/headless |
+| **3. Height bands + 3 *uke* guards** | Core read/counter game | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked | dev/headless |
+| **4. Vertical axis + occupancy** | The low/high game becomes physical | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`) | parry, cancels | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper | dev/headless |
+| **5. Parry windows** | The skill gradient (predict vs react) | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block | cancels, throws | A guard raised within the parry window deflects; the same guard raised late only blocks | dev/headless |
+| **6. On-contact cancel combos** | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff | throws, stamina | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not | dev/headless |
+
+## Parking Lot (later — not pre-enumerated rigidly)
+
+- **Throws + sweeps + limited okizeme** (throw triangle strike>throw>guard>strike;
+  `throw-break`; sweep → one guaranteed finish window → wake-up i-frames).
+- **Stamina economy** (costs, regen, gassing = slower/weaker/no-specials, block chip).
+- **Match structure** — *yame* resets, within-exchange 1→2→3 escalation, win by 8-pt
+  gap / most-at-timeout, `jogai` + passivity penalties, clock.
+- **Rich telemetry + replay file format** (per-exchange + aggregate stats; the
+  counter-design + balance-instrumentation fuel).
+- **Pixi viewer / render layer** — salvage Pixel Fist rig + FK + stage; pure function
+  of the event log. *(Can be pulled forward right after the skeleton if a visual
+  milestone is wanted — still safe per the seam.)*
+- **Vercel serverless API** — `POST /fighter` (validate+store), `POST /fight` (vs
+  champion), `GET /replay/:id`, `GET /spec`.
+- **KotH ladder + lineage** — challenge champion, win→become champion, track streaks.
+
+## Warnings
+- **Do not split the skeleton by layer.** "validator", "interpreter", "loop" are
+  `planning` **stages within slice 1**, not independent stories — none is independently
+  valuable or demoable alone.
+- **Design gap #1 is still open:** the precise *ordered* combat-resolution procedure for
+  the deep model (band-match + parry-vs-block + cancels + throw-triangle + occupancy).
+  Slice 1 only needs the thin version; **slices 3/5/6/7 need that procedure pinned** —
+  run `find-gaps` (or write it into `DESIGN.md`) before those.
+- **P9 implied a Pixi visual in the first slice.** We're deferring it deliberately. If a
+  visual milestone is required sooner, pull render forward as its own slice — don't bloat
+  the skeleton with it.
+
+## Next Step
+Load **`planning`** on **Slice 1 (walking skeleton)** to stage it into PR-sized TDD
+increments (each: RED → GREEN → MUTATE → KILL MUTANTS → REFACTOR). Optionally run
+**`find-gaps`** on this split first to harden acceptance examples.
