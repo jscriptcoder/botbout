@@ -32,6 +32,7 @@ export type OpponentState = {
   x: number;
   facing: Facing;
   distance: number;
+  attacking: boolean; // is the (perceived) opponent committed to a move?
 };
 
 export type RingState = { width: number };
@@ -63,7 +64,8 @@ export type Rules = {
   ring: { width: number }; // ring width in sub-units
   startGap: number; // initial separation between the two fighters (sub-units)
   moves: Record<MoveId, MoveSpec>; // the frame table
-  // Opponent perception latency (ticks). Self is always live. Absent ⇒ all 0 ⇒
-  // the opponent is perceived live (forward-compatible with the L=0 skeleton).
-  perception?: { lPos: number }; // positional fields delayed by lPos
+  // Opponent perception latency (ticks). Self is always live. Absent (or any
+  // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
+  // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
+  perception?: { lPos?: number; lAct?: number };
 };

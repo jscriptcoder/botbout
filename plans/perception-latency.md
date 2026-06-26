@@ -3,7 +3,7 @@
 **Branches**: one PR per slice — `feat/perception-lpos` (1), `feat/perception-lact`
 (2), `feat/perception-predicted` (3), `feat/perception-jitter` (4). Each merges to
 `main` before the next branches off it.
-**Status**: Active — slice 1 in review
+**Status**: Active — slice 1 merged (PR #7); slice 2 in progress
 
 > Implements Slice 2 of `docs/stories/first-slice-split.md`. Source of truth for
 > the mechanic: `docs/DESIGN.md` §"Control model & the perception keystone" and
@@ -20,9 +20,12 @@ cannot be reaction-blocked while a slow one can, derived purely from latency.
 
 At `L=0` (today) an authored bot has perfect reactions, making frame data
 meaningless. Delaying perception **derives** the whole defensive meta from `L` via
-the master inequality **reaction-block iff `S ≥ L_act + B`** (here `B = 0`, block
-startup deferred ⇒ **`S ≥ L_act`**). This is the project's distinctive mechanic and
-the spine every later combat slice (bands, parry, cancels) reads through.
+the master inequality **reaction-block iff `S ≥ L_act + B`**. Explicit block startup
+is deferred, but the discrete pipeline contributes a **structural `+1`**: a fighter
+only _becomes_ attacking during its tick's resolution, so the `attacking` tell first
+appears in the frame sampled at `t0+1` (one tick after commit). Net boundary in this
+slice: **`S ≥ L_act + 1`**. This is the project's distinctive mechanic and the spine
+every later combat slice (bands, parry, cancels) reads through.
 
 ## Decisions baked into this plan (tunable; flag to change)
 
@@ -36,9 +39,10 @@ These are starting-point numbers — per the design's balance methodology they a
 - **Defaults when authored:** `lPos = 1`, `lAct = 6`, `jitter = 1` (design says
   `L_pos ~1–2`, `L_act ~6`).
 - **Self stays live** (`L = 0`) — design invariant. Only the _opponent_ is delayed.
-- **Block startup `B = 0`** in this slice (instantaneous guard, as today) ⇒ the
-  inequality is the clean `S ≥ L_act`. Block frame-data (`B > 0`) is a later combat
-  slice, not latency.
+- **Explicit block startup `B = 0`** in this slice (instantaneous guard, as today).
+  The discrete pipeline still contributes a structural `+1` (observe-after-commit),
+  so the effective boundary is `S ≥ L_act + 1`. Real block frame-data (`B > 0`) is a
+  later combat slice, not latency.
 - **1D only** — velocity is `vx`; `y`/`vy`/posture/band deferred to slices 3–4.
 - **History ring** stores each fighter's whole outward frame per tick; the opponent's
   perceiver reads **whole frames** at `t − L_pos` (positional) and `t − L_act`
@@ -55,8 +59,9 @@ These are starting-point numbers — per the design's balance methodology they a
 - [ ] Within one snapshot, positional fields are a coherent whole-frame from
       `t − L_pos` and action fields a coherent whole-frame from `t − L_act`
       (no fresh+stale mixing).
-- [ ] **Reaction-block succeeds iff `S ≥ L_act`** (`B = 0`): a strike with
-      `startup = L_act` is blocked by a reactive blocker; `startup = L_act − 1` lands.
+- [ ] **Reaction-block succeeds iff `S ≥ L_act + 1`** (explicit `B = 0`; the `+1` is
+      the structural observe-after-commit tick): a strike with `startup = L_act + 1`
+      is blocked by a reactive blocker; `startup = L_act` lands.
 - [ ] `opponent.predictedDistance` equals the **true current** distance for a
       constant-velocity opponent, while raw `opponent.distance` lags by
       `walkSpeed · L_pos`.
@@ -139,12 +144,12 @@ the active window opens.
   rejected); reads as 1 while the perceived opponent frame is mid-attack, else 0.
 - Snapshot coherence: positional from `t − L_pos`, action from `t − L_act`, each a
   whole frame.
-- **`startup = L_act` ⇒ reactive blocker blocks (attacker scores 0); `startup =
-L_act − 1` ⇒ strike lands (attacker scores).** Single-tick `active` makes the
-  boundary crisp.
+- **`startup = L_act + 1` ⇒ reactive blocker blocks (attacker scores 0);
+  `startup = L_act` ⇒ strike lands (attacker scores).** Single-tick `active` makes
+  the boundary crisp; the `+1` is the structural observe-after-commit tick.
 
-**RED**: tests pin the inequality at the boundary (`S = L_act` blocked vs
-`S = L_act − 1` hit) — kills the `>=`/`>` relational mutant and the `lAct ± 1`
+**RED**: tests pin the inequality at the boundary (`S = L_act + 1` blocked vs
+`S = L_act` hit) — kills the `>=`/`>` relational mutant and the `lAct ± 1`
 arithmetic mutant exactly at the edge; a coherence test reads a scenario where
 `L_pos ≠ L_act` and asserts position vs attacking come from different ticks.
 

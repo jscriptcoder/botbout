@@ -36,7 +36,13 @@ const getMockState = (o: StateOverrides = {}): State => ({
     phaseRemaining: 0,
     ...o.self,
   },
-  opponent: { x: 100, facing: -1, distance: 100, ...o.opponent },
+  opponent: {
+    x: 100,
+    facing: -1,
+    distance: 100,
+    attacking: false,
+    ...o.opponent,
+  },
   ring: { width: 600, ...o.ring },
   clock: { tick: 0, ticksRemaining: 1800, ...o.clock },
 });
@@ -179,6 +185,7 @@ describe("runTick — numeric reads", () => {
     ["opponent.x", { opponent: { x: 250 } }, 250],
     ["opponent.facing", { opponent: { facing: -1 } }, -1],
     ["opponent.distance", { opponent: { distance: 88 } }, 88],
+    ["opponent.attacking", { opponent: { attacking: true } }, 1],
     ["ring.width", { ring: { width: 600 } }, 600],
     ["clock.tick", { clock: { tick: 42 } }, 42],
     ["clock.ticksRemaining", { clock: { ticksRemaining: 100 } }, 100],
