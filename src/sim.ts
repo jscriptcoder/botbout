@@ -231,16 +231,19 @@ const postureOf = (fighter: Fighter, action: Action, rules: Rules): Posture =>
       ? "crouching"
       : "standing";
 
-// Which bands a posture's hurtbox occupies (§2 / §11.3 step 3). A croucher
-// vacates `high` (a high strike sails over it); an airborne fighter vacates
-// `low` (a sweep passes under it); `mid` is always occupied. A strike connects
-// only if the defender occupies the attacked band.
+// Which bands a posture's hurtbox occupies (§2 / §11.3 step 3). Each posture
+// vacates at most one band — a croucher vacates `high` (a high strike sails over
+// it), an airborne fighter vacates `low` (a sweep passes under it); `mid` is
+// always occupied. A strike connects only if the defender occupies the attacked
+// band.
+const VACATED_BAND: Record<Posture, Band | null> = {
+  standing: null,
+  crouching: "high",
+  airborne: "low",
+};
+
 const occupies = (posture: Posture, band: Band): boolean =>
-  posture === "crouching"
-    ? band !== "high"
-    : posture === "airborne"
-      ? band !== "low"
-      : true;
+  VACATED_BAND[posture] !== band;
 
 // During its active window, a strike in reach scores once (per activation) —
 // unless the defender's hurtbox does NOT occupy the attacked band (it whiffs on
