@@ -1239,4 +1239,60 @@ describe("runFight — parry counter window (the deflect pays off)", () => {
     expect(asB.scores).toEqual({ a: 0, b: 3 });
     expect(asA.scores).toEqual({ a: 3, b: 0 });
   });
+
+  // Parries at tick 4, then throws its counter purely by READING self.counterWindow —
+  // it attacks only while its window is open (no hard-coded counter tick).
+  const counterGatedBot = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: 4 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+      {
+        when: {
+          op: "gt",
+          args: [
+            { op: "field", path: "self.counterWindow" },
+            { op: "const", value: 0 },
+          ],
+        },
+        do: { type: "attack", move: "strike", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  it("a bot reads its live self.counterWindow and fires the counter after a parry", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: counterRules(10),
+        botA: STRIKER,
+        botB: counterGatedBot,
+        maxTicks: 12,
+      }),
+    );
+
+    // The window opens on the tick-4 parry; the self.counterWindow > 0 rule then fires
+    // the counter, which lands for base + bonus.
+    expect(result.scores).toEqual({ a: 0, b: 3 });
+  });
+
+  it("the self.counterWindow gate reads 0 with no parry, so the counter never fires", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: counterRules(10),
+        botA: counterGatedBot,
+        botB: IDLE, // nothing to parry ⇒ the window never opens ⇒ self.counterWindow stays 0
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // gate stays shut ⇒ no counter thrown
+  });
 });

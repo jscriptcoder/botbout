@@ -202,6 +202,7 @@ const viewFor = (
       points: self.points,
       canAct: st.kind === "neutral",
       phaseRemaining,
+      counterWindow: self.counterRemaining, // live — self is always perceived live
     },
     opponent,
     ring: { width: rules.ring.width },

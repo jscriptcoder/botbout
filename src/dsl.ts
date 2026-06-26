@@ -26,6 +26,7 @@ export type FieldPath =
   | "self.points"
   | "self.canAct"
   | "self.phaseRemaining"
+  | "self.counterWindow"
   | "opponent.x"
   | "opponent.y"
   | "opponent.facing"
@@ -85,6 +86,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "self.points": (s) => s.self.points,
   "self.canAct": (s) => (s.self.canAct ? 1 : 0),
   "self.phaseRemaining": (s) => s.self.phaseRemaining,
+  "self.counterWindow": (s) => s.self.counterWindow,
   "opponent.x": (s) => s.opponent.x,
   "opponent.y": (s) => s.opponent.y,
   "opponent.facing": (s) => s.opponent.facing,

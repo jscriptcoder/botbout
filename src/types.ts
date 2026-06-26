@@ -28,6 +28,7 @@ export type SelfState = {
   points: number;
   canAct: boolean;
   phaseRemaining: number;
+  counterWindow: number; // post-parry counter-window ticks left (live; 0 = closed)
 };
 
 export type OpponentState = {
