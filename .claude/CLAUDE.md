@@ -77,21 +77,32 @@ generating code; flag any change that would.
   is the structural observe-after-commit tick; explicit block startup `B` still
   deferred). 149 tests; `prng.ts` mutation 100%, `sim.ts` ~95%. `perception` is
   optional in `Rules`; absent ⇒ `L=0` ⇒ **byte-identical** to the skeleton.
+- DONE (height bands — C3, PRs #15–#16): the core read/counter game. A strike
+  carries a `high/mid/low` **band**; a guard blocks **only** at its own band — a
+  wrong-height guard (or none) is hit (Slice 1). The opponent's incoming band is
+  perceivable as **`opponent.attackBand`** — a height-ordered numeric enum
+  (`0` none, `1` low, `2` mid, `3` high) on the **same `L_act`-delayed layer** as
+  the `attacking` tell (invariant #4) — so a counter-bot can read the height and
+  raise the matching guard (Slice 2). 161 tests; `sim.ts` mutation ~95%. The §11
+  effects machinery (compute-then-apply union, HIT/BLOCK/WHIFF taxonomy, pre-intake
+  frozen snapshot) was deliberately **deferred** to its first consumer (C5 parry /
+  throws): C3 stays self-targeted (score on attacker, guard on self), so resolution
+  is still trivially order-independent. No per-move legal-band restriction yet.
 - NOT YET BUILT (later slices): no real frame table (concrete move numbers live only
-  in test mocks); no 2D/vertical axis, height bands, *uke* guards, parry, cancels,
-  *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT: **height bands + 3 *uke* guards** (`high/mid/low` attack band; wrong-height
-  guard ⇒ hit; band keys scoring) — capability **C3** of
-  `docs/stories/first-slice-split.md`. Then C4 vertical axis + occupancy, C5 parry
-  windows, C6 cancel combos. (Roadmap capabilities are **C1–C6** — the `C` prefix avoids
-  colliding with `slice/N` git branch names; C1 = walking skeleton shipped as branches
-  `slice/1`–`slice/5`, C2 = perception keystone.) **Combat design gap #1 is now pinned**
-  → `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply,
-  S1 posture → S2 intake → S3 compute → S4 apply → S5 advance, frozen pre-intake
-  snapshot, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. C3 builds the
-  band-match/guard rows; later slices slot into the same spine. C3 planning also owns the
-  perceived-attack-band exposure (a §9 perception change, separate from §11). Flow:
-  `planning` → TDD, **PR per capability**.
+  in test mocks); no 2D/vertical axis, parry, cancels, *yame*/match structure,
+  telemetry object, Vercel API, or Pixi viewer.
+- NEXT: **C4 — vertical axis + occupancy** (`docs/stories/first-slice-split.md`):
+  fixed-point `y`, gravity arc, jump/crouch, and **band occupancy** (a croucher
+  vacates `high`, a jumper vacates `low`) — making the §11 step-3 occupancy gate
+  observable (today it is hardwired open). Then C5 parry windows, C6 cancel combos.
+  (Roadmap capabilities are **C1–C6** — the `C` prefix avoids colliding with `slice/N`
+  git branch names; C1 = walking skeleton shipped as branches `slice/1`–`slice/5`,
+  C2 = perception keystone, C3 = height bands.) The spine is pinned in `docs/DESIGN.md`
+  **§11 (Combat resolution order)**: two-phase compute-then-apply, S1 posture → S2
+  intake → S3 compute → S4 apply → S5 advance, frozen pre-intake snapshot,
+  `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. C4–C6 + throws slot into
+  that spine and bring the deferred §11 effects machinery with their first consumer.
+  Flow: `planning` → TDD, **PR per capability**.
 
 ## Commands
 

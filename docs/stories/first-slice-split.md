@@ -94,16 +94,16 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 > above). The `C` prefix is deliberate: it keeps these stable roadmap IDs from colliding
 > with `slice/N` **git branch names**. The walking skeleton (C1) shipped as branches
 > `slice/1`–`slice/5` — those are PR stages of C1, **not** capabilities C1–C5. Don't read
-> "C3" as "PR #3" or branch `slice/3`. Done: **C1** (PRs #1–#5), **C2** (PRs #7–#11).
-> Next: **C3**.
+> "C3" as "PR #3" or branch `slice/3`. Done: **C1** (PRs #1–#5), **C2** (PRs #7–#11),
+> **C3** (PRs #15–#16). Next: **C4**.
 
-| Capability                                     | Value                                                   | Includes                                                                                                                                        | Defers                 | Acceptance example                                                                                     | Release      |
-| ---------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
-| **C2. Perception latency keystone** · ✅ done  | Makes frame data _mean_ something; the distinctive meta | Split `L_pos`/`L_act`, per-fighter history ring buffer, one coherent delayed snapshot, dead-reckoned `predictedDistance`, seeded clamped jitter | bands, y, parry        | A strike with `startup < L_act+B` **cannot** be reaction-blocked; one with `startup ≥ L_act+B` **can** | dev/headless |
-| **C3. Height bands + 3 _uke_ guards** · ← next | Core read/counter game                                  | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring                                                 | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked                                    | dev/headless |
-| **C4. Vertical axis + occupancy**              | The low/high game becomes physical                      | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`)                                       | parry, cancels         | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper                               | dev/headless |
-| **C5. Parry windows**                          | The skill gradient (predict vs react)                   | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block                           | cancels, throws        | A guard raised within the parry window deflects; the same guard raised late only blocks                | dev/headless |
-| **C6. On-contact cancel combos**               | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff                 | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
+| Capability                                      | Value                                                   | Includes                                                                                                                                         | Defers                 | Acceptance example                                                                                     | Release      |
+| ----------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| **C2. Perception latency keystone** · ✅ done   | Makes frame data _mean_ something; the distinctive meta | Split `L_pos`/`L_act`, per-fighter history ring buffer, one coherent delayed snapshot, dead-reckoned `predictedDistance`, seeded clamped jitter  | bands, y, parry        | A strike with `startup < L_act+B` **cannot** be reaction-blocked; one with `startup ≥ L_act+B` **can** | dev/headless |
+| **C3. Height bands + 3 _uke_ guards** · ✅ done | Core read/counter game                                  | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring; `opponent.attackBand` perceived `L_act`-delayed | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked                                    | dev/headless |
+| **C4. Vertical axis + occupancy** · ← next      | The low/high game becomes physical                      | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`)                                        | parry, cancels         | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper                               | dev/headless |
+| **C5. Parry windows**                           | The skill gradient (predict vs react)                   | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block                            | cancels, throws        | A guard raised within the parry window deflects; the same guard raised late only blocks                | dev/headless |
+| **C6. On-contact cancel combos**                | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff                  | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
 
 ## Parking Lot (later — not pre-enumerated rigidly)
 
@@ -138,12 +138,14 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 
 ## Next Step
 
-C1 and C2 are shipped, and Design gap #1 is now pinned (`DESIGN.md` §11). **C3 (height
-bands + 3 _uke_ guards)** is the next capability and is **unblocked**. Load **`planning`**
-on **C3** to stage it into PR-sized TDD increments (each:
+C1, C2, and **C3** are shipped (height bands + `block-{high,mid,low}` +
+`L_act`-delayed `opponent.attackBand`), and Design gap #1 is pinned (`DESIGN.md` §11).
+**C4 (vertical axis + occupancy)** is the next capability and is **unblocked**. Load
+**`planning`** on **C4** to stage it into PR-sized TDD increments (each:
 RED → GREEN → MUTATE → KILL MUTANTS → REFACTOR).
 
-> **C3 planning must also include** the perceived-attack-band exposure (today
-> `OpponentState.attacking` is a bare boolean) — a perception/State-contract change
-> delayed by `L_act`, _separate from_ §11 but required for the read/counter game to
-> mean anything. See the dependency note at the end of `DESIGN.md` §11.
+> **C4 brings the §11 occupancy gate live.** Step 3 of §11's HIT/BLOCK/WHIFF gate
+> (`active → reach → occupancy → guard`) is hardwired open today because no `y` /
+> crouch posture exists to make it observable. C4 adds fixed-point `y`, the gravity
+> arc, jump/crouch, and band occupancy (a croucher vacates `high`, a jumper vacates
+> `low`) — the first capability where a strike can **whiff** on posture alone.
