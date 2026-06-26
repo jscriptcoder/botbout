@@ -36,7 +36,7 @@ export type FightConfig = {
   botA: BotDoc;
   botB: BotDoc;
   maxTicks: number;
-  seed: number; // replay-identity key; unused until a PRNG (jitter) consumes it
+  seed: number; // replay-identity key; seeds the PRNG that drives perception jitter
 };
 
 export type FightResult = {

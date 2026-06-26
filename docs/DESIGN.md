@@ -178,6 +178,13 @@ Master inequalities, now **per band**:
 - reaction-block iff `S ≥ L_act + B`
 - whiff-punish iff `R ≥ L_act + S_punish`
 
+> **Engine note (built, PRs #7–#10).** With whole-frame pre-tick sampling, an
+> attack's tell first appears one tick _after_ commit, so the realised boundary is
+> `S ≥ L_act + 1` even at `B = 0` — the `+1` is a structural observe-after-commit
+> tick. Seeded jitter `j` keeps it always-blockable at `S ≥ L_act + 1 + j` and
+> never-blockable at `S ≤ L_act − j`. Built so far at `L_pos`/`L_act` (1D, no band);
+> `y`/`vy`, posture, and the perceived attack _band_ arrive with later slices.
+
 ---
 
 ## PROPOSED (my recommendation — open for the interview)

@@ -67,16 +67,24 @@ generating code; flag any change that would.
   (simultaneous in-range strikes both score, swap-symmetric). 130 tests; `sim.ts`
   mutation ~95%, `dsl.ts` interpreter 100%. The five-slice plan is done and its file
   deleted (per the planning workflow); the record lives in git history (PRs #1–#5).
-- NOT YET BUILT (later slices): no PRNG is consumed yet (no jitter); no real frame
-  table (concrete move numbers live only in test mocks); perception latency is at
-  `L=0` (opponent read live); no 2D/vertical axis, height bands, *uke* guards,
-  parry, cancels, *yame*/match structure, telemetry object, Vercel API, or Pixi
-  viewer.
-- NEXT: the **perception-latency keystone** — the per-fighter history ring buffer +
-  `L>0` delayed snapshot (invariant #4), the next capability per
-  `docs/stories/first-slice-split.md`. Then height bands + 3 *uke* guards, vertical
-  axis, parry, cancel combos. Flow: `story-splitting`/`planning` → TDD, **PR per
-  slice**.
+- DONE (perception-latency keystone — PRs #7–#10): the distinctive mechanic. The
+  opponent is a **coherent delayed snapshot** served from a per-fighter history
+  buffer — positional fields by `L_pos`, the `opponent.attacking` tell by `L_act`
+  (invariant #4) — with dead-reckoned `opponent.predictedDistance` (+ `opponent.vx`)
+  and **seeded, clamped per-tick jitter** on the latencies (mulberry32 in
+  `src/prng.ts`, the sim's first PRNG consumer — integer `uint32` only, replay-stable).
+  This derives the master inequality **reaction-block iff `S ≥ L_act + 1`** (the `+1`
+  is the structural observe-after-commit tick; explicit block startup `B` still
+  deferred). 149 tests; `prng.ts` mutation 100%, `sim.ts` ~95%. `perception` is
+  optional in `Rules`; absent ⇒ `L=0` ⇒ **byte-identical** to the skeleton.
+- NOT YET BUILT (later slices): no real frame table (concrete move numbers live only
+  in test mocks); no 2D/vertical axis, height bands, *uke* guards, parry, cancels,
+  *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
+- NEXT: **height bands + 3 *uke* guards** (`high/mid/low` attack band; wrong-height
+  guard ⇒ hit; band keys scoring) — Slice 3 of `docs/stories/first-slice-split.md`.
+  Then vertical axis + occupancy, parry windows, cancel combos. **Combat design gap #1**
+  (the ordered resolution procedure) must be pinned before bands/parry/cancels — see
+  the split's Warnings. Flow: `story-splitting`/`planning` → TDD, **PR per slice**.
 
 ## Commands
 
