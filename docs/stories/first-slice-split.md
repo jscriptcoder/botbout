@@ -95,7 +95,8 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 > with `slice/N` **git branch names**. The walking skeleton (C1) shipped as branches
 > `slice/1`–`slice/5` — those are PR stages of C1, **not** capabilities C1–C5. Don't read
 > "C3" as "PR #3" or branch `slice/3`. Done: **C1** (PRs #1–#5), **C2** (PRs #7–#11),
-> **C3** (PRs #15–#16), **C4** (PRs #17–#21), **C5** (PRs #23–#25). Next: **C6**.
+> **C3** (PRs #15–#16), **C4** (PRs #17–#21), **C5** (PRs #23–#25), **C6** (PRs #26–#28).
+> Next: **throws / sweeps**.
 
 | Capability                                      | Value                                                   | Includes                                                                                                                                                         | Defers                 | Acceptance example                                                                                     | Release      |
 | ----------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
@@ -103,7 +104,7 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 | **C3. Height bands + 3 _uke_ guards** · ✅ done | Core read/counter game                                  | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring; `opponent.attackBand` perceived `L_act`-delayed                 | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked                                    | dev/headless |
 | **C4. Vertical axis + occupancy** · ✅ done     | The low/high game becomes physical                      | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`); `opponent.y` (`L_pos`) + `opponent.posture` (`L_act`) | parry, cancels         | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper                               | dev/headless |
 | **C5. Parry windows** · ✅ done                 | The skill gradient (predict vs react)                   | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block                                            | cancels, throws        | A guard raised within the parry window deflects; the same guard raised late only blocks                | dev/headless |
-| **C6. On-contact cancel combos** · ← next       | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff                                  | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
+| **C6. On-contact cancel combos** · ✅ done      | Within-exchange score escalation; the no-feint property | `cancelInto` routes + `cancelWindow`; a connect (hit/block, never whiff/parry) opens the window; a routed follow-up interrupts recovery; `self.cancelWindow` hit-confirm read                                  | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
 
 ## Parking Lot (later — not pre-enumerated rigidly)
 
@@ -138,18 +139,19 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 
 ## Next Step
 
-C1–C5 are shipped (C5 = parry windows: deflect + attacker extra-recovery, a post-parry
-counter window scoring `counterBonus`, and the live `self.counterWindow` read surface —
-PRs #23–#25), and Design gap #1 is pinned (`DESIGN.md` §11). **C6 (on-contact cancel
-combos)** is the next capability and is **unblocked**. Load **`planning`** on **C6** to
-stage it into PR-sized TDD increments (each: RED → GREEN → MUTATE → KILL MUTANTS →
-REFACTOR).
+C1–C6 are shipped (C6 = on-contact cancel combos: a connecting strike — **hit or block,
+never whiff/parry** — opens a `cancelWindow`, and a `cancelInto`-routed follow-up interrupts
+the recovery; the live window is perceivable as `self.cancelWindow` for hit-confirm — PRs
+#26–#28), and Design gap #1 is pinned (`DESIGN.md` §11). **Throws / sweeps** (the §11.4 throw
+triangle + knockdown / limited okizeme) are the next capability and are **unblocked**. Load
+**`planning`** on **throws** to stage it into PR-sized TDD increments (each: RED → GREEN →
+MUTATE → KILL MUTANTS → REFACTOR).
 
-> **The §11 compute-then-apply union is now live (built in C5).** C5 adopted it at the
-> first **cross-fighter** effect (the counter window lands on the OTHER fighter):
-> `resolveHit` split into a pure `computeStrike` (hit/parry outcome from the frozen
-> snapshot) + `applyStrike` (both directions applied atomically). C6 slots its
-> `CancelEnable`-on-hit/block effect into that spine (§11.3 insertion point). **Throws**
-> (the §11.4 throw-triangle rows + knockdown/i-frames) are the union's genuine
-> **test-forcing** consumer — same-tick mutual dependencies (strike-beats-throw,
-> throw-clash) — and slot in alongside/after C6.
+> **The §11 compute-then-apply union has been live since C5 and is now reused by C6.** C5
+> adopted it at the first **cross-fighter** effect (the counter window lands on the OTHER
+> fighter): `resolveHit` split into a pure `computeStrike` (hit/parry/block outcome from the
+> frozen snapshot) + `applyStrike` (both directions applied atomically). C6 slotted its
+> `CancelEnable`-on-hit/block effect in as a **self-targeted** effect (§11.3 insertion point) —
+> no restructuring. **Throws** (the §11.4 throw-triangle rows + knockdown/i-frames) are the
+> union's genuine **test-forcing** consumer — same-tick mutual dependencies (strike-beats-throw,
+> throw-clash) — the reason the union exists.

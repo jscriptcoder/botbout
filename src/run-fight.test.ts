@@ -1654,4 +1654,62 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
 
     expect(result.scores.a).toBe(1); // frame-2 hit after the drop ⇒ the block did not resolve the strike
   });
+
+  // Strikes when free, then cancels PURELY by reading self.cancelWindow — it throws the
+  // follow-up only while its cancel window is open (no hard-coded cancel tick).
+  const cancelGatedBot = (band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band },
+        },
+        {
+          when: {
+            op: "gt",
+            args: [
+              { op: "field", path: "self.cancelWindow" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  it("a bot reads its live self.cancelWindow and hit-confirms the cancel", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: cancelRules(),
+        botA: cancelGatedBot("mid"),
+        botB: IDLE,
+        maxTicks: 20,
+      }),
+    );
+
+    // The window opens on each connect; the self.cancelWindow > 0 rule then cancels into the
+    // next strike — chaining hits at ticks 4, 9, 14, 19.
+    expect(result.scores.a).toBe(4);
+  });
+
+  it("the self.cancelWindow gate reads 0 with no cancel config, so the bot never cancels", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }), // no cancelWindow ⇒ the window stays 0
+        botA: cancelGatedBot("mid"),
+        botB: IDLE,
+        maxTicks: 20,
+      }),
+    );
+
+    // Window never opens ⇒ the cancel rule never fires ⇒ it re-strikes only when free (ticks 4, 16).
+    expect(result.scores.a).toBe(2);
+  });
 });

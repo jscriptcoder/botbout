@@ -204,6 +204,7 @@ const viewFor = (
       canAct: st.kind === "neutral",
       phaseRemaining,
       counterWindow: self.counterRemaining, // live — self is always perceived live
+      cancelWindow: self.cancelRemaining, // live — the attacker's open cancel window
     },
     opponent,
     ring: { width: rules.ring.width },

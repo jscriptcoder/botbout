@@ -118,24 +118,36 @@ generating code; flag any change that would.
   fighter is never simultaneously attacking, so the counter never collides same-tick; **throws**
   are the union's test-forcing consumer). The frozen snapshot is taken **post-intake**; §11.1's
   pre-intake step-dodge refinement stays deferred, as does parry-aware `phaseRemaining`.
+- DONE (on-contact cancel combos — C6, PRs #26–#28): within-exchange score escalation with the
+  **no-feint** property. A strike that **connects** opens a cancel window on the attacker;
+  returning an `attack` in the striking move's `cancelInto` set within `cancelWindow` ticks
+  **interrupts the recovery** into the follow-up (Slice 1 — on **hit**; Slice 2 widens the trigger
+  to a stale-guard **block**, a first-class connect alongside hit — **parry and whiff never open
+  it**, so you can only cancel something the opponent already perceived connect). The live window is
+  perceivable as **`self.cancelWindow`** so a bot can **hit-confirm** (Slice 3). This is the **first
+  consumer of the §11.3 `CancelEnable` insertion point** — a **self-targeted** effect on the C5
+  compute-then-apply union, so it slots in with **no restructuring**: `intake` gains the one
+  deliberate cancel exception to commitment, and a `block` `StrikeOutcome` joins hit/parry — block
+  opens the window but is **not** marked resolved, preserving the block-then-guard-drop edge. 222
+  tests; `sim.ts` mutation ~95%, `dsl.ts` interpreter 100%. `MoveSpec.cancelInto` +
+  `Rules.cancelWindow` are optional; absent ⇒ **byte-identical** to C5. Self-cancel
+  (`strike→strike`) demonstrates the mechanic; a multi-move arsenal + distinct routes is a later
+  additive slice. **Throws** remain the union's genuine test-forcing consumer.
 - NOT YET BUILT (later slices): no real frame table (concrete move numbers live only
-  in test mocks); no horizontal jump displacement or air-actions, cancels,
+  in test mocks); no horizontal jump displacement or air-actions, throws/sweeps,
   *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT: **C6 — on-contact cancel combos** (then throws/sweeps). A move may **cancel into** a
-  follow-up **only on hit or block, never on whiff** (the no-feint / pure-perception property),
-  escalating the within-exchange score. Needs a `cancelable` state + per-move cancel-route data
-  + a hit-confirm signal (`self.lastAttackConnected`). It builds on the **compute-then-apply
-  union now live from C5**: `CancelEnable` is the deferred S3/S4 effect that fires on hit/block
-  (`docs/DESIGN.md` §11.3 lists it as a documented insertion point). **Throws** (the §11.4
-  throw-triangle rows + knockdown/i-frames) are the genuine **test-forcing** consumer of the
-  union — same-tick mutual dependencies (strike-beats-throw, throw-clash) — and slot in
-  alongside/after C6. (Roadmap capabilities are **C1–C6** — the `C` prefix avoids colliding with
-  `slice/N` git branch names; C1 = walking skeleton (branches `slice/1`–`slice/5`), C2 =
-  perception keystone, C3 = height bands, C4 = vertical axis + occupancy, C5 = parry windows.)
-  The spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase
-  compute-then-apply (live from C5), S1 posture → S2 intake → S3 compute → S4 apply → S5
-  advance, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate.
-  Flow: `planning` → TDD, **PR per capability**.
+- NEXT: **throws / sweeps** (the §11.4 throw triangle + knockdown / limited okizeme). A clean throw
+  beats guard and scores 3; a sweep knocks down and opens exactly one finish window before wake-up
+  i-frames. The locked precedence is **strike > throw > guard > strike**; `throw-break` escapes
+  throws; strikes interrupt throw startup. These are the union's genuine **test-forcing** consumer —
+  same-tick mutual dependencies (strike-beats-throw, throw-clash) that the compute-then-apply union
+  (live since C5, reused by C6) exists to resolve order-independently. (Roadmap capabilities are
+  **C1–C6** — the `C` prefix avoids colliding with `slice/N` git branch names; C1 = walking skeleton
+  (branches `slice/1`–`slice/5`), C2 = perception keystone, C3 = height bands, C4 = vertical axis +
+  occupancy, C5 = parry windows, C6 = on-contact cancel combos.) The spine is pinned in
+  `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply (live from C5),
+  S1 posture → S2 intake → S3 compute → S4 apply → S5 advance, `strike > throw > guard` precedence,
+  HIT/BLOCK/WHIFF gate. Flow: `planning` → TDD, **PR per capability**.
 
 ## Commands
 

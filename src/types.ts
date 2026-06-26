@@ -29,6 +29,7 @@ export type SelfState = {
   canAct: boolean;
   phaseRemaining: number;
   counterWindow: number; // post-parry counter-window ticks left (live; 0 = closed)
+  cancelWindow: number; // on-contact cancel-window ticks left after a connect (live; 0 = closed)
 };
 
 export type OpponentState = {
