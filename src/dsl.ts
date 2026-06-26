@@ -21,9 +21,17 @@ import type { State, Action, Band, MoveId } from "./types.js";
 // SINGLE source — the validator's allowlist is derived from FIELD_READERS' keys
 // (below) and the interpreter reads through the same map.
 export type FieldPath =
-  | "self.x" | "self.facing" | "self.points" | "self.canAct" | "self.phaseRemaining"
-  | "opponent.x" | "opponent.facing" | "opponent.distance"
-  | "ring.width" | "clock.tick" | "clock.ticksRemaining";
+  | "self.x"
+  | "self.facing"
+  | "self.points"
+  | "self.canAct"
+  | "self.phaseRemaining"
+  | "opponent.x"
+  | "opponent.facing"
+  | "opponent.distance"
+  | "ring.width"
+  | "clock.tick"
+  | "clock.ticksRemaining";
 
 // ─── Numeric expressions (values are fixed-point integers) ───────────────────
 export type NumExpr =
@@ -82,7 +90,11 @@ const ALLOWED_FIELDS: ReadonlySet<string> = new Set(Object.keys(FIELD_READERS));
 const MOVES: ReadonlySet<string> = new Set<MoveId>(["strike"]);
 const BANDS: ReadonlySet<string> = new Set<Band>(["high", "mid", "low"]);
 const CELL_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/;
-const FORBIDDEN_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+const FORBIDDEN_KEYS: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 const isInt = (x: unknown): x is number => Number.isInteger(x);
 const asRecord = (x: unknown): Record<string, unknown> =>
@@ -90,7 +102,11 @@ const asRecord = (x: unknown): Record<string, unknown> =>
 
 // ─── Structured validation result ────────────────────────────────────────────
 export type ValidationIssue = { path: string; reason: string };
-export type ValidationResult = { ok: boolean; issues: ValidationIssue[]; nodeCount: number };
+export type ValidationResult = {
+  ok: boolean;
+  issues: ValidationIssue[];
+  nodeCount: number;
+};
 
 export class ValidationError extends Error {
   constructor(public readonly issues: ValidationIssue[]) {
@@ -102,7 +118,9 @@ export class ValidationError extends Error {
 /** Prototype-pollution-safe JSON intake. Reject oversize docs and dangerous keys. */
 export function safeParse(text: string): unknown {
   if (text.length > LIMITS.maxBytes) {
-    throw new ValidationError([{ path: "$", reason: `document exceeds ${LIMITS.maxBytes} bytes` }]);
+    throw new ValidationError([
+      { path: "$", reason: `document exceeds ${LIMITS.maxBytes} bytes` },
+    ]);
   }
   return JSON.parse(text, (key, value) => {
     if (FORBIDDEN_KEYS.has(key)) {
@@ -115,7 +133,9 @@ export function safeParse(text: string): unknown {
 // ─── Validator ───────────────────────────────────────────────────────────────
 export function validate(doc: unknown): ValidationResult {
   const issues: ValidationIssue[] = [];
-  const fail = (path: string, reason: string): void => { issues.push({ path, reason }); };
+  const fail = (path: string, reason: string): void => {
+    issues.push({ path, reason });
+  };
   let nodeCount = 0;
   const cells = new Set<string>();
 
@@ -132,25 +152,31 @@ export function validate(doc: unknown): ValidationResult {
     } else {
       const mem = d.memory as Record<string, unknown>;
       const keys = Object.keys(mem);
-      if (keys.length > LIMITS.maxCells) fail("memory", `more than ${LIMITS.maxCells} cells`);
+      if (keys.length > LIMITS.maxCells)
+        fail("memory", `more than ${LIMITS.maxCells} cells`);
       for (const k of keys) {
         if (!CELL_RE.test(k)) fail(`memory.${k}`, "invalid cell name");
-        if (!isInt(mem[k])) fail(`memory.${k}`, "initial value must be an integer");
+        if (!isInt(mem[k]))
+          fail(`memory.${k}`, "initial value must be an integer");
         cells.add(k);
       }
     }
   }
 
   const num = (n: unknown, path: string, depth: number): void => {
-    if (++nodeCount > LIMITS.maxNodes) return fail(path, "node budget exceeded");
-    if (depth > LIMITS.maxDepth) return fail(path, "expression too deeply nested");
-    if (n == null || typeof n !== "object") return fail(path, "expected a numeric expression");
+    if (++nodeCount > LIMITS.maxNodes)
+      return fail(path, "node budget exceeded");
+    if (depth > LIMITS.maxDepth)
+      return fail(path, "expression too deeply nested");
+    if (n == null || typeof n !== "object")
+      return fail(path, "expected a numeric expression");
     const e = n as Record<string, unknown>;
     switch (e.op) {
       case "const": {
         const v = e.value;
         if (!isInt(v)) fail(path, "const must be an integer");
-        else if (v < LIMITS.intMin || v > LIMITS.intMax) fail(path, "const out of int32 range");
+        else if (v < LIMITS.intMin || v > LIMITS.intMax)
+          fail(path, "const out of int32 range");
         break;
       }
       case "field":
@@ -169,18 +195,35 @@ export function validate(doc: unknown): ValidationResult {
   };
 
   const bool = (n: unknown, path: string, depth: number): void => {
-    if (++nodeCount > LIMITS.maxNodes) return fail(path, "node budget exceeded");
-    if (depth > LIMITS.maxDepth) return fail(path, "condition too deeply nested");
-    if (n == null || typeof n !== "object") return fail(path, "expected a condition");
+    if (++nodeCount > LIMITS.maxNodes)
+      return fail(path, "node budget exceeded");
+    if (depth > LIMITS.maxDepth)
+      return fail(path, "condition too deeply nested");
+    if (n == null || typeof n !== "object")
+      return fail(path, "expected a condition");
     const e = n as Record<string, unknown>;
     switch (e.op) {
-      case "gt": case "lt": case "gte": case "lte": case "eq": case "neq":
-        if (!Array.isArray(e.args) || e.args.length !== 2) fail(path, `${String(e.op)} needs 2 operands`);
-        else e.args.forEach((a, i) => num(a, `${path}.${String(e.op)}[${i}]`, depth + 1));
+      case "gt":
+      case "lt":
+      case "gte":
+      case "lte":
+      case "eq":
+      case "neq":
+        if (!Array.isArray(e.args) || e.args.length !== 2)
+          fail(path, `${String(e.op)} needs 2 operands`);
+        else
+          e.args.forEach((a, i) =>
+            num(a, `${path}.${String(e.op)}[${i}]`, depth + 1),
+          );
         break;
-      case "and": case "or":
-        if (!Array.isArray(e.args) || e.args.length < 1) fail(path, `${String(e.op)} needs at least one operand`);
-        else e.args.forEach((a, i) => bool(a, `${path}.${String(e.op)}[${i}]`, depth + 1));
+      case "and":
+      case "or":
+        if (!Array.isArray(e.args) || e.args.length < 1)
+          fail(path, `${String(e.op)} needs at least one operand`);
+        else
+          e.args.forEach((a, i) =>
+            bool(a, `${path}.${String(e.op)}[${i}]`, depth + 1),
+          );
         break;
       case "not":
         bool(e.arg, `${path}.not`, depth + 1);
@@ -191,20 +234,25 @@ export function validate(doc: unknown): ValidationResult {
   };
 
   const action = (a: unknown, path: string): void => {
-    if (a == null || typeof a !== "object") return fail(path, "expected an action");
+    if (a == null || typeof a !== "object")
+      return fail(path, "expected an action");
     const e = a as Record<string, unknown>;
     switch (e.type) {
       case "idle":
         break;
       case "move":
-        if (e.dir !== -1 && e.dir !== 0 && e.dir !== 1) fail(path, "move dir must be -1, 0, or 1");
+        if (e.dir !== -1 && e.dir !== 0 && e.dir !== 1)
+          fail(path, "move dir must be -1, 0, or 1");
         break;
       case "block":
-        if (typeof e.band !== "string" || !BANDS.has(e.band)) fail(path, `unknown band: ${String(e.band)}`);
+        if (typeof e.band !== "string" || !BANDS.has(e.band))
+          fail(path, `unknown band: ${String(e.band)}`);
         break;
       case "attack":
-        if (typeof e.move !== "string" || !MOVES.has(e.move)) fail(path, `unknown move: ${String(e.move)}`);
-        if (typeof e.band !== "string" || !BANDS.has(e.band)) fail(path, `unknown band: ${String(e.band)}`);
+        if (typeof e.move !== "string" || !MOVES.has(e.move))
+          fail(path, `unknown move: ${String(e.move)}`);
+        if (typeof e.band !== "string" || !BANDS.has(e.band))
+          fail(path, `unknown band: ${String(e.band)}`);
         break;
       default:
         fail(path, `unknown action: ${String(e.type)}`);
@@ -214,7 +262,8 @@ export function validate(doc: unknown): ValidationResult {
   if (!Array.isArray(d.rules)) {
     fail("rules", "must be an array");
   } else {
-    if (d.rules.length > LIMITS.maxRules) fail("rules", `more than ${LIMITS.maxRules} rules`);
+    if (d.rules.length > LIMITS.maxRules)
+      fail("rules", `more than ${LIMITS.maxRules} rules`);
     d.rules.forEach((r, i) => {
       const rule = asRecord(r);
       bool(rule.when, `rules[${i}].when`, 0);
@@ -225,7 +274,10 @@ export function validate(doc: unknown): ValidationResult {
           rule.set.forEach((s, j) => {
             const w = asRecord(s);
             if (typeof w.cell !== "string" || !cells.has(w.cell)) {
-              fail(`rules[${i}].set[${j}].cell`, `undeclared cell: ${String(w.cell)}`);
+              fail(
+                `rules[${i}].set[${j}].cell`,
+                `undeclared cell: ${String(w.cell)}`,
+              );
             }
             num(w.to, `rules[${i}].set[${j}].to`, 0);
           });
@@ -243,25 +295,45 @@ export function validate(doc: unknown): ValidationResult {
 // ─── Interpreter ─────────────────────────────────────────────────────────────
 // Operates on an ALREADY-VALIDATED BotDoc. Pure w.r.t. (doc, state); the only
 // effect is writing the per-fighter `mem` the engine threads across ticks.
-function evalNum(n: NumExpr, state: State, mem: Record<string, number>): number {
+function evalNum(
+  n: NumExpr,
+  state: State,
+  mem: Record<string, number>,
+): number {
   switch (n.op) {
-    case "const": return n.value;
-    case "field": return FIELD_READERS[n.path](state);
-    case "mem": return mem[n.cell] ?? 0;
+    case "const":
+      return n.value;
+    case "field":
+      return FIELD_READERS[n.path](state);
+    case "mem":
+      return mem[n.cell] ?? 0;
   }
 }
 
-function evalBool(n: BoolExpr, state: State, mem: Record<string, number>): boolean {
+function evalBool(
+  n: BoolExpr,
+  state: State,
+  mem: Record<string, number>,
+): boolean {
   switch (n.op) {
-    case "gt": return evalNum(n.args[0], state, mem) > evalNum(n.args[1], state, mem);
-    case "lt": return evalNum(n.args[0], state, mem) < evalNum(n.args[1], state, mem);
-    case "gte": return evalNum(n.args[0], state, mem) >= evalNum(n.args[1], state, mem);
-    case "lte": return evalNum(n.args[0], state, mem) <= evalNum(n.args[1], state, mem);
-    case "eq": return evalNum(n.args[0], state, mem) === evalNum(n.args[1], state, mem);
-    case "neq": return evalNum(n.args[0], state, mem) !== evalNum(n.args[1], state, mem);
-    case "and": return n.args.every((a) => evalBool(a, state, mem));
-    case "or": return n.args.some((a) => evalBool(a, state, mem));
-    case "not": return !evalBool(n.arg, state, mem);
+    case "gt":
+      return evalNum(n.args[0], state, mem) > evalNum(n.args[1], state, mem);
+    case "lt":
+      return evalNum(n.args[0], state, mem) < evalNum(n.args[1], state, mem);
+    case "gte":
+      return evalNum(n.args[0], state, mem) >= evalNum(n.args[1], state, mem);
+    case "lte":
+      return evalNum(n.args[0], state, mem) <= evalNum(n.args[1], state, mem);
+    case "eq":
+      return evalNum(n.args[0], state, mem) === evalNum(n.args[1], state, mem);
+    case "neq":
+      return evalNum(n.args[0], state, mem) !== evalNum(n.args[1], state, mem);
+    case "and":
+      return n.args.every((a) => evalBool(a, state, mem));
+    case "or":
+      return n.args.some((a) => evalBool(a, state, mem));
+    case "not":
+      return !evalBool(n.arg, state, mem);
   }
 }
 
@@ -271,10 +343,15 @@ function evalBool(n: BoolExpr, state: State, mem: Record<string, number>): boole
  * with no `do` is a TRACKER: its `set` writes apply and evaluation continues.
  * No rule fires ⇒ `default`. Mutates `mem` in place (the engine owns it).
  */
-export function runTick(doc: BotDoc, state: State, mem: Record<string, number>): Action {
+export function runTick(
+  doc: BotDoc,
+  state: State,
+  mem: Record<string, number>,
+): Action {
   for (const rule of doc.rules) {
     if (!evalBool(rule.when, state, mem)) continue;
-    if (rule.set) for (const w of rule.set) mem[w.cell] = evalNum(w.to, state, mem);
+    if (rule.set)
+      for (const w of rule.set) mem[w.cell] = evalNum(w.to, state, mem);
     if (rule.do) return rule.do;
   }
   return doc.default;

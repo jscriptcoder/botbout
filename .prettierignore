@@ -1,0 +1,13 @@
+# Build output & generated artifacts
+node_modules/
+dist/
+coverage/
+reports/
+.stryker-tmp/
+/replays/
+
+# Auto-generated — prettier should not own it
+package-lock.json
+
+# Vendored Claude Code tooling (skills/agents/commands) — not project source
+.claude/

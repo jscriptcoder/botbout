@@ -14,7 +14,14 @@
 // (opponent is live, L = 0), no blocking/parry, no PRNG yet (nothing consumes
 // randomness — it arrives with jitter). Each joins in a later slice.
 // ============================================================================
-import type { State, Action, Rules, Facing, MoveId, MoveSpec } from "./types.js";
+import type {
+  State,
+  Action,
+  Rules,
+  Facing,
+  MoveId,
+  MoveSpec,
+} from "./types.js";
 import { runTick, type BotDoc } from "./dsl.js";
 
 export type FighterFrame = { x: number; action: Action; points: number };
@@ -48,22 +55,46 @@ type Fighter = {
   state: MoveState;
 };
 
-const initMem = (bot: BotDoc): Record<string, number> => ({ ...(bot.memory ?? {}) });
+const initMem = (bot: BotDoc): Record<string, number> => ({
+  ...(bot.memory ?? {}),
+});
 
 // Auto-facing: always turn toward the opponent (ties resolve to +1, deterministic).
-const facingToward = (selfX: number, otherX: number): Facing => (otherX >= selfX ? 1 : -1);
+const facingToward = (selfX: number, otherX: number): Facing =>
+  otherX >= selfX ? 1 : -1;
 
-const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+const clamp = (v: number, lo: number, hi: number): number =>
+  Math.max(lo, Math.min(hi, v));
 
-const totalFrames = (spec: MoveSpec): number => spec.startup + spec.active + spec.recovery;
+const totalFrames = (spec: MoveSpec): number =>
+  spec.startup + spec.active + spec.recovery;
 
 // Build one fighter's view of tick T: self is live; opponent is live too (L = 0).
-const viewFor = (self: Fighter, other: Fighter, rules: Rules, tick: number, maxTicks: number): State => {
+const viewFor = (
+  self: Fighter,
+  other: Fighter,
+  rules: Rules,
+  tick: number,
+  maxTicks: number,
+): State => {
   const st = self.state;
-  const phaseRemaining = st.kind === "attacking" ? totalFrames(rules.moves[st.move]) - st.elapsed : 0;
+  const phaseRemaining =
+    st.kind === "attacking"
+      ? totalFrames(rules.moves[st.move]) - st.elapsed
+      : 0;
   return {
-    self: { x: self.x, facing: self.facing, points: self.points, canAct: st.kind === "neutral", phaseRemaining },
-    opponent: { x: other.x, facing: other.facing, distance: Math.abs(other.x - self.x) },
+    self: {
+      x: self.x,
+      facing: self.facing,
+      points: self.points,
+      canAct: st.kind === "neutral",
+      phaseRemaining,
+    },
+    opponent: {
+      x: other.x,
+      facing: other.facing,
+      distance: Math.abs(other.x - self.x),
+    },
     ring: { width: rules.ring.width },
     clock: { tick, ticksRemaining: maxTicks - tick },
   };
@@ -74,20 +105,35 @@ const viewFor = (self: Fighter, other: Fighter, rules: Rules, tick: number, maxT
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
   if (f.state.kind !== "neutral") return;
   if (action.type === "attack") {
-    f.state = { kind: "attacking", move: action.move, elapsed: 0, scored: false };
+    f.state = {
+      kind: "attacking",
+      move: action.move,
+      elapsed: 0,
+      scored: false,
+    };
   } else if (action.type === "move") {
-    f.x = clamp(f.x + action.dir * f.facing * rules.walkSpeed, 0, rules.ring.width);
+    f.x = clamp(
+      f.x + action.dir * f.facing * rules.walkSpeed,
+      0,
+      rules.ring.width,
+    );
   }
   // idle / block: no positional effect in this slice.
 };
 
 // During its active window, a strike in reach scores once (per activation) —
 // unless the defender is guarding this tick, in which case it is blocked.
-const resolveHit = (att: Fighter, def: Fighter, rules: Rules, defGuarding: boolean): void => {
+const resolveHit = (
+  att: Fighter,
+  def: Fighter,
+  rules: Rules,
+  defGuarding: boolean,
+): void => {
   const st = att.state;
   if (st.kind !== "attacking" || st.scored) return;
   const spec = rules.moves[st.move];
-  const inActiveWindow = st.elapsed >= spec.startup && st.elapsed < spec.startup + spec.active;
+  const inActiveWindow =
+    st.elapsed >= spec.startup && st.elapsed < spec.startup + spec.active;
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
   if (defGuarding) return; // blocked — no score
@@ -109,11 +155,17 @@ export function runFight(cfg: FightConfig): FightResult {
 
   const a: Fighter = {
     x: Math.trunc((rules.ring.width - rules.startGap) / 2),
-    facing: 1, mem: initMem(botA), points: 0, state: { kind: "neutral" },
+    facing: 1,
+    mem: initMem(botA),
+    points: 0,
+    state: { kind: "neutral" },
   };
   const b: Fighter = {
     x: Math.trunc((rules.ring.width + rules.startGap) / 2),
-    facing: 1, mem: initMem(botB), points: 0, state: { kind: "neutral" },
+    facing: 1,
+    mem: initMem(botB),
+    points: 0,
+    state: { kind: "neutral" },
   };
   const events: FightEvent[] = [];
 
@@ -148,5 +200,10 @@ export function runFight(cfg: FightConfig): FightResult {
   }
 
   const winner = a.points > b.points ? "A" : b.points > a.points ? "B" : "draw";
-  return { winner, ticks: maxTicks, scores: { a: a.points, b: b.points }, events };
+  return {
+    winner,
+    ticks: maxTicks,
+    scores: { a: a.points, b: b.points },
+    events,
+  };
 }

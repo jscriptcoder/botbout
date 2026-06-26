@@ -7,7 +7,7 @@ against a prior winner. Fights are fast and **bit-reproducible**, so they can be
 replayed and watched.
 
 > **Design direction:** BotBout is building a **deep karate** combat model (2D
-> fixed-point space, three height bands + technique-specific *uke* defense,
+> fixed-point space, three height bands + technique-specific _uke_ defense,
 > on-contact cancel combos, WKF points-only scoring, king-of-the-hill ladder).
 > Source of truth: **`docs/DESIGN.md`** + **`docs/BOT-DSL.md`**. The deterministic
 > headless core (validate → fight → byte-identical replay, with block/trade) is
@@ -31,6 +31,7 @@ npm install        # once
 npm test           # vitest (test-first; the suite grows with each TDD slice)
 npm run build      # tsc → dist/
 npm run typecheck  # tsc --noEmit
+npm run format     # prettier --write . (format:check to verify only)
 ```
 
 ## Layout
@@ -58,10 +59,10 @@ dropped Project Pixel Fist (render layer) when those slices land.
 **Design resolved** for the deep karate model + bot API (`docs/DESIGN.md`,
 `docs/BOT-DSL.md`). **Walking skeleton done** (PRs #1–#5, all 6 acceptance
 criteria): the headless deterministic core validates a JSON bot, runs two bots for
-N ticks, replays **byte-identically**, and resolves 1D approach + one *mid* strike
+N ticks, replays **byte-identically**, and resolves 1D approach + one _mid_ strike
 that can score, be **blocked**, or **trade**. 130 tests; `sim.ts` mutation ~95%.
 **Next:** the perception-latency keystone (history ring buffer + `L>0` delayed
-snapshot), then height bands + *uke* guards, vertical axis, parry, cancels — each a
+snapshot), then height bands + _uke_ guards, vertical axis, parry, cancels — each a
 TDD slice with its own PR. See `docs/stories/first-slice-split.md` for the
 sequence.
 

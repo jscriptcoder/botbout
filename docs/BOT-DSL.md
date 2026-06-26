@@ -101,6 +101,7 @@ Categorical self-state read via predicates: `phase`, `move_is`, `posture_is`,
 `band_is` (own current attack's band).
 
 **`opponent` (coherent delayed snapshot):**
+
 - positional (delayed by `L_pos`): `x`, `y`, `vx`, `vy`, `facing`, `distance`,
   `edgeDistance`.
 - derived (engine dead-reckons over staleness): `predictedDistance`, `predictedY`.
@@ -111,7 +112,7 @@ Categorical self-state read via predicates: `phase`, `move_is`, `posture_is`,
 
 **`ring`:** `width`, `leftEdge`, `rightEdge`.
 **`clock` / `match`:** `clock.tick`, `clock.ticksRemaining`, `match.scoreGap`
-(`self.points - opponent.points`), `match.exchangeActive` (1/0; 0 during a *yame*
+(`self.points - opponent.points`), `match.exchangeActive` (1/0; 0 during a _yame_
 reset).
 
 > **Coherence rule (engine invariant):** the opponent snapshot is one real frame
@@ -119,17 +120,17 @@ reset).
 
 ## Static limits (each a security boundary — tune during build)
 
-`maxBytes` 32_768 · `maxNodes` 4_000 · `maxDepth` 32 · `maxRules` 96 ·
+`maxBytes` 32*768 · `maxNodes` 4_000 · `maxDepth` 32 · `maxRules` 96 ·
 `maxCells` 24 · `maxLets` 32 · int range = int32. Cell/let names match
-`^[a-zA-Z][a-zA-Z0-9_]{0,31}$`. Prototype-pollution-safe parse rejects
-`__proto__`/`constructor`/`prototype`. Validator rejects: unknown ops, fields not
+`^[a-zA-Z]a-zA-Z0-9*]{0,31}$`. Prototype-pollution-safe parse rejects
+`**proto**`/`constructor`/`prototype`. Validator rejects: unknown ops, fields not
 on the allowlist, unknown move ids, illegal band-for-move, undeclared cells/lets,
 `let` referencing a later/forward definition (must be a DAG), and over-budget docs
 — each with a structured, fixable error.
 
 ## Worked fragment (illustrative)
 
-Reaction-block a *reactable* high attack by band, else whiff-punish a recovering
+Reaction-block a _reactable_ high attack by band, else whiff-punish a recovering
 move in range, else hit-confirm a punch→kick cancel:
 
 ```jsonc
@@ -138,40 +139,133 @@ move in range, else hit-confirm a punch→kick cancel:
   "name": "band-reader",
   "memory": { "lastHit": 0 },
   "let": [
-    { "name": "predDist", "expr": { "op": "abs", "arg": { "op": "sub", "args": [
-        { "op": "add", "args": [ { "op": "field", "path": "opponent.x" },
-          { "op": "mul", "args": [ { "op": "field", "path": "opponent.vx" },
-                                   { "op": "field", "path": "opponent.staleness" } ] } ] },
-        { "op": "field", "path": "self.x" } ] } } },
-    { "name": "reactable", "expr": { "op": "sub", "args": [
-        { "op": "rule", "move": "kick", "stat": "startup" },
-        { "op": "add", "args": [ { "op": "latency", "of": "action" }, { "op": "const", "value": 2 } ] } ] } }
+    {
+      "name": "predDist",
+      "expr": {
+        "op": "abs",
+        "arg": {
+          "op": "sub",
+          "args": [
+            {
+              "op": "add",
+              "args": [
+                { "op": "field", "path": "opponent.x" },
+                {
+                  "op": "mul",
+                  "args": [
+                    { "op": "field", "path": "opponent.vx" },
+                    { "op": "field", "path": "opponent.staleness" },
+                  ],
+                },
+              ],
+            },
+            { "op": "field", "path": "self.x" },
+          ],
+        },
+      },
+    },
+    {
+      "name": "reactable",
+      "expr": {
+        "op": "sub",
+        "args": [
+          { "op": "rule", "move": "kick", "stat": "startup" },
+          {
+            "op": "add",
+            "args": [
+              { "op": "latency", "of": "action" },
+              { "op": "const", "value": 2 },
+            ],
+          },
+        ],
+      },
+    },
   ],
   "rules": [
-    { "when": { "op": "lte", "args": [ { "op": "field", "path": "self.canAct" }, { "op": "const", "value": 0 } ] },
-      "do": { "type": "idle" } },
+    {
+      "when": {
+        "op": "lte",
+        "args": [
+          { "op": "field", "path": "self.canAct" },
+          { "op": "const", "value": 0 },
+        ],
+      },
+      "do": { "type": "idle" },
+    },
 
-    { "when": { "op": "and", "args": [
-        { "op": "band_is", "who": "opponent", "band": "high" },
-        { "op": "phase",   "who": "opponent", "is": "startup" },
-        { "op": "gte", "args": [ { "op": "let", "name": "reactable" }, { "op": "const", "value": 0 } ] } ] },
-      "do": { "type": "block", "band": "high" } },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          { "op": "band_is", "who": "opponent", "band": "high" },
+          { "op": "phase", "who": "opponent", "is": "startup" },
+          {
+            "op": "gte",
+            "args": [
+              { "op": "let", "name": "reactable" },
+              { "op": "const", "value": 0 },
+            ],
+          },
+        ],
+      },
+      "do": { "type": "block", "band": "high" },
+    },
 
-    { "when": { "op": "and", "args": [
-        { "op": "eq",  "args": [ { "op": "field", "path": "self.canCancel" }, { "op": "const", "value": 1 } ] },
-        { "op": "eq",  "args": [ { "op": "mem",   "cell": "lastHit" },        { "op": "const", "value": 1 } ] } ] },
-      "do": { "type": "attack", "move": "roundhouse", "band": "mid" } },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.canCancel" },
+              { "op": "const", "value": 1 },
+            ],
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "mem", "cell": "lastHit" },
+              { "op": "const", "value": 1 },
+            ],
+          },
+        ],
+      },
+      "do": { "type": "attack", "move": "roundhouse", "band": "mid" },
+    },
 
-    { "when": { "op": "and", "args": [
-        { "op": "phase", "who": "opponent", "is": "recovery" },
-        { "op": "gt", "args": [ { "op": "field", "path": "opponent.moveRecoveryRemaining" },
-            { "op": "add", "args": [ { "op": "latency", "of": "action" },
-                                     { "op": "rule", "move": "jab", "stat": "startup" } ] } ] },
-        { "op": "lte", "args": [ { "op": "let", "name": "predDist" }, { "op": "rule", "move": "jab", "stat": "reach" } ] } ] },
-      "set": [ { "cell": "lastHit", "to": { "op": "const", "value": 1 } } ],
-      "do": { "type": "attack", "move": "jab", "band": "mid" } }
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          { "op": "phase", "who": "opponent", "is": "recovery" },
+          {
+            "op": "gt",
+            "args": [
+              { "op": "field", "path": "opponent.moveRecoveryRemaining" },
+              {
+                "op": "add",
+                "args": [
+                  { "op": "latency", "of": "action" },
+                  { "op": "rule", "move": "jab", "stat": "startup" },
+                ],
+              },
+            ],
+          },
+          {
+            "op": "lte",
+            "args": [
+              { "op": "let", "name": "predDist" },
+              { "op": "rule", "move": "jab", "stat": "reach" },
+            ],
+          },
+        ],
+      },
+      "set": [{ "cell": "lastHit", "to": { "op": "const", "value": 1 } }],
+      "do": { "type": "attack", "move": "jab", "band": "mid" },
+    },
   ],
-  "default": { "type": "move", "dir": 1 }
+  "default": { "type": "move", "dir": 1 },
 }
 ```
 

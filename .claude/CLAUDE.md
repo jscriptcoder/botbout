@@ -85,6 +85,7 @@ npm install        # once
 npm test           # vitest (test-first; the suite grows with each TDD slice)
 npm run build      # tsc → dist/
 npm run typecheck  # tsc --noEmit
+npm run format     # prettier --write .  (format:check verifies without writing)
 ```
 
 **Design source of truth:** `docs/DESIGN.md` (combat + platform; control model,
