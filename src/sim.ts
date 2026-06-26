@@ -308,12 +308,14 @@ const occupies = (posture: Posture, band: Band): boolean =>
 
 // The effect of one strike att→def, computed PURELY from the frozen pre-apply
 // snapshot (§11 compute-then-apply). `null` ⇒ no effect this tick (not active, out of
-// reach, vacated band, already resolved, or a stale-guard BLOCK — block/whiff carry no
-// effect until cancels arrive in C6). A `hit` adds points to the attacker; a `parry`
-// deflects — extra recovery on the attacker AND a counter window on the defender.
+// reach, vacated band, already resolved, or a whiff). A `hit` adds points to the
+// attacker; a `parry` deflects — extra recovery on the attacker AND a counter window on
+// the defender; a `block` scores nothing but, like a hit, opens the attacker's on-contact
+// cancel window (C6 — block is a first-class connect alongside hit, §11.3).
 type StrikeOutcome =
   | { result: "hit"; points: number; cancel: number }
-  | { result: "parry"; extra: number; counter: number };
+  | { result: "parry"; extra: number; counter: number }
+  | { result: "block"; cancel: number };
 
 // Classify the strike att→def from the frozen snapshot. Gate order is §11.3: active →
 // reach → occupancy → guard, then within guard: parry (fresh) vs block (stale). The
@@ -339,16 +341,17 @@ const computeStrike = (
   if (!occupies(defPosture, st.band)) return null; // vacated band ⇒ whiff (over/under)
 
   if (guardBand === st.band) {
-    // Matching-height guard: a fresh guard (age within the window) parries; a stale
-    // guard only blocks (no effect). guardAge is ≥ 1 here (the defender guards
-    // st.band), so `guardAge <= window` already makes an absent/zero window inert.
+    // Matching-height guard: a fresh guard (age within the window) parries; a stale guard
+    // blocks. guardAge is ≥ 1 here (the defender guards st.band), so `guardAge <= window`
+    // already makes an absent/zero parry window inert. A block scores nothing but opens the
+    // cancel window (cancel 0 when unconfigured ⇒ a no-op ⇒ byte-identical to the C5 block).
     return guardAge <= (rules.parryWindow ?? 0)
       ? {
           result: "parry",
           extra: rules.parryRecovery ?? 0,
           counter: rules.counterWindow ?? 0,
         }
-      : null; // stale guard ⇒ BLOCK, no effect
+      : { result: "block", cancel: rules.cancelWindow ?? 0 };
   }
 
   // HIT — base score plus a counter bonus if this attacker's counter window is open. A hit
@@ -375,6 +378,15 @@ const applyStrike = (
     att.points += outcome.points;
     st.scored = true;
     att.cancelRemaining = outcome.cancel; // a connect opens the cancel window on the attacker
+
+    return;
+  }
+
+  if (outcome.result === "block") {
+    // A block scores nothing and is NOT marked resolved (the strike's later active frames
+    // still resolve normally — preserving the block-then-guard-drop behaviour); it only
+    // opens the cancel window. cancel 0 (unconfigured) ⇒ a no-op ⇒ byte-identical to C5.
+    att.cancelRemaining = outcome.cancel;
 
     return;
   }

@@ -1552,4 +1552,106 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
 
     expect(result.scores.a).toBe(1); // connected, window open, but no routes ⇒ no cancel
   });
+
+  // Holds a `band` guard continuously from tick 0 while tick < until (so by the opener's
+  // active frame it is STALE ⇒ a block, not a parry), then opens — so a cancelled follow-up
+  // can connect on the now-open opponent.
+  const guardThenOpen = (until: number, band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "lt",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: until },
+            ],
+          },
+          do: { type: "block", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  it("a BLOCKed strike opens the cancel window, but a PARRIED one does not", () => {
+    // Opener strikes mid (active ticks 4–5); a tick-6 follow-up attempts a cancel. The defender
+    // either holds a STALE mid guard (block) or a FRESH one (parry), then opens at tick 6 so a
+    // cancelled follow-up would connect at tick 10.
+    const scoreAfter = (defender: BotDoc): number =>
+      runFight(
+        getMockConfig({
+          rules: cancelRules({ parryWindow: 2, parryRecovery: 8 }),
+          botA: strikeAtTicks([0, 6], "mid"),
+          botB: defender,
+          maxTicks: 16,
+        }),
+      ).scores.a;
+
+    expect(scoreAfter(guardThenOpen(6, "mid"))).toBe(1); // stale guard ⇒ BLOCK ⇒ cancel ⇒ hit
+    expect(scoreAfter(guardWindow(4, 6, "mid"))).toBe(0); // fresh guard ⇒ PARRY ⇒ no cancel
+  });
+
+  it("with no cancelWindow a BLOCKed strike does not open the window (byte-identical to C5)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({
+          startGap: 200000,
+          parryWindow: 2,
+          parryRecovery: 8,
+        }), // block is configured, but no cancelWindow / cancelInto
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: guardThenOpen(6, "mid"),
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // blocked, but no cancel config ⇒ the follow-up is ignored
+  });
+
+  it("resolves the block-cancel identically from either slot (swap-symmetric)", () => {
+    const attacker = strikeAtTicks([0, 6], "mid");
+    const defender = guardThenOpen(6, "mid");
+
+    const asA = runFight(
+      getMockConfig({
+        rules: cancelRules({ parryWindow: 2, parryRecovery: 8 }),
+        botA: attacker,
+        botB: defender,
+        maxTicks: 16,
+      }),
+    ).scores.a;
+
+    const asB = runFight(
+      getMockConfig({
+        rules: cancelRules({ parryWindow: 2, parryRecovery: 8 }),
+        botA: defender,
+        botB: attacker,
+        maxTicks: 16,
+      }),
+    ).scores.b;
+
+    expect(asA).toBe(1);
+    expect(asB).toBe(1);
+  });
+
+  it("a blocked strike does not resolve: a guard dropped mid-active still lets a later frame hit", () => {
+    // The strike is active for ticks 4–5. A stale mid guard blocks frame 1 (tick 4); the guard
+    // drops on tick 5, so the open frame 2 connects. A block does NOT consume the strike (the
+    // inverse of the parry "resolves once" rule) — the C5 behaviour, preserved by opening the
+    // cancel window without marking the strike resolved.
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({
+          startGap: 200000,
+          parryWindow: 2,
+          parryRecovery: 8,
+        }), // no cancel config — the inertness regime
+        botA: strikeAtTicks([0], "mid"),
+        botB: guardThenOpen(5, "mid"),
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // frame-2 hit after the drop ⇒ the block did not resolve the strike
+  });
 });
