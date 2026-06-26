@@ -1,6 +1,6 @@
 # Plan: C4 — Vertical axis + occupancy
 
-**Branch**: per-slice (`feat/c4-crouch-occupancy`, `feat/c4-jump-arc`, `feat/c4-airborne-occupancy`, `feat/c4-perceive-posture`)
+**Branch**: per-slice (`feat/c4-crouch-occupancy`, `feat/c4-jump-arc`, `feat/c4-airborne-occupancy`, `feat/c4-perceive-height`, `feat/c4-perceive-posture`)
 **Status**: Active — awaiting approval
 
 ## Goal
@@ -71,10 +71,12 @@ so a bot can read it and counter.
       pulls it back, lands at `y=0`); the fighter is **committed while airborne** (mid-air
       actions are ignored, like an attacking fighter); `y` appears in the event log.
       _(Slice 2 — PR #18)_
-- [ ] An airborne fighter occupies `{high, mid}`; a `low` strike (sweep) in reach **whiffs**
-      a jumper, while `mid`/`high` strikes still score (anti-air).
-- [ ] With perception latency, a bot can **read** `opponent.posture` (`L_act`-delayed) and
-      `opponent.y`/`opponent.vy` (`L_pos`-delayed) and switch its strike's band accordingly.
+- [x] An airborne fighter occupies `{high, mid}`; a `low` strike (sweep) in reach **whiffs**
+      a jumper, while `mid`/`high` strikes still score (anti-air). _(Slice 3 — PR #19)_
+- [ ] With perception latency, a bot can **read** `opponent.y` (`L_pos`-delayed) and anti-air
+      a jumper by perceived height. _(Slice 4a)_
+- [ ] With perception latency, a bot can **read** `opponent.posture` (`L_act`-delayed enum) and
+      switch its strike's band — incl. avoiding `high` vs a perceived croucher. _(Slice 4b)_
 - [ ] With no `crouch`/`jump` anywhere, the fight is **byte-identical** to C3 (all fighters
       stand at `y=0`, occupy all 3 bands).
 - [ ] All replays stay byte-identical and every `y`/`vy` stays an integer.
@@ -158,7 +160,7 @@ applies no movement** (vertical-only); air actions.
   **REFACTOR**: assess a small `stepPhysics(fighter, rules)` helper; keep it integer & pure.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
-### Slice 3: Airborne vacates `low` — a sweep whiffs a jumper (the jump's combat payoff)
+### Slice 3: Airborne vacates `low` — a sweep whiffs a jumper (the jump's combat payoff) ✅ DONE (PR #19)
 
 **Value**: The jump becomes defensively meaningful: a `low` strike / sweep passes **under**
 a jumper; the second half of the C4 acceptance example, completing the occupancy gate for
@@ -184,32 +186,66 @@ airborne defender, while `mid`/`high` still score (anti-air). `lowClearance` add
   **REFACTOR**: fold the crouch (slice 1) and airborne occupancy into one clear table.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
-### Slice 4: Read the opponent's posture/height — the C4 read/counter game
+### Slice 4a: Perceive opponent height (`L_pos`) — anti-air by reading `opponent.y`
 
-**Value**: A counter-bot can **perceive** the opponent ducking or jumping (delayed) and pick
-the band that connects — the part that makes occupancy a _game_, not just a mechanic
-(mirrors C3 slice 2 exposing `opponent.attackBand`).
-**Path**: record `y`, `vy`, `posture` in each fighter's history `Frame`; serve `y`/`vy`
-from the **`L_pos`** layer and `posture` (enum) from the **`L_act`** layer in
-`perceiveOpponent`; expose `opponent.y`, `opponent.vy`, `opponent.posture`, plus live
-`self.y`, `self.vy`, `self.posture`, on the DSL read surface (`FIELD_READERS` + validator
-allowlist). Add `predictedY` only if a test needs it (else defer).
+**Value**: A counter-bot can **perceive** a jumper's height (delayed) and switch to a
+connecting band — the read/counter game keyed on height, the part that makes occupancy a
+_game_ (mirrors C3 slice 2 exposing `opponent.attackBand`, but on the positional layer).
+**Path**: record `y` in each fighter's history `Frame` (`frameOf` reads live `f.y`); serve it
+from the **`L_pos`** layer in `perceiveOpponent` (`opponent.y`); add `opponent.y` to
+`OpponentState`, `FieldPath`, `FIELD_READERS`. _Skipped here (deferred):_ `self.y` — a fighter
+can only act while grounded (`y=0`; air-actions deferred), so live `self.y` has no behavioral
+consumer yet and waits for the air-actions slice; `vy`/`predictedY` (added only when a test
+needs the height dead-reckoning); the `posture` enum + crouch perception (Slice 4b, `L_act`).
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`.
 **Acceptance criteria**:
 
-- A bot reading `opponent.posture == airborne` switches to a `mid`/`high` strike (and a bot
-  reading `crouching` avoids `high`) and scores where a fixed-band bot would whiff.
-- `opponent.y`/`opponent.vy` lag by `L_pos`; `opponent.posture` lags by `L_act` (assert the
-  coherent split — never a fresh/stale mix, per invariant #4).
-- `self.y`/`self.vy`/`self.posture` are live and readable.
-- At `L=0` perception, posture/`y` read live ⇒ byte-identical to the no-perception path.
-- Validator accepts the new field paths and still rejects unlisted ones.
-  **RED**: "a posture-reading bot anti-airs a jumper it perceives `L_act` ticks late". Likely
-  mutants: the posture-layer selection (`L_pos` vs `L_act` swap), the enum encoding, the
-  `self`-vs-`opponent` field wiring, and the live-`self` vs delayed-`opponent` split.
-  **GREEN**: extend `Frame`, `perceiveOpponent`, `OpponentState`/`SelfState`, `FieldPath`,
-  `FIELD_READERS`, and `frameOf` minimally.
-  **MUTATE / KILL MUTANTS**: pin the layer split and enum.
+- Validator accepts `opponent.y`; still rejects unlisted paths (e.g. `opponent.vy`, `self.y`).
+- `opponent.y` lags by **`L_pos`** (asserted like the existing `opponent.x` delay) — read from
+  the positional layer, never mixed with the action layer.
+- A bot that switches `low → mid` on perceived `opponent.y ≥ threshold` scores against a jumper
+  where a fixed-`low` bot whiffs (anti-air by perceived height); and it must perceive in time
+  (ties the read to `L_pos`).
+- At `L=0` ⇒ `opponent.y` reads live ⇒ byte-identical to the no-perception path; replays
+  byte-identical; every `y` integer.
+  **RED**: "a height-reading bot anti-airs a jumper it perceives `L_pos` ticks late". Likely
+  mutants: the layer selection (`L_pos` vs `L_act` for `y`), the `self`-vs-`opponent` wiring,
+  the live-`self` vs delayed-`opponent` split, and the `frameOf` `f.y` read.
+  **GREEN**: extend `Frame` (+`y`), `frameOf`, `perceiveOpponent`, `SelfState`/`OpponentState`,
+  `FieldPath`, `FIELD_READERS` minimally.
+  **MUTATE / KILL MUTANTS**: pin the `L_pos` layer wiring and the self/opponent split.
+  **REFACTOR**: assess only if it adds value.
+  **Done when**: all criteria met, mutation report reviewed, human approves commit.
+
+### Slice 4b: Perceive opponent posture (`L_act`) — the `{standing, crouching, airborne}` enum
+
+**Value**: A counter-bot can **recognize** the opponent's stance (delayed) — notably a croucher
+(invisible to the height read, since crouch is grounded) — and avoid a band that would whiff;
+the "recognize what slow" half on the action layer (mirrors `opponent.attackBand`).
+**Path**: persist the resolved `posture` on each `Fighter` (set from the `aPosture`/`bPosture`
+already computed in resolve), so `frameOf` can record it (crouch is a per-tick, pre-action
+posture — it must be carried, giving the same observe-after-commit `+1` as the `attacking`
+tell); encode it `{0 standing, 1 crouching, 2 airborne}` (a `POSTURE_CODE` beside `BAND_CODE`);
+serve it from the **`L_act`** layer in `perceiveOpponent` (`opponent.posture`); expose
+`self.posture` (live committed stance) in `viewFor`; add to `SelfState`/`OpponentState`,
+`FieldPath`, `FIELD_READERS`. Add `self.vy`/`opponent.vy` only if a test needs dead-reckoning.
+**Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`.
+**Acceptance criteria**:
+
+- A bot reading `opponent.posture == crouching` avoids `high` (which would whiff) and scores
+  where a fixed-`high` bot whiffs; a bot reading `airborne` confirms the enum classification.
+- `opponent.posture` lags by **`L_act`** (assert the coherent split — never mixed with the
+  `L_pos` positional layer, per invariant #4).
+- `self.posture` is readable and reflects the fighter's live committed stance.
+- At `L=0` ⇒ posture reads live (+ the structural observe-after-commit tick) ⇒ byte-identical
+  to the no-perception path.
+- Validator accepts `self.posture`/`opponent.posture` and still rejects unlisted ones.
+  **RED**: "a posture-reading bot avoids high vs a croucher it perceives `L_act` ticks late".
+  Likely mutants: the layer selection (`L_act` vs `L_pos`), the `POSTURE_CODE` enum encoding,
+  the persisted-posture wiring, and the `self`-vs-`opponent` split.
+  **GREEN**: add `Fighter.posture` + resolve write, `POSTURE_CODE`, extend `Frame`, `frameOf`,
+  `perceiveOpponent`, `SelfState`/`OpponentState`, `FieldPath`, `FIELD_READERS`.
+  **MUTATE / KILL MUTANTS**: pin the `L_act` layer and the enum.
   **REFACTOR**: assess whether posture encoding belongs beside `BAND_CODE`.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
@@ -228,6 +264,11 @@ allowlist). Add `predictedY` only if a test needs it (else defer).
   decision 5).
 - **Jump split:** **two PRs** — physics (slice 2) then vacate-`low` (slice 3) (decision 6).
 - **Horizontal jump `dir`:** **deferred** — slice 2 is vertical-only (decision 7).
+- **Slice 4 split (2026-06-26):** the read game splits along its own `L_pos`/`L_act` seam into
+  **4a** (`opponent.y` on `L_pos` — anti-air by height; clean) and **4b** (`posture` enum on
+  `L_act` — crouch perception, needs a persisted posture on `Fighter`). Crouch is a per-tick,
+  pre-action posture so it cannot be read from a pre-tick state frame; deferring it to 4b keeps
+  4a free of that wrinkle and each PR independently mergeable.
 
 ---
 

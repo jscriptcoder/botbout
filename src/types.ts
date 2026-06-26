@@ -32,6 +32,7 @@ export type SelfState = {
 
 export type OpponentState = {
   x: number;
+  y: number; // perceived height (sub-units) — positional ⇒ L_pos-delayed
   facing: Facing;
   distance: number; // raw (delayed) gap to live self
   attacking: boolean; // is the (perceived) opponent committed to a move?

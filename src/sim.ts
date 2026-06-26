@@ -92,6 +92,7 @@ const BAND_CODE: Record<Band, number> = { low: 1, mid: 2, high: 3 };
 // the first). `attackBand` rides the same action layer as `attacking`.
 type Frame = {
   x: number;
+  y: number;
   facing: Facing;
   attacking: boolean;
   attackBand: number;
@@ -100,6 +101,7 @@ type Frame = {
 
 const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   x: f.x,
+  y: f.y,
   facing: f.facing,
   attacking: f.state.kind === "attacking",
   attackBand: f.state.kind === "attacking" ? BAND_CODE[f.state.band] : 0,
@@ -140,6 +142,7 @@ const perceiveOpponent = (
 
   return {
     x: oppPos.x,
+    y: oppPos.y,
     facing: oppPos.facing,
     distance: Math.abs(oppPos.x - selfX),
     attacking: oppAct.attacking,

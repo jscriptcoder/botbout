@@ -526,3 +526,112 @@ describe("perception latency — perceived attack band (L_act, numerically encod
     expect(validate(BAND_MIRROR).ok).toBe(true);
   });
 });
+
+describe("perception latency — delayed opponent height (L_pos)", () => {
+  // A bot that jumps the instant it is free to act, else idles (committed mid-air).
+  const jumpWhenFree = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "jump", dir: 0 },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // jumpImpulse 12000 / gravity 4000 ⇒ the opponent's recorded height climbs
+  // 0, 12000, 20000, 24000, ... — perceived `L_pos` ticks late.
+  const arc = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({ jumpImpulse: 12000, gravity: 4000, ...o });
+
+  // A holds still and guards the instant it PERCEIVES the opponent's height reach
+  // 20000, so the first block tick is a clean read of *when A perceived* the climb.
+  const heightBlocker = bot(
+    [
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "field", path: "opponent.y" },
+            { op: "const", value: 20000 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  const heightDelay = (lPos: number): FightConfig =>
+    getMockConfig({
+      rules: arc({ perception: { lPos } }),
+      botA: heightBlocker,
+      botB: jumpWhenFree,
+      maxTicks: 12,
+    });
+
+  it("delays the perception of the opponent's height by exactly L_pos ticks", () => {
+    // Live (L_pos = 0): the perceived height first reaches 20000 at tick 2.
+    expect(firstBlockTick(runFight(heightDelay(0)).events)).toBe(2);
+    // Each extra tick of positional latency delays that read by exactly one tick.
+    expect(firstBlockTick(runFight(heightDelay(1)).events)).toBe(3);
+    expect(firstBlockTick(runFight(heightDelay(2)).events)).toBe(4);
+  });
+
+  it("rides the positional (L_pos) layer, not the action (L_act) layer", () => {
+    // Only the action layer delayed (L_pos = 0, L_act = 5): the height read stays
+    // live ⇒ tick 2, proving opponent.y follows the positional layer.
+    const config = getMockConfig({
+      rules: arc({ perception: { lPos: 0, lAct: 5 } }),
+      botA: heightBlocker,
+      botB: jumpWhenFree,
+      maxTicks: 12,
+    });
+
+    expect(firstBlockTick(runFight(config).events)).toBe(2);
+  });
+
+  // A reads the jumper's perceived height and commits a strike at the band that
+  // connects. lowClearance 1000 ⇒ any airborne height vacates `low`.
+  const antiAir = (band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "opponent.y" },
+              { op: "const", value: 12000 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  const antiAirScore = (band: Band): number =>
+    runFight(
+      getMockConfig({
+        rules: arc({ lowClearance: 1000, startGap: 200000 }),
+        botA: antiAir(band),
+        botB: jumpWhenFree,
+        maxTicks: 10,
+      }),
+    ).scores.a;
+
+  it("lets a height-reading bot anti-air a jumper — mid connects where a fixed sweep whiffs", () => {
+    expect(antiAirScore("mid")).toBe(1); // reads the climb, strikes mid ⇒ connects
+    expect(antiAirScore("low")).toBe(0); // same read, low ⇒ the sweep passes under
+  });
+
+  it("accepts a bot that reads opponent.y (additive to the allowlist)", () => {
+    expect(validate(heightBlocker).ok).toBe(true);
+  });
+});
