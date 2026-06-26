@@ -21,8 +21,11 @@
 // vacates the `high` band, and an airborne fighter (jump arc, committed: canAct=0
 // until it lands at y=0) vacates `low` once past `lowClearance` — so a high strike
 // whiffs a croucher and a sweep whiffs a jumper (the §11.3 step-3 occupancy gate,
-// no longer hardwired open). The arc is fixed-point (y += vy; vy -= gravity). Still
-// pending: parry.
+// no longer hardwired open). The arc is fixed-point (y += vy; vy -= gravity). PARRY:
+// the opening `parryWindow` ticks of a matching-band guard DEFLECT an absorbed strike
+// (no score) and throw the attacker into `parryRecovery` extra recovery, where a guard
+// held past the window only blocks. Still pending: the parry counter window + its
+// perception.
 // ============================================================================
 import type {
   State,
@@ -69,7 +72,8 @@ type MoveState =
       move: MoveId;
       band: Band;
       elapsed: number;
-      scored: boolean;
+      scored: boolean; // terminal flag: the strike has resolved (scored OR was deflected)
+      extra: number; // extra recovery ticks added when this strike is parried (§5 deflect)
     }
   | { kind: "airborne"; vy: number };
 
@@ -81,6 +85,8 @@ type Fighter = {
   points: number;
   state: MoveState;
   posture: Posture; // last resolved stance, recorded into history for perception
+  guardBand: Band | null; // band guarded last tick (null = open), for parry-window age
+  guardAge: number; // consecutive ticks the current guard has been held (0 = open)
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
@@ -177,6 +183,9 @@ const viewFor = (
 ): State => {
   const st = self.state;
 
+  // Ticks until the committed move completes. NB: this does not yet fold in a strike's
+  // parry `extra` recovery — phaseRemaining's parry-awareness is deferred to its first
+  // consumer; commitment itself is authoritatively signalled by `canAct`.
   const phaseRemaining =
     st.kind === "attacking"
       ? totalFrames(rules.moves[st.move]) - st.elapsed
@@ -208,6 +217,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
       band: action.band,
       elapsed: 0,
       scored: false,
+      extra: 0,
     };
   } else if (action.type === "move") {
     f.x = clamp(
@@ -231,6 +241,14 @@ const guardBandOf = (fighter: Fighter, action: Action): Band | null =>
   fighter.state.kind === "neutral" && action.type === "block"
     ? action.band
     : null;
+
+// How many consecutive ticks (including this one) the fighter has held its current
+// guard: a fresh raise — or a switch to a different band — is age 1; holding the same
+// band ages it up; not guarding is 0. Read from the fighter's persisted guard from
+// last tick, so it must be computed before the new guard is recorded. Drives the
+// parry window: a guard is "fresh" (parries) while its age is within `parryWindow`.
+const guardAgeOf = (fighter: Fighter, band: Band | null): number =>
+  band === null ? 0 : band === fighter.guardBand ? fighter.guardAge + 1 : 1;
 
 // A fighter's vertical posture this tick. `crouch` is a free per-tick posture
 // (like `block`): a fighter crouches only when free to act and choosing it.
@@ -265,12 +283,18 @@ const occupies = (posture: Posture, band: Band): boolean =>
 // During its active window, a strike in reach scores once (per activation) —
 // unless the defender's hurtbox does NOT occupy the attacked band (it whiffs on
 // posture, e.g. a high strike over a croucher) or the defender guards the SAME
-// height band (blocked). Gate order is §11.3: active → reach → occupancy → guard.
+// height band. A matching guard within its opening `parryWindow` ticks DEFLECTS
+// (no score; the attacker is thrown into `parryRecovery` extra recovery); past the
+// window it merely BLOCKS (no score). Gate order is §11.3: active → reach →
+// occupancy → guard, then within guard: parry (fresh) vs block (stale). The
+// deflect's extra recovery lands on the ATTACKER — the fighter this call already
+// owns — so it stays self-targeted (no cross-fighter effect until the C5 counter).
 const resolveHit = (
   att: Fighter,
   def: Fighter,
   rules: Rules,
   guardBand: Band | null,
+  guardAge: number,
   defPosture: Posture,
 ): void => {
   const st = att.state;
@@ -283,7 +307,23 @@ const resolveHit = (
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
   if (!occupies(defPosture, st.band)) return; // vacated band ⇒ whiff (over/under)
-  if (guardBand === st.band) return; // matching-height guard ⇒ blocked, no score
+
+  if (guardBand === st.band) {
+    // Matching-height guard: a fresh guard (age within the window) parries —
+    // deflecting the strike and adding extra recovery to the attacker; a stale
+    // guard only blocks. Either way the strike resolves with no score. guardAge is
+    // ≥ 1 here (the defender guards st.band), so `guardAge <= window` already makes
+    // an absent/zero window inert — no separate `window > 0` guard is needed.
+    const window = rules.parryWindow ?? 0;
+
+    if (guardAge <= window) {
+      st.extra = rules.parryRecovery ?? 0;
+      st.scored = true; // resolved (deflected) — do not re-process while still active
+    }
+
+    return;
+  }
+
   att.points += spec.score;
   st.scored = true;
 };
@@ -296,7 +336,7 @@ const advance = (f: Fighter, rules: Rules): void => {
 
   if (st.kind === "attacking") {
     const next = st.elapsed + 1;
-    if (next >= totalFrames(rules.moves[st.move]))
+    if (next >= totalFrames(rules.moves[st.move]) + st.extra)
       f.state = { kind: "neutral" };
     else st.elapsed = next;
 
@@ -326,6 +366,8 @@ export function runFight(cfg: FightConfig): FightResult {
     points: 0,
     state: { kind: "neutral" },
     posture: "standing",
+    guardBand: null,
+    guardAge: 0,
   };
 
   const b: Fighter = {
@@ -336,6 +378,8 @@ export function runFight(cfg: FightConfig): FightResult {
     points: 0,
     state: { kind: "neutral" },
     posture: "standing",
+    guardBand: null,
+    guardAge: 0,
   };
 
   const events: FightEvent[] = [];
@@ -405,16 +449,24 @@ export function runFight(cfg: FightConfig): FightResult {
     //    touches only its own fighter, so it is order-independent.
     const aGuardBand = guardBandOf(a, aAction);
     const bGuardBand = guardBandOf(b, bAction);
+    // Guard age reads each fighter's guard from LAST tick, so compute it before
+    // recording this tick's guard.
+    const aGuardAge = guardAgeOf(a, aGuardBand);
+    const bGuardAge = guardAgeOf(b, bGuardBand);
     const aPosture = postureOf(a, aAction, rules);
     const bPosture = postureOf(b, bAction, rules);
-    // Record the resolved stance so next tick's frameOf can serve it delayed —
-    // crouch is a per-tick, pre-action posture, so it must be carried here.
+    // Record the resolved stance + guard so next tick can serve them — crouch and
+    // guard are per-tick, pre-action, so they must be carried here.
     a.posture = aPosture;
     b.posture = bPosture;
+    a.guardBand = aGuardBand;
+    a.guardAge = aGuardAge;
+    b.guardBand = bGuardBand;
+    b.guardAge = bGuardAge;
     intake(a, aAction, rules);
     intake(b, bAction, rules);
-    resolveHit(a, b, rules, bGuardBand, bPosture);
-    resolveHit(b, a, rules, aGuardBand, aPosture);
+    resolveHit(a, b, rules, bGuardBand, bGuardAge, bPosture);
+    resolveHit(b, a, rules, aGuardBand, aGuardAge, aPosture);
     advance(a, rules);
     advance(b, rules);
 

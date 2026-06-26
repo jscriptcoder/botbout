@@ -898,3 +898,224 @@ describe("runFight — airborne occupancy (a jumper vacates the low band)", () =
     expect(jumperAsA.scores.b).toBe(0); // striker (B) whiffs the airborne defender (A)
   });
 });
+
+describe("runFight — parry windows (a freshly-raised matching guard deflects the attacker)", () => {
+  // A defender that raises a `band` guard from tick `from` onward (open/idle before).
+  // The guard's *age* at any tick is how many consecutive ticks it has been held, so
+  // starting later means a fresher guard when the strike's active frame arrives.
+  const guardFrom = (from: number, band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: from },
+            ],
+          },
+          do: { type: "block", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // A bot that strikes `band` whenever free to act — so it re-strikes the instant its
+  // move (and any parry-extended recovery) ends; idles while committed.
+  const restrikeWhenFree = (band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // The ticks on which `side` started a fresh move — for restrikeWhenFree these are
+  // exactly its neutral ticks, so the gap between them is its recovery length.
+  const attackTicks = (
+    events: { a: { action: Action }; b: { action: Action } }[],
+    side: "a" | "b",
+  ): number[] =>
+    events.flatMap((e, t) => (e[side].action.type === "attack" ? [t] : []));
+
+  // Default strike: startup 4, active 2 ⇒ its first active frame lands at tick 4; total
+  // 12 ticks. parryWindow 2 (guard-age 1–2 parries); parryRecovery 8 ⇒ a parried move
+  // runs 20 ticks, so the attacker's next strike starts 8 ticks later than after a block.
+  const parryRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({ startGap: 200000, parryWindow: 2, parryRecovery: 8, ...o });
+
+  it("a fresh matching guard parries: the attacker is thrown into extra recovery", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: parryRules(),
+        botA: restrikeWhenFree("mid"), // strike active at tick 4
+        botB: guardFrom(4, "mid"), // guard raised at tick 4 ⇒ age 1 (within window) ⇒ PARRY
+        maxTicks: 24,
+      }),
+    );
+
+    // Parry ⇒ no score AND +8 recovery ⇒ the move runs 20 ticks ⇒ next strike at tick 20.
+    expect(attackTicks(result.events, "a")).toEqual([0, 20]);
+    expect(result.scores.a).toBe(0); // deflected, never scored
+  });
+
+  it("the same guard held past the window only blocks: the attacker recovers normally", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: parryRules(),
+        botA: restrikeWhenFree("mid"),
+        botB: guardFrom(0, "mid"), // held since tick 0 ⇒ age 5 at tick 4 (past window) ⇒ BLOCK
+        maxTicks: 24,
+      }),
+    );
+
+    // Block ⇒ no extra recovery ⇒ normal 12-tick move ⇒ next strike at tick 12.
+    expect(attackTicks(result.events, "a")).toEqual([0, 12]);
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("the parry window boundary is guard-age ≤ parryWindow", () => {
+    // The strike is active at tick 4, so a guard raised at tick `from` has age 5 − from.
+    const secondStrikeTick = (from: number): number =>
+      attackTicks(
+        runFight(
+          getMockConfig({
+            rules: parryRules(), // parryWindow 2
+            botA: restrikeWhenFree("mid"),
+            botB: guardFrom(from, "mid"),
+            maxTicks: 24,
+          }),
+        ).events,
+        "a",
+      )[1];
+
+    expect(secondStrikeTick(3)).toBe(20); // age 2 == parryWindow ⇒ PARRY (extra recovery)
+    expect(secondStrikeTick(2)).toBe(12); // age 3 == parryWindow + 1 ⇒ BLOCK (normal recovery)
+  });
+
+  it("resolves the parry identically from either slot (swap-symmetric)", () => {
+    const attacker = restrikeWhenFree("mid");
+    const defender = guardFrom(4, "mid");
+
+    const asA = runFight(
+      getMockConfig({
+        rules: parryRules(),
+        botA: attacker,
+        botB: defender,
+        maxTicks: 24,
+      }),
+    ).events;
+
+    const asB = runFight(
+      getMockConfig({
+        rules: parryRules(),
+        botA: defender,
+        botB: attacker,
+        maxTicks: 24,
+      }),
+    ).events;
+
+    // The attacker's parry-extended recovery is slot-independent: its 2nd strike lands
+    // at tick 20 whether it is fighter A or fighter B.
+    expect(attackTicks(asA, "a")).toEqual([0, 20]);
+    expect(attackTicks(asB, "b")).toEqual([0, 20]);
+  });
+
+  it("with no parry config a matching guard only blocks (byte-identical to the pre-parry engine)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }), // no parryWindow / parryRecovery
+        botA: restrikeWhenFree("mid"),
+        botB: guardFrom(4, "mid"), // a fresh matching guard, but parry is unconfigured
+        maxTicks: 24,
+      }),
+    );
+
+    // Inert ⇒ the fresh matching guard just blocks ⇒ normal recovery ⇒ next strike at tick 12.
+    expect(attackTicks(result.events, "a")).toEqual([0, 12]);
+  });
+
+  it("a parried strike resolves once: it does not re-connect later in its active window if the guard drops", () => {
+    // The strike is active for two ticks (4 and 5). The defender raises a fresh mid
+    // guard only on tick 4 (parry), then opens on tick 5. The deflect must consume the
+    // strike, so the open tick-5 frame does NOT land a hit.
+    const guardOnlyAtTick4 = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 4 },
+            ],
+          },
+          do: { type: "block", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: parryRules(), // default strike is active 2 ticks (4 & 5)
+        botA: restrikeWhenFree("mid"),
+        botB: guardOnlyAtTick4,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // deflected on tick 4 ⇒ no late hit on tick 5
+  });
+
+  it("a guard freshly switched to the attack's band parries (the window measures continuous same-band hold)", () => {
+    // The defender holds a low guard (wrong band) through tick 3, then switches to mid
+    // exactly as the strike turns active at tick 4. Switching bands resets the guard's
+    // age to 1, so the mid guard is fresh ⇒ PARRY (not a stale block).
+    const switchToMidAtTick4 = bot(
+      [
+        {
+          when: {
+            op: "lt",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 4 },
+            ],
+          },
+          do: { type: "block", band: "low" },
+        },
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 4 },
+            ],
+          },
+          do: { type: "block", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: parryRules(),
+        botA: restrikeWhenFree("mid"),
+        botB: switchToMidAtTick4,
+        maxTicks: 24,
+      }),
+    );
+
+    // Fresh switched-to guard ⇒ parry ⇒ +8 recovery ⇒ next strike at tick 20 (not 12).
+    expect(attackTicks(result.events, "a")).toEqual([0, 20]);
+  });
+});

@@ -81,6 +81,13 @@ export type Rules = {
   // band — a sweep passes under it. Absent ⇒ `low` is never vacated ⇒ an airborne
   // fighter stays hittable everywhere (byte-identical to the pre-vacate engine).
   lowClearance?: number;
+  // Parry window (C5). The first `parryWindow` ticks of a CONTINUOUS matching-band
+  // guard (guard-age 1..parryWindow) DEFLECT an absorbed active strike instead of
+  // merely blocking it: the attacker is thrown into `parryRecovery` extra recovery
+  // ticks (frame disadvantage). Both absent ⇒ a matching guard always blocks ⇒
+  // byte-identical to the pre-parry (C4) engine.
+  parryWindow?: number;
+  parryRecovery?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
