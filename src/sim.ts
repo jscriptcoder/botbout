@@ -211,6 +211,18 @@ const viewFor = (
   };
 };
 
+// A fresh attacking move: startup begins now (elapsed 0), nothing resolved yet, no
+// parry-extended recovery. The single source for "start an attack" — used both when a
+// neutral fighter strikes and when an on-contact cancel interrupts into a follow-up.
+const startAttack = (move: MoveId, band: Band): MoveState => ({
+  kind: "attacking",
+  move,
+  band,
+  elapsed: 0,
+  scored: false,
+  extra: 0,
+});
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
@@ -224,14 +236,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
       action.type === "attack" &&
       (rules.moves[f.state.move].cancelInto ?? []).includes(action.move)
     ) {
-      f.state = {
-        kind: "attacking",
-        move: action.move,
-        band: action.band,
-        elapsed: 0,
-        scored: false,
-        extra: 0,
-      };
+      f.state = startAttack(action.move, action.band);
       f.cancelRemaining = 0; // the fresh move re-opens the window only when IT connects
     }
 
@@ -239,14 +244,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
   }
 
   if (action.type === "attack") {
-    f.state = {
-      kind: "attacking",
-      move: action.move,
-      band: action.band,
-      elapsed: 0,
-      scored: false,
-      extra: 0,
-    };
+    f.state = startAttack(action.move, action.band);
   } else if (action.type === "move") {
     f.x = clamp(
       f.x + action.dir * f.facing * rules.walkSpeed,
