@@ -10,11 +10,13 @@
 //
 // Scope so far: movement + one strike with WKF point scoring, on-contact
 // COMMITMENT (a started move runs startup→active→recovery; actions issued while
-// committed are ignored), guard/block, and PERCEPTION LATENCY — the opponent is a
-// coherent delayed snapshot (positional fields by lPos, action fields by lAct)
-// with dead-reckoned predictedDistance and seeded, clamped per-tick jitter on the
-// latencies (the sim's first PRNG consumer). Still pending: parry, height bands,
-// and the vertical axis.
+// committed are ignored), HEIGHT-BANDED guard/block (a strike is blocked only by a
+// guard at its own band; a wrong-height guard — or none — is hit), and PERCEPTION
+// LATENCY — the opponent is a coherent delayed snapshot (positional fields by lPos,
+// action fields by lAct) with dead-reckoned predictedDistance and seeded, clamped
+// per-tick jitter on the latencies (the sim's first PRNG consumer). Still pending:
+// the perceived attack band (so bots can read the incoming height), parry, and the
+// vertical axis (occupancy is hardwired open until then).
 // ============================================================================
 import type {
   State,
@@ -24,6 +26,7 @@ import type {
   MoveId,
   MoveSpec,
   OpponentState,
+  Band,
 } from "./types.js";
 import { runTick, type BotDoc } from "./dsl.js";
 import { mulberry32 } from "./prng.js";
@@ -49,7 +52,13 @@ export type FightResult = {
 // A fighter is either free to act (neutral) or locked into a committed move.
 type MoveState =
   | { kind: "neutral" }
-  | { kind: "attacking"; move: MoveId; elapsed: number; scored: boolean };
+  | {
+      kind: "attacking";
+      move: MoveId;
+      band: Band;
+      elapsed: number;
+      scored: boolean;
+    };
 
 type Fighter = {
   x: number;
@@ -153,6 +162,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     f.state = {
       kind: "attacking",
       move: action.move,
+      band: action.band,
       elapsed: 0,
       scored: false,
     };
@@ -166,13 +176,22 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
   // idle / block: no positional effect in this slice.
 };
 
+// The height band a fighter guards this tick, or null if it is open. A fighter
+// guards only when free to act (neutral) and choosing `block`; a committed
+// fighter cannot guard. (The free-to-act predicate widens with later states.)
+const guardBandOf = (fighter: Fighter, action: Action): Band | null =>
+  fighter.state.kind === "neutral" && action.type === "block"
+    ? action.band
+    : null;
+
 // During its active window, a strike in reach scores once (per activation) —
-// unless the defender is guarding this tick, in which case it is blocked.
+// unless the defender guards the SAME height band this tick, in which case it is
+// blocked. A guard at the wrong height (or none) does not save the defender.
 const resolveHit = (
   att: Fighter,
   def: Fighter,
   rules: Rules,
-  defGuarding: boolean,
+  guardBand: Band | null,
 ): void => {
   const st = att.state;
   if (st.kind !== "attacking" || st.scored) return;
@@ -183,7 +202,7 @@ const resolveHit = (
 
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
-  if (defGuarding) return; // blocked — no score
+  if (guardBand === st.band) return; // matching-height guard ⇒ blocked, no score
   att.points += spec.score;
   st.scored = true;
 };
@@ -276,16 +295,17 @@ export function runFight(cfg: FightConfig): FightResult {
       b.mem,
     );
 
-    // 3. Resolve together: honour/ignore intake, then hits, then advance clocks.
-    //    A fighter guards this tick only if it was free to act and chose `block`
-    //    (a committed fighter cannot guard). Simultaneous strikes both score —
-    //    each resolveHit touches only its own fighter, so it is order-independent.
-    const aGuarding = a.state.kind === "neutral" && aAction.type === "block";
-    const bGuarding = b.state.kind === "neutral" && bAction.type === "block";
+    // 3. Resolve together: read each fighter's guard band from its pre-intake
+    //    state, then honour/ignore intake, then hits, then advance clocks. A
+    //    strike is blocked only by a guard at its own band. Simultaneous strikes
+    //    both score — each resolveHit touches only its own fighter, so it is
+    //    order-independent.
+    const aGuardBand = guardBandOf(a, aAction);
+    const bGuardBand = guardBandOf(b, bAction);
     intake(a, aAction, rules);
     intake(b, bAction, rules);
-    resolveHit(a, b, rules, bGuarding);
-    resolveHit(b, a, rules, aGuarding);
+    resolveHit(a, b, rules, bGuardBand);
+    resolveHit(b, a, rules, aGuardBand);
     advance(a, rules);
     advance(b, rules);
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig } from "./sim.js";
 import type { BotDoc } from "./dsl.js";
-import type { Rules, Action } from "./types.js";
+import type { Rules, Action, Band } from "./types.js";
 
 // ─── factories ───────────────────────────────────────────────────────────────
 const bot = (rules: BotDoc["rules"], dflt: Action): BotDoc => ({
@@ -504,5 +504,117 @@ describe("runFight — block and simultaneity", () => {
     expect(swapped.scores.a).toBe(original.scores.b);
     expect(swapped.scores.b).toBe(original.scores.a);
     expect(swapped.winner).toBe("B"); // mirror of original "A"
+  });
+});
+
+describe("runFight — height bands (the guard must match the strike's height)", () => {
+  const strikingAt = (band: Band): BotDoc =>
+    bot([], { type: "attack", move: "strike", band });
+
+  const guardingAt = (band: Band): BotDoc => bot([], { type: "block", band });
+
+  // A's points after A strikes `attackBand` into B guarding `guardBand`, in reach.
+  const scoreOf = (attackBand: Band, guardBand: Band): number =>
+    runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }), // within reach (250000)
+        botA: strikingAt(attackBand),
+        botB: guardingAt(guardBand),
+        maxTicks: 12,
+      }),
+    ).scores.a;
+
+  it("a high strike beats a mid guard but is stopped by a high guard", () => {
+    expect(scoreOf("high", "mid")).toBe(1); // wrong-height guard ⇒ hit
+    expect(scoreOf("high", "high")).toBe(0); // matching guard ⇒ blocked
+  });
+
+  it("a mid strike beats a high guard but is stopped by a mid guard", () => {
+    expect(scoreOf("mid", "high")).toBe(1);
+    expect(scoreOf("mid", "mid")).toBe(0);
+  });
+
+  it("a low strike beats a mid guard but is stopped by a low guard", () => {
+    expect(scoreOf("low", "mid")).toBe(1);
+    expect(scoreOf("low", "low")).toBe(0);
+  });
+
+  it("hits an open (non-guarding) defender regardless of the strike's band", () => {
+    const open = (band: Band): number =>
+      runFight(
+        getMockConfig({
+          rules: getMockRules({ startGap: 200000 }),
+          botA: strikingAt(band),
+          botB: IDLE,
+          maxTicks: 12,
+        }),
+      ).scores.a;
+
+    expect(open("high")).toBe(1);
+    expect(open("mid")).toBe(1);
+    expect(open("low")).toBe(1);
+  });
+
+  it("two simultaneous strikes at different heights both score (both open)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: strikingAt("high"),
+        botB: strikingAt("low"),
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+  });
+
+  // A guard comes only from a `block` action. A fighter that, on its free tick,
+  // *attacks* at the same band as an incoming active strike does NOT block it —
+  // attacking is open (it cannot guard). Asserted from both sides so neither
+  // fighter's guard-band derivation may treat an attack as a guard.
+  const strikeHighAtTick4 = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: 4 },
+          ],
+        },
+        do: { type: "attack", move: "strike", band: "high" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  it("a defender that attacks (not blocks) at the strike's band is still hit — A side", () => {
+    // B strikes high (active ticks 4–5); A is neutral at tick 4 and attacks high.
+    // A's attack must NOT act as a high guard, so B's hit lands on tick 4. (If the
+    // attack wrongly guarded, B would be blocked at tick 4 and only land on tick 5
+    // once A is committed — so we assert the score at tick 4, not the total.)
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: strikeHighAtTick4,
+        botB: strikingAt("high"),
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.events[4].b.points).toBe(1);
+  });
+
+  it("a defender that attacks (not blocks) at the strike's band is still hit — B side", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: strikingAt("high"),
+        botB: strikeHighAtTick4,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.events[4].a.points).toBe(1);
   });
 });
