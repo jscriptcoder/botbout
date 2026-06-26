@@ -271,6 +271,8 @@ export function validate(doc: unknown): ValidationResult {
         if (typeof e.band !== "string" || !BANDS.has(e.band))
           fail(path, `unknown band: ${String(e.band)}`);
         break;
+      case "crouch":
+        break;
       case "attack":
         if (typeof e.move !== "string" || !MOVES.has(e.move))
           fail(path, `unknown move: ${String(e.move)}`);

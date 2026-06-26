@@ -16,8 +16,10 @@
 // action fields — attacking + attackBand — by lAct) with dead-reckoned
 // predictedDistance and seeded, clamped per-tick jitter on the latencies (the sim's
 // first PRNG consumer). A bot can now read the incoming attack's height (attackBand)
-// on the same delayed layer as the attacking tell. Still pending: parry, and the
-// vertical axis (occupancy is hardwired open until then).
+// on the same delayed layer as the attacking tell. VERTICAL OCCUPANCY has begun: a
+// `crouch` posture vacates the `high` band, so a high strike whiffs a croucher (the
+// §11.3 step-3 occupancy gate, no longer hardwired open). Still pending: the rest of
+// the vertical axis (y / gravity / jump ⇒ airborne vacates `low`) and parry.
 // ============================================================================
 import type {
   State,
@@ -198,14 +200,32 @@ const guardBandOf = (fighter: Fighter, action: Action): Band | null =>
     ? action.band
     : null;
 
+// A fighter's vertical posture this tick. `crouch` is a free per-tick posture
+// (like `block`): a fighter crouches only when free to act and choosing it; a
+// committed fighter stands. (The set of postures widens with the airborne state.)
+type Posture = "standing" | "crouching";
+
+const postureOf = (fighter: Fighter, action: Action): Posture =>
+  fighter.state.kind === "neutral" && action.type === "crouch"
+    ? "crouching"
+    : "standing";
+
+// Which bands a posture's hurtbox occupies (§2 / §11.3 step 3). A croucher
+// vacates `high`, so a high strike sails over it; everyone else occupies all
+// three. A strike connects only if the defender occupies the attacked band.
+const occupies = (posture: Posture, band: Band): boolean =>
+  posture === "crouching" ? band !== "high" : true;
+
 // During its active window, a strike in reach scores once (per activation) —
-// unless the defender guards the SAME height band this tick, in which case it is
-// blocked. A guard at the wrong height (or none) does not save the defender.
+// unless the defender's hurtbox does NOT occupy the attacked band (it whiffs on
+// posture, e.g. a high strike over a croucher) or the defender guards the SAME
+// height band (blocked). Gate order is §11.3: active → reach → occupancy → guard.
 const resolveHit = (
   att: Fighter,
   def: Fighter,
   rules: Rules,
   guardBand: Band | null,
+  defPosture: Posture,
 ): void => {
   const st = att.state;
   if (st.kind !== "attacking" || st.scored) return;
@@ -216,6 +236,7 @@ const resolveHit = (
 
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
+  if (!occupies(defPosture, st.band)) return; // vacated band ⇒ whiff (over/under)
   if (guardBand === st.band) return; // matching-height guard ⇒ blocked, no score
   att.points += spec.score;
   st.scored = true;
@@ -309,17 +330,19 @@ export function runFight(cfg: FightConfig): FightResult {
       b.mem,
     );
 
-    // 3. Resolve together: read each fighter's guard band from its pre-intake
-    //    state, then honour/ignore intake, then hits, then advance clocks. A
-    //    strike is blocked only by a guard at its own band. Simultaneous strikes
-    //    both score — each resolveHit touches only its own fighter, so it is
-    //    order-independent.
+    // 3. Resolve together: read each fighter's guard band and posture from its
+    //    pre-intake state, then honour/ignore intake, then hits, then advance
+    //    clocks. A strike whiffs on a vacated band and is blocked only by a guard
+    //    at its own band. Simultaneous strikes both score — each resolveHit
+    //    touches only its own fighter, so it is order-independent.
     const aGuardBand = guardBandOf(a, aAction);
     const bGuardBand = guardBandOf(b, bAction);
+    const aPosture = postureOf(a, aAction);
+    const bPosture = postureOf(b, bAction);
     intake(a, aAction, rules);
     intake(b, bAction, rules);
-    resolveHit(a, b, rules, bGuardBand);
-    resolveHit(b, a, rules, aGuardBand);
+    resolveHit(a, b, rules, bGuardBand, bPosture);
+    resolveHit(b, a, rules, aGuardBand, aPosture);
     advance(a, rules);
     advance(b, rules);
 

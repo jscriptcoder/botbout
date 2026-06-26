@@ -234,6 +234,11 @@ describe("validate — bot intake gate", () => {
       expect(validate(doc).ok).toBe(false);
     });
 
+    it("accepts the crouch action", () => {
+      const doc = { ...getMockBotDoc(), default: { type: "crouch" } };
+      expect(validate(doc).ok).toBe(true);
+    });
+
     it("accepts every skeleton action form", () => {
       const result = validate(
         getMockBotDoc({

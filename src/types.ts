@@ -17,6 +17,7 @@ export type Action =
   | { type: "idle" }
   | { type: "move"; dir: -1 | 0 | 1 }
   | { type: "block"; band: Band }
+  | { type: "crouch" } // grounded posture: vacates the `high` band (a high strike whiffs)
   | { type: "attack"; move: MoveId; band: Band };
 
 // ─── State: self is live (skeleton has no perception latency yet) ────────────

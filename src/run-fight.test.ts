@@ -618,3 +618,95 @@ describe("runFight — height bands (the guard must match the strike's height)",
     expect(result.events[4].a.points).toBe(1);
   });
 });
+
+describe("runFight — vertical occupancy (a croucher vacates the high band)", () => {
+  const strikingAt = (band: Band): BotDoc =>
+    bot([], { type: "attack", move: "strike", band });
+
+  const CROUCHER = bot([], { type: "crouch" }); // a grounded posture, held every tick
+
+  const rules = getMockRules({ startGap: 200000 }); // within reach (250000)
+
+  // A's points after A strikes `band` into the given defender, in reach.
+  const scoreVs = (band: Band, defender: BotDoc): number =>
+    runFight(
+      getMockConfig({
+        rules,
+        botA: strikingAt(band),
+        botB: defender,
+        maxTicks: 12,
+      }),
+    ).scores.a;
+
+  it("a high strike whiffs a croucher but lands on a stander", () => {
+    expect(scoreVs("high", CROUCHER)).toBe(0); // crouch vacates high ⇒ the strike sails over
+    expect(scoreVs("high", IDLE)).toBe(1); // a stander occupies high ⇒ hit
+  });
+
+  it("a croucher still occupies mid and low (only high is vacated)", () => {
+    expect(scoreVs("mid", CROUCHER)).toBe(1);
+    expect(scoreVs("low", CROUCHER)).toBe(1);
+  });
+
+  it("crouch is a posture, not a guard: a mid strike hits a croucher where a mid block negates it", () => {
+    const midBlocker = bot([], { type: "block", band: "mid" });
+    expect(scoreVs("mid", CROUCHER)).toBe(1); // croucher is open at mid
+    expect(scoreVs("mid", midBlocker)).toBe(0); // a guard at mid negates the strike
+  });
+
+  it("a committed fighter cannot crouch: its crouch does not vacate high (the strike lands)", () => {
+    // Crouch is a free-to-act posture (mirrors C3's "a committed fighter cannot
+    // also block"). B commits to a move on its neutral tick, then returns `crouch`
+    // while committed — but a committed fighter stands, so A's high strike (active
+    // while B is mid-move) is NOT ducked.
+    const attackThenCrouch = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band: "high" },
+        },
+      ],
+      { type: "crouch" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: strikingAt("high"),
+        botB: attackThenCrouch,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1);
+  });
+
+  it("resolves crouch occupancy identically from either slot (swap-symmetric)", () => {
+    const croucherAsB = runFight(
+      getMockConfig({
+        rules,
+        botA: strikingAt("high"),
+        botB: CROUCHER,
+        maxTicks: 12,
+      }),
+    );
+
+    const croucherAsA = runFight(
+      getMockConfig({
+        rules,
+        botA: CROUCHER,
+        botB: strikingAt("high"),
+        maxTicks: 12,
+      }),
+    );
+
+    expect(croucherAsB.scores.a).toBe(0); // striker (A) whiffs the croucher (B)
+    expect(croucherAsA.scores.b).toBe(0); // striker (B) whiffs the croucher (A)
+  });
+});
