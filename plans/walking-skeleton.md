@@ -26,8 +26,8 @@ blocked), read from a **result object + integer event log**.
       **byte-identical** event log on re-run.
 - [x] AC4 — An aggressor that approaches and strikes an idle opponent in reach gains
       points and wins.
-- [ ] AC5 — Both bots decide against the **tick-T snapshot** and simultaneous strikes
-      resolve by a fixed, documented, order-independent tiebreak.
+- [x] AC5 — Both bots decide against the **tick-T snapshot** and simultaneous strikes
+      resolve order-independently (a **trade** — both in-range strikes score; swap-symmetric).
 - [x] AC6 — An action returned while `canAct=0` (mid-recovery) is ignored and logged
       (commitment).
 
@@ -192,7 +192,17 @@ comparison `>` vs `>=` (a tie must be a `draw`).
 
 ---
 
-### Slice 5: Block negates a strike, and simultaneous strikes resolve by a fixed tiebreak
+### Slice 5: Block negates a strike, and simultaneous strikes resolve by a fixed tiebreak  ✅ DONE
+
+> ✅ **Done** — 130 tests total (6 new) · `sim.ts` mutation 95.17% (137 killed, 1 timeout,
+> 7 accepted survivors: 4 forward-compat self-fields `phaseRemaining`/`canAct`, the
+> `dir*facing` equivalent, 2 moot active-window end-boundary mutants) · coverage 100%
+> lines/funcs. A free-to-act fighter that chose `block` guards (negates an in-reach
+> active strike); a **committed** fighter cannot guard. Simultaneity resolves as a
+> **trade** (both in-range strikes score) — chosen over an arbitrary startup-tiebreak as
+> the non-speculative, swap-symmetric outcome; locked by a swap-symmetry test. Adds the
+> `defGuarding` param to `resolveHit` + `aGuarding`/`bGuarding` (pre-intake snapshot).
+> Completes AC5. `src/sim.ts`, `src/run-fight.test.ts`.
 
 **Value**: completes the skeleton's combat read — a correctly-held `block` prevents the
 score, and two bots striking on the same tick resolve deterministically regardless of

@@ -240,3 +240,60 @@ describe("runFight — strikes and scoring", () => {
     expect(result.events[16].a.points).toBe(2);
   });
 });
+
+describe("runFight — block and simultaneity", () => {
+  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const BLOCKER = bot([], { type: "block", band: "mid" });
+
+  it("a guarding defender negates the strike", () => {
+    const rules = getMockRules({ startGap: 200000 }); // within reach
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: BLOCKER, maxTicks: 12 }));
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("negates the strike from either side", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: BLOCKER, botB: ATTACKER, maxTicks: 12 }));
+    expect(result.scores.b).toBe(0); // A's guard negates B's strike
+  });
+
+  it("a committed fighter cannot also block", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    // B strikes when neutral, then its block default is moot while committed.
+    const attackThenBlock = bot(
+      [{ when: { op: "eq", args: [{ op: "field", path: "self.canAct" }, { op: "const", value: 1 }] }, do: { type: "attack", move: "strike", band: "mid" } }],
+      { type: "block", band: "mid" },
+    );
+    // Both strike & are active at tick 4; B is mid-move (committed), so its block
+    // cannot save it -> A's active frame still lands.
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: attackThenBlock, maxTicks: 12 }));
+    expect(result.scores.a).toBe(1);
+  });
+
+  it("a committed fighter cannot also block (either side)", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const attackThenBlock = bot(
+      [{ when: { op: "eq", args: [{ op: "field", path: "self.canAct" }, { op: "const", value: 1 }] }, do: { type: "attack", move: "strike", band: "mid" } }],
+      { type: "block", band: "mid" },
+    );
+    // Mirror: A is mid-move (committed) and its block default cannot save it ->
+    // B's active frame still lands. Guards only the neutral-tick decision.
+    const result = runFight(getMockConfig({ rules, botA: attackThenBlock, botB: ATTACKER, maxTicks: 12 }));
+    expect(result.scores.b).toBe(1);
+  });
+
+  it("simultaneous in-range strikes both score (a trade)", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: ATTACKER, maxTicks: 12 }));
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+  });
+
+  it("resolves identically regardless of which fighter is A (swap-symmetric)", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const original = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    const swapped = runFight(getMockConfig({ rules, botA: IDLE, botB: ATTACKER, maxTicks: 12 }));
+    expect(swapped.scores.a).toBe(original.scores.b);
+    expect(swapped.scores.b).toBe(original.scores.a);
+    expect(swapped.winner).toBe("B"); // mirror of original "A"
+  });
+});

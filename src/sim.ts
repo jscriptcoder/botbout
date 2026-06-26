@@ -81,14 +81,16 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
   // idle / block: no positional effect in this slice.
 };
 
-// During its active window, a strike in reach scores once (per activation).
-const resolveHit = (att: Fighter, def: Fighter, rules: Rules): void => {
+// During its active window, a strike in reach scores once (per activation) —
+// unless the defender is guarding this tick, in which case it is blocked.
+const resolveHit = (att: Fighter, def: Fighter, rules: Rules, defGuarding: boolean): void => {
   const st = att.state;
   if (st.kind !== "attacking" || st.scored) return;
   const spec = rules.moves[st.move];
   const inActiveWindow = st.elapsed >= spec.startup && st.elapsed < spec.startup + spec.active;
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
+  if (defGuarding) return; // blocked — no score
   att.points += spec.score;
   st.scored = true;
 };
@@ -125,10 +127,15 @@ export function runFight(cfg: FightConfig): FightResult {
     const bAction = runTick(botB, viewFor(b, a, rules, tick, maxTicks), b.mem);
 
     // 3. Resolve together: honour/ignore intake, then hits, then advance clocks.
+    //    A fighter guards this tick only if it was free to act and chose `block`
+    //    (a committed fighter cannot guard). Simultaneous strikes both score —
+    //    each resolveHit touches only its own fighter, so it is order-independent.
+    const aGuarding = a.state.kind === "neutral" && aAction.type === "block";
+    const bGuarding = b.state.kind === "neutral" && bAction.type === "block";
     intake(a, aAction, rules);
     intake(b, bAction, rules);
-    resolveHit(a, b, rules);
-    resolveHit(b, a, rules);
+    resolveHit(a, b, rules, bGuarding);
+    resolveHit(b, a, rules, aGuarding);
     advance(a, rules);
     advance(b, rules);
 
