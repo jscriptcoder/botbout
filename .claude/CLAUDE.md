@@ -11,11 +11,11 @@ The project is the **"go deep" karate** design. The canonical design lives in
 **`docs/DESIGN.md`** (combat + platform — 2D fixed-point space, 3 height bands +
 technique-specific *uke* defense, on-contact cancel combos, WKF **points-only**
 scoring with *yame* resets, king-of-the-hill ladder, all-TS platform) and
-**`docs/BOT-DSL.md`** (the bot API). The code is a **clean slate**: the old
-pre-deep-design scaffold was removed, so all engine code is (re)built **from the
-resolved design via TDD** under a single top-level **`src/`** (no `packages/`
-nesting). Design tree is resolved; next is `story-splitting` → `planning` → TDD
-build.
+**`docs/BOT-DSL.md`** (the bot API). All engine code is built **from the resolved
+design via TDD** under a single top-level **`src/`** (no `packages/` nesting). The
+**walking skeleton is done** (headless validate → fight → byte-identical replay,
+with 1D approach + one *mid* strike that can score / block / trade); combat depth
+now grows one capability slice at a time. See **Status** below.
 
 ## Non-negotiable invariants
 
@@ -58,12 +58,25 @@ generating code; flag any change that would.
 
 - DONE (design): the deep-karate combat tree + bot API resolved →
   `docs/DESIGN.md`, `docs/BOT-DSL.md`.
-- CLEAN SLATE (code): the old scaffold (`packages/engine`, `scripts/`,
-  `tools/frame-lab`, the Python `services/api` stub) was removed. `src/` is empty,
-  awaiting the first TDD slice. Nothing is "built out toward" — it is built fresh,
-  test-first, from the design.
-- NEXT: `story-splitting` → `planning` for the first vertical slice, then TDD
-  build (deep frame table + 2D sim loop + telemetry result object + viewer).
+- DONE (walking skeleton — PRs #1–#5, all 6 ACs): the headless deterministic core.
+  `src/dsl.ts` (validator + interpreter — the TCB), `src/types.ts`
+  (`State`/`Action`/`Rules` contract), `src/sim.ts` (fixed-timestep `runFight`
+  loop). It validates a JSON bot, runs two bots for N ticks, replays
+  **byte-identically**, and resolves 1D approach + one *mid* strike that can score,
+  be **blocked** (guard negates; a committed fighter can't guard), or **trade**
+  (simultaneous in-range strikes both score, swap-symmetric). 130 tests; `sim.ts`
+  mutation ~95%, `dsl.ts` interpreter 100%. The five-slice plan is done and its file
+  deleted (per the planning workflow); the record lives in git history (PRs #1–#5).
+- NOT YET BUILT (later slices): no PRNG is consumed yet (no jitter); no real frame
+  table (concrete move numbers live only in test mocks); perception latency is at
+  `L=0` (opponent read live); no 2D/vertical axis, height bands, *uke* guards,
+  parry, cancels, *yame*/match structure, telemetry object, Vercel API, or Pixi
+  viewer.
+- NEXT: the **perception-latency keystone** — the per-fighter history ring buffer +
+  `L>0` delayed snapshot (invariant #4), the next capability per
+  `docs/stories/first-slice-split.md`. Then height bands + 3 *uke* guards, vertical
+  axis, parry, cancel combos. Flow: `story-splitting`/`planning` → TDD, **PR per
+  slice**.
 
 ## Commands
 
@@ -72,6 +85,8 @@ npm install        # once
 npm test           # vitest (test-first; the suite grows with each TDD slice)
 npm run build      # tsc → dist/
 npm run typecheck  # tsc --noEmit
+npm run format     # prettier --write .  (format:check verifies without writing)
+npm run lint       # eslint .  (lint:fix auto-fixes; inserts blank-line block spacing)
 ```
 
 **Design source of truth:** `docs/DESIGN.md` (combat + platform; control model,

@@ -28,17 +28,17 @@ LLM can author a bot for it as a **JSON DSL document (data, never code)**.
   precedents: **Robocode, Battlecode, Toribash**. We use a discrete, banded move
   set (not continuous joint control) because it's balanceable and LLMs reason
   about it well.
-- **Perception latency is the keystone.** An authored bot otherwise has *perfect*
+- **Perception latency is the keystone.** An authored bot otherwise has _perfect_
   reactions, which would make frame data meaningless (block everything on frame
-  1). The fix: the opponent is perceived **delayed** — `L_pos` (~1: track *where*
-  fast) and `L_act` (~6: recognize *what*/which band slow). This *derives* the
+  1). The fix: the opponent is perceived **delayed** — `L_pos` (~1: track _where_
+  fast) and `L_act` (~6: recognize _what_/which band slow). This _derives_ the
   meta from `L` via the **two master inequalities** (see LOCKED #9): reaction-block
   iff `S ≥ L_act + B`; whiff-punish iff `R ≥ L_act + S_punish`. Slide `L` and the
   whole defensive meta slides with it.
 - **Balance methodology.** Don't trust the published numbers — instrument
   everything and let **bot-vs-bot** playtest balance: run thousands of matchups,
   watch move-usage and win-rate-by-opener (healthy ≈ no move >35% usage, no opener
-  >60% win). The sim tells the truth; the frame table is just a starting point.
+  > 60% win). The sim tells the truth; the frame table is just a starting point.
 
 ## Non-negotiables preserved (from `.claude/CLAUDE.md`)
 
@@ -61,8 +61,8 @@ is a pure function of the integer event log. Floats (radians, `sin`/`cos`,
 ragdoll) are therefore harmless in the render layer — two viewers replaying the
 same integer log see the same fight regardless of float platform quirks. This
 seam is what lets us reuse Pixel Fist's float rig without violating integer
-determinism. **Rule of thumb:** anything that affects the *outcome* is integer and
-lives in the core; anything that only affects *how it looks* may be float and
+determinism. **Rule of thumb:** anything that affects the _outcome_ is integer and
+lives in the core; anything that only affects _how it looks_ may be float and
 lives in the render layer.
 
 ## Salvage from Project Pixel Fist
@@ -83,38 +83,43 @@ lives in the render layer.
 Resolved in the design interview. Numbered to match the running tree.
 
 ### 1. Spatial model — real 2D, fixed-point
+
 Position is **2D**: `x` (ground) + `y` (vertical). A real fixed-point integer
 vertical axis with **jump arcs + gravity**; **crouch** lowers the hurtbox
 positionally. Jumps, anti-airs, gap-closers, and the low/high game are all
 physically real (not faked). Determinism via fixed-point integers (scale TBD —
-see *Fixed-point representation*).
+see _Fixed-point representation_).
 
 ### 2. Hit model — band attribute + geometric occupancy
+
 A move declares a discrete target **band** (`high` / `mid` / `low`) — that is what
-**scoring and *uke*-matching key off**. A strike connects when the attacker is in
-**`x`-reach** *and* the defender's hurtbox **occupies that band**. The continuous
-`y` drives traversal *and* band occupancy: crouching vacates `high` (a *jodan*
+**scoring and _uke_-matching key off**. A strike connects when the attacker is in
+**`x`-reach** _and_ the defender's hurtbox **occupies that band**. The continuous
+`y` drives traversal _and_ band occupancy: crouching vacates `high` (a _jodan_
 kick whiffs a croucher); jumping vacates `low` and enters an airborne band (a
 sweep whiffs a jumper). **Bots reason in 3 bands; the renderer reasons in exact
 `y`.** FK/trig stays in the render layer; the core needs only band occupancy +
 `x`-reach + simple AABB. (Full limb-accurate geometric hits = possible later slice
-*if* we pay for fixed-point FK.)
+_if_ we pay for fixed-point FK.)
 
 ### 3. Combos — on-contact cancels only
+
 A move may cancel into another (per `cancelInto` windows) **only on hit or block —
 never on whiff.** Because feints come from whiff-cancelling, forbidding them means
-you can only cancel something the opponent *already perceived connect* → real
+you can only cancel something the opponent _already perceived connect_ → real
 combos + WKF score escalation, with the **no-feint / pure-perception** property
 intact. Adds a `cancelable` state + per-move cancel-route data.
 
 ### 4. Guards — 3 height-keyed
-Three mechanically-distinct guards: `block-high` (*age-uke*), `block-mid`
-(*soto/uchi-uke*), `block-low` (*gedan-barai*) — a clean 3-way read mirroring the
-3 attack bands, each **rendered/named** as its authentic *uke*. Wrong-height guard
+
+Three mechanically-distinct guards: `block-high` (_age-uke_), `block-mid`
+(_soto/uchi-uke_), `block-low` (_gedan-barai_) — a clean 3-way read mirroring the
+3 attack bands, each **rendered/named** as its authentic _uke_. Wrong-height guard
 ⇒ you get hit. Inner/outer angle + knife-hand = flavor now, optional depth slice
 later.
 
 ### 5. Parry — opening window of a correct guard → counter
+
 The first few ticks of raising the **matching-height** guard are a **parry
 window**: if the attack's active frame lands then, it is **deflected** (attacker
 thrown into extra recovery → big frame advantage + counter-hit bonus on the
@@ -124,16 +129,18 @@ guard it's a **normal block** (blockstun + pushback + small stamina chip). Fast
 **reaction-parried** — the intended skill gradient.
 
 ### 6. Ground game — limited okizeme
-A clean **throw/takedown** (*o-goshi*), if not broken, grounds the opponent and
-**scores 3 directly**. A **sweep** (*ashi-barai*) knocks down (low/no score) and
+
+A clean **throw/takedown** (_o-goshi_), if not broken, grounds the opponent and
+**scores 3 directly**. A **sweep** (_ashi-barai_) knocks down (low/no score) and
 opens **exactly one** guaranteed follow-up "finish" window before the opponent
-wakes with **i-frames**. WKF *ippon* drama + sweep setups, **no ground loops**.
+wakes with **i-frames**. WKF _ippon_ drama + sweep setups, **no ground loops**.
 The throw triangle is locked: **strike > throw > guard > strike**; `throw-break`
 escapes throws; strikes interrupt throw startup.
 
-### 7. Match structure — point-exchange resets (*yame*)
-After a scoring technique lands *and its combo/advantage sequence fully resolves*
-(okizeme window closes / fighters return to neutral): call ***yame***, award that
+### 7. Match structure — point-exchange resets (_yame_)
+
+After a scoring technique lands _and its combo/advantage sequence fully resolves_
+(okizeme window closes / fighters return to neutral): call **_yame_**, award that
 exchange's accumulated points (the **1→2→3 escalation happens within the
 exchange**), **reset both to neutral start**, continue. Win by **8-point gap or
 most points at the time limit**. **`jogai`** (ring exit) and **passivity** are
@@ -143,6 +150,7 @@ exchanges.
 > See **#10** below — confirmed: no HP bar, points only.
 
 ### 10. Outcome — pure WKF points, no HP
+
 **No health bar, no KO.** The outcome is the **score**. "Damage" in the old frame
 table becomes **WKF score (0–3)**; knockback / stagger / knockdown are
 **tempo/positioning** reactions, never life loss. Payoff structure comes from
@@ -151,12 +159,14 @@ combo escalation — not a damage race. A stun/durability meter is a deferred fu
 lever, not in the deep core.
 
 ### 8. Fighter model — identical mechanics, behavior-only
+
 Both fighters share **one global `RULES`** table and **one global `L`**. The only
 difference is the **authored DSL strategy**. Symmetric, fairest, single frame
 table; archetypes (rushdown / counter / turtle / grappler) emerge from behavior.
 Stats / build-crafting = a later meta/career expansion.
 
 ### 9. Perception — transparent + delayed
+
 Self is **live**. The opponent is a **coherent delayed snapshot** with **split
 latency**: positional fields (`x`, `y`, `vx`, `vy`) delayed by small `L_pos`
 (~1–2); action/intent fields (current move, **its band**, phase, `phaseElapsed`)
@@ -164,6 +174,7 @@ delayed by `L_act` (~6). **2D velocity exposed** for dead-reckoning. **Seeded,
 clamped jitter** on `L` (anti-frame-counting, replay-deterministic). Perception is
 **transparent** — exact values, just time-delayed; **latency is the only fog**.
 Master inequalities, now **per band**:
+
 - reaction-block iff `S ≥ L_act + B`
 - whiff-punish iff `R ≥ L_act + S_punish`
 
@@ -174,7 +185,8 @@ Master inequalities, now **per band**:
 Each section: my recommendation, why, and the live alternative. Status: **OPEN**.
 
 ### P1. Stamina economy — ✓ RESOLVED (light layer, soft penalties + block chip)
-**Recommendation:** a *light* layer. Every move costs stamina; stamina regens in
+
+**Recommendation:** a _light_ layer. Every move costs stamina; stamina regens in
 neutral. **Gassing** (low stamina) ⇒ **reduced knockback + longer recovery + no
 specials/throws** (never "cannot act", never a win condition). **Blocking** costs
 a small stamina chip; **parry** costs more (risk). Primary anti-turtle is the
@@ -185,6 +197,7 @@ health bar. **Alternative:** hard gate (at 0 stamina, basics only) — more
 punishing, more swingy.
 
 ### P2. Movement & footwork / momentum — ✓ RESOLVED (direct velocity + gravity)
+
 **Recommendation:** ground movement is **direct velocity** (instant horizontal
 control, integer units/tick); vertical is **gravity-driven** (jump = upward
 impulse, then constant-`g` integer arc). Footwork set: **walk** fwd/back,
@@ -196,6 +209,7 @@ fully integer. **Alternative:** acceleration/friction model — smoother feel, m
 state + tuning.
 
 ### P3. Physics & impact / ragdoll authority seam — ✓ RESOLVED (cosmetic ragdoll, render-only)
+
 **Recommendation:** **authoritative integer physics** = impulse knockback (`x`,
 and `y` for launchers if any), gravity, ground collision, **hitstop** (freeze
 frames on contact for weight), `stagger`/`knockdown` as **discrete states**.
@@ -206,6 +220,7 @@ fixed-point ragdoll in the core — heavy, only if ragdoll ever affects outcomes
 (it shouldn't).
 
 ### P4. Fixed-point representation & determinism — ✓ RESOLVED by default (overridable)
+
 **Recommendation:** all sim quantities are **integers in sub-units** at a fixed
 `SCALE` (proposed **1 world unit = 1000 sub-units**); velocities/gravity in
 sub-units per tick; `tickRate = 60`. Avoid division in the outcome path; where
@@ -217,6 +232,7 @@ fight bit-for-bit. **Why:** human-readable logs, cross-platform-identical.
 readable.
 
 ### P5/P6. DSL action grammar + state schema — ✓ RESOLVED → see `docs/BOT-DSL.md`
+
 Synthesized into a full spec: reactive one-action-per-tick; attacks parameterized
 by band; implicit on-contact cancels (combos via `canCancel` + memory);
 **let-bindings** added to cut verbosity; expanded state schema (2D, posture,
@@ -225,6 +241,7 @@ context.
 
 The bot still returns **one action per tick**; the engine is the loop. New shape
 (finalized in `docs/BOT-DSL.md`):
+
 - **Attacks** are parameterized by **band**: `{ type: "strike", move: <punch|kick|...>, band: high|mid|low }`
   (the move's legal bands come from the frame table). Specials via the same form.
 - **Throws:** `{ type: "throw" }`, `{ type: "sweep" }`, `{ type: "throw-break" }`.
@@ -239,6 +256,7 @@ The bot still returns **one action per tick**; the engine is the loop. New shape
   `idle` + a logged event the author reads afterward.
 
 ### P6. State schema (expanded) — sketch
+
 Extends the current `State`. **Self (live):** add `y`, `vy`, `posture`
 (`standing|crouching|airborne`), `canCancel` + `cancelWindowRemaining`,
 `knockdown` state + wake-up timer, `points`. **Opponent (delayed, coherent):** add
@@ -249,8 +267,11 @@ keep `predictedDistance` and add `predictedY`/occupancy derivations.
 All numeric leaves go on the DSL allowlist; booleans exposed as 1/0.
 
 ### P7. Unified move / frame-table schema
+
 **Recommendation:** one integer record per technique, merging Pixel Fist `MoveDef`
-+ taxonomy anatomy + BotBout `MoveSpec`:
+
+- taxonomy anatomy + BotBout `MoveSpec`:
+
 ```
 { id, family, bands[], frames:{startup,active,recovery},
   score:0|1|2|3, staminaCost, reach,
@@ -258,6 +279,7 @@ All numeric leaves go on the DSL allowlist; booleans exposed as 1/0.
   onBlock:{ blockstun, pushback, staminaChip },
   cancelInto:[ ...moveIds/families + window ], tags:[ counterHitBonus, iFrames?, armor?, commitment ] }
 ```
+
 **`score` replaces `damage`** (no HP — see #7). All values integers, test-pinned,
 tuned via bot-vs-bot telemetry (target: no move >~35% usage, no opener >~60%
 win). **Why:** single source of truth the DSL reads via `rule`/`field` ops and the
@@ -265,6 +287,7 @@ sim resolves against. **Alternative:** keep score and impact in separate tables 
 more indirection.
 
 ### P8. Platform / meta loop — ✓ RESOLVED
+
 - **Backend stack:** **all-TypeScript.** The API imports `@botbout/engine`
   directly — shared `validate`/`runFight` + contract types end-to-end, one
   monorepo/toolchain, deploys on Vercel with the Solid+Pixi viewer. No
@@ -276,12 +299,13 @@ more indirection.
 - **Telemetry:** **rich structured telemetry + replay.** Machine-readable
   per-exchange + aggregate stats (move usage both sides, points by band/move,
   blocked/parried/whiffed/hit-confirm rates, stamina + lead curves, key moments)
-  + full deterministic replay. Counter-design fuel *and* balance instrumentation.
-  Auto NL coaching summary = trivial later add (generated *from* this telemetry).
+  - full deterministic replay. Counter-design fuel _and_ balance instrumentation.
+    Auto NL coaching summary = trivial later add (generated _from_ this telemetry).
 - **Pipeline:** `POST /fighter` (validate + store), `POST /fight` (vs champion),
   `GET /replay/:id`, `GET /spec`.
 
 ### P9. First-build scope (planning, not design)
+
 Even "design for the full taxonomy" needs a concrete first frame table. **Likely
 first slice:** a vertical slice proving the whole loop end-to-end with a **curated
 subset** (a few strikes across the 3 bands, the 3 guards, one throw, one sweep,

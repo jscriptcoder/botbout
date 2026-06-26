@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { validate, safeParse, LIMITS, type BotDoc } from "./dsl.js";
+import {
+  validate,
+  safeParse,
+  LIMITS,
+  type BotDoc,
+  type FieldPath,
+} from "./dsl.js";
 
 // A complete, well-formed bot document. Overrides customize valid variations;
 // invalid cases are built by spreading into a plain object (validate takes
@@ -12,7 +18,10 @@ const getMockBotDoc = (overrides?: Partial<BotDoc>): BotDoc => ({
     {
       when: {
         op: "gte",
-        args: [{ op: "field", path: "self.canAct" }, { op: "const", value: 1 }],
+        args: [
+          { op: "field", path: "self.canAct" },
+          { op: "const", value: 1 },
+        ],
       },
       do: { type: "move", dir: 1 },
     },
@@ -76,6 +85,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       } as unknown as Partial<BotDoc>);
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -85,6 +95,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         rules: [{ when: { op: "xnor", args: [] }, do: { type: "idle" } }],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -105,6 +116,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
       expect(result.issues).toContainEqual(
@@ -129,6 +141,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
   });
@@ -151,6 +164,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
       expect(result.issues).toContainEqual(
@@ -164,12 +178,19 @@ describe("validate — bot intake gate", () => {
         memory: {},
         rules: [
           {
-            when: { op: "gt", args: [{ op: "const", value: 1 }, { op: "const", value: 0 }] },
+            when: {
+              op: "gt",
+              args: [
+                { op: "const", value: 1 },
+                { op: "const", value: 0 },
+              ],
+            },
             set: [{ cell: "ghost", to: { op: "const", value: 1 } }],
             do: { type: "idle" },
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -186,6 +207,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "teleport" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -199,6 +221,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "attack", move: "fireball", band: "mid" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -207,6 +230,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "block", band: "behind" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -214,13 +238,41 @@ describe("validate — bot intake gate", () => {
       const result = validate(
         getMockBotDoc({
           rules: [
-            { when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] }, do: { type: "block", band: "high" } },
-            { when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] }, do: { type: "attack", move: "strike", band: "low" } },
-            { when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] }, do: { type: "move", dir: -1 } },
+            {
+              when: {
+                op: "eq",
+                args: [
+                  { op: "const", value: 1 },
+                  { op: "const", value: 1 },
+                ],
+              },
+              do: { type: "block", band: "high" },
+            },
+            {
+              when: {
+                op: "eq",
+                args: [
+                  { op: "const", value: 1 },
+                  { op: "const", value: 1 },
+                ],
+              },
+              do: { type: "attack", move: "strike", band: "low" },
+            },
+            {
+              when: {
+                op: "eq",
+                args: [
+                  { op: "const", value: 1 },
+                  { op: "const", value: 1 },
+                ],
+              },
+              do: { type: "move", dir: -1 },
+            },
           ],
           default: { type: "idle" },
         }),
       );
+
       expect(result.ok).toBe(true);
     });
   });
@@ -228,17 +280,25 @@ describe("validate — bot intake gate", () => {
   describe("static limits", () => {
     it("accepts exactly maxRules rules", () => {
       const oneRule = getMockBotDoc().rules[0];
+
       const result = validate(
-        getMockBotDoc({ rules: Array.from({ length: LIMITS.maxRules }, () => oneRule) }),
+        getMockBotDoc({
+          rules: Array.from({ length: LIMITS.maxRules }, () => oneRule),
+        }),
       );
+
       expect(result.ok).toBe(true);
     });
 
     it("rejects one rule over maxRules", () => {
       const oneRule = getMockBotDoc().rules[0];
+
       const result = validate(
-        getMockBotDoc({ rules: Array.from({ length: LIMITS.maxRules + 1 }, () => oneRule) }),
+        getMockBotDoc({
+          rules: Array.from({ length: LIMITS.maxRules + 1 }, () => oneRule),
+        }),
       );
+
       expect(result.ok).toBe(false);
     });
 
@@ -262,11 +322,32 @@ describe("validate — bot intake gate", () => {
                   {
                     op: "or",
                     args: [
-                      { op: "lt", args: [{ op: "field", path: "opponent.distance" }, { op: "const", value: 50 }] },
-                      { op: "neq", args: [{ op: "field", path: "self.facing" }, { op: "const", value: 0 }] },
+                      {
+                        op: "lt",
+                        args: [
+                          { op: "field", path: "opponent.distance" },
+                          { op: "const", value: 50 },
+                        ],
+                      },
+                      {
+                        op: "neq",
+                        args: [
+                          { op: "field", path: "self.facing" },
+                          { op: "const", value: 0 },
+                        ],
+                      },
                     ],
                   },
-                  { op: "not", arg: { op: "eq", args: [{ op: "field", path: "self.canAct" }, { op: "const", value: 0 }] } },
+                  {
+                    op: "not",
+                    arg: {
+                      op: "eq",
+                      args: [
+                        { op: "field", path: "self.canAct" },
+                        { op: "const", value: 0 },
+                      ],
+                    },
+                  },
                 ],
               },
               do: { type: "attack", move: "strike", band: "mid" },
@@ -274,41 +355,80 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
     it("rejects a document exceeding the node budget", () => {
       const many = Array.from({ length: 1400 }, () => ({
         op: "eq",
-        args: [{ op: "const", value: 1 }, { op: "const", value: 1 }],
+        args: [
+          { op: "const", value: 1 },
+          { op: "const", value: 1 },
+        ],
       }));
-      const doc = { ...getMockBotDoc(), rules: [{ when: { op: "and", args: many }, do: { type: "idle" } }] };
+
+      const doc = {
+        ...getMockBotDoc(),
+        rules: [{ when: { op: "and", args: many }, do: { type: "idle" } }],
+      };
+
       expect(validate(doc).ok).toBe(false);
     });
 
     it("rejects an over-nested expression", () => {
-      let expr: unknown = { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] };
+      let expr: unknown = {
+        op: "eq",
+        args: [
+          { op: "const", value: 1 },
+          { op: "const", value: 1 },
+        ],
+      };
+
       for (let i = 0; i < 40; i++) expr = { op: "not", arg: expr };
-      const doc = { ...getMockBotDoc(), rules: [{ when: expr, do: { type: "idle" } }] };
+
+      const doc = {
+        ...getMockBotDoc(),
+        rules: [{ when: expr, do: { type: "idle" } }],
+      };
+
       expect(validate(doc).ok).toBe(false);
     });
   });
 
   describe("hardening — structure, integers, boundaries", () => {
-    const allowedFields = [
-      "self.x", "self.facing", "self.points", "self.canAct", "self.phaseRemaining",
-      "opponent.x", "opponent.facing", "opponent.distance",
-      "ring.width", "clock.tick", "clock.ticksRemaining",
+    const allowedFields: FieldPath[] = [
+      "self.x",
+      "self.facing",
+      "self.points",
+      "self.canAct",
+      "self.phaseRemaining",
+      "opponent.x",
+      "opponent.facing",
+      "opponent.distance",
+      "ring.width",
+      "clock.tick",
+      "clock.ticksRemaining",
     ];
 
     it.each(allowedFields)("accepts reading the allowed field %s", (path) => {
       const result = validate(
         getMockBotDoc({
           rules: [
-            { when: { op: "gte", args: [{ op: "field", path }, { op: "const", value: 0 }] }, do: { type: "idle" } },
+            {
+              when: {
+                op: "gte",
+                args: [
+                  { op: "field", path },
+                  { op: "const", value: 0 },
+                ],
+              },
+              do: { type: "idle" },
+            },
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
@@ -335,13 +455,27 @@ describe("validate — bot intake gate", () => {
     it("rejects a non-integer const value", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "gt", args: [{ op: "const", value: 1.5 }, { op: "const", value: 0 }] }, do: { type: "idle" } }],
+        rules: [
+          {
+            when: {
+              op: "gt",
+              args: [
+                { op: "const", value: 1.5 },
+                { op: "const", value: 0 },
+              ],
+            },
+            do: { type: "idle" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
     it("rejects a non-integer memory initial value", () => {
-      expect(validate(getMockBotDoc({ memory: { drift: 1.5 } })).ok).toBe(false);
+      expect(validate(getMockBotDoc({ memory: { drift: 1.5 } })).ok).toBe(
+        false,
+      );
     });
 
     it("accepts exactly maxCells declared cells", () => {
@@ -351,14 +485,22 @@ describe("validate — bot intake gate", () => {
     });
 
     it("rejects an over-long cell name", () => {
-      expect(validate(getMockBotDoc({ memory: { ["a".repeat(33)]: 0 } })).ok).toBe(false);
+      expect(
+        validate(getMockBotDoc({ memory: { ["a".repeat(33)]: 0 } })).ok,
+      ).toBe(false);
     });
 
     it("rejects a comparison with the wrong number of operands", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "gt", args: [{ op: "const", value: 1 }] }, do: { type: "idle" } }],
+        rules: [
+          {
+            when: { op: "gt", args: [{ op: "const", value: 1 }] },
+            do: { type: "idle" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -369,8 +511,21 @@ describe("validate — bot intake gate", () => {
     it("rejects a set that is not an array", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] }, set: "nope", do: { type: "idle" } }],
+        rules: [
+          {
+            when: {
+              op: "eq",
+              args: [
+                { op: "const", value: 1 },
+                { op: "const", value: 1 },
+              ],
+            },
+            set: "nope",
+            do: { type: "idle" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -384,20 +539,39 @@ describe("validate — bot intake gate", () => {
         getMockBotDoc({
           rules: [
             {
-              when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] },
+              when: {
+                op: "eq",
+                args: [
+                  { op: "const", value: 1 },
+                  { op: "const", value: 1 },
+                ],
+              },
               set: [{ cell: "hits", to: { op: "const", value: 1 } }],
             },
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
     it("rejects an invalid action inside a rule's do", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "eq", args: [{ op: "const", value: 1 }, { op: "const", value: 1 }] }, do: { type: "teleport" } }],
+        rules: [
+          {
+            when: {
+              op: "eq",
+              args: [
+                { op: "const", value: 1 },
+                { op: "const", value: 1 },
+              ],
+            },
+            do: { type: "teleport" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -406,46 +580,101 @@ describe("validate — bot intake gate", () => {
     });
 
     it("rejects a null condition node", () => {
-      expect(validate({ ...getMockBotDoc(), rules: [{ when: null, do: { type: "idle" } }] }).ok).toBe(false);
+      expect(
+        validate({
+          ...getMockBotDoc(),
+          rules: [{ when: null, do: { type: "idle" } }],
+        }).ok,
+      ).toBe(false);
     });
 
     it("accepts reading a declared memory cell", () => {
       const result = validate(
         getMockBotDoc({
-          rules: [{ when: { op: "gt", args: [{ op: "mem", cell: "hits" }, { op: "const", value: 0 }] }, do: { type: "idle" } }],
+          rules: [
+            {
+              when: {
+                op: "gt",
+                args: [
+                  { op: "mem", cell: "hits" },
+                  { op: "const", value: 0 },
+                ],
+              },
+              do: { type: "idle" },
+            },
+          ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
     it("rejects a mem node whose cell is not a string", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "gt", args: [{ op: "mem", cell: 5 }, { op: "const", value: 0 }] }, do: { type: "idle" } }],
+        rules: [
+          {
+            when: {
+              op: "gt",
+              args: [
+                { op: "mem", cell: 5 },
+                { op: "const", value: 0 },
+              ],
+            },
+            do: { type: "idle" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
     it("rejects a null numeric operand", () => {
       const doc = {
         ...getMockBotDoc(),
-        rules: [{ when: { op: "gt", args: [null, { op: "const", value: 0 }] }, do: { type: "idle" } }],
+        rules: [
+          {
+            when: { op: "gt", args: [null, { op: "const", value: 0 }] },
+            do: { type: "idle" },
+          },
+        ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
     it("rejects an and with no operands", () => {
-      const doc = { ...getMockBotDoc(), rules: [{ when: { op: "and", args: [] }, do: { type: "idle" } }] };
+      const doc = {
+        ...getMockBotDoc(),
+        rules: [{ when: { op: "and", args: [] }, do: { type: "idle" } }],
+      };
+
       expect(validate(doc).ok).toBe(false);
     });
 
     it("rejects an attack with an unknown band", () => {
-      expect(validate({ ...getMockBotDoc(), default: { type: "attack", move: "strike", band: "behind" } }).ok).toBe(false);
+      expect(
+        validate({
+          ...getMockBotDoc(),
+          default: { type: "attack", move: "strike", band: "behind" },
+        }).ok,
+      ).toBe(false);
     });
 
     const constComparing = (value: number) => ({
       ...getMockBotDoc(),
-      rules: [{ when: { op: "gt", args: [{ op: "const", value }, { op: "const", value: 0 }] }, do: { type: "idle" } }],
+      rules: [
+        {
+          when: {
+            op: "gt",
+            args: [
+              { op: "const", value },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "idle" },
+        },
+      ],
     });
 
     it("rejects a const above the int32 max", () => {
