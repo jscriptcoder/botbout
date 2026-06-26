@@ -20,9 +20,9 @@ blocked), read from a **result object + integer event log**.
 - [x] AC1 — A malformed bot (op/field off the allowlist, over-budget, bad version/name,
       proto-pollution key) is rejected with a structured `{path, reason}` issue; the
       fight does not run.
-- [ ] AC2 — Two valid bots + a seed run for N ticks and return a result object with a
+- [x] AC2 — Two valid bots + a seed run for N ticks and return a result object with a
       winner/most-points and an integer event log.
-- [ ] AC3 — The same `{seed, rulesHash, botA, botB, initialConditions}` reproduces a
+- [x] AC3 — The same config (`{rules, botA, botB, maxTicks, seed}`) reproduces a
       **byte-identical** event log on re-run.
 - [ ] AC4 — An aggressor that approaches and strikes an idle opponent in reach gains
       points and wins.
@@ -117,7 +117,14 @@ div/clamp semantics, boolean-as-1/0, default fallback. Pre-empt mutants: short-c
 
 ---
 
-### Slice 3: A fight runs and is bit-reproducible — fixed-length loop, event log, identical replays
+### Slice 3: A fight runs and is bit-reproducible — fixed-length loop, event log, identical replays  ✅ DONE
+
+> ✅ **Done** — 116 tests total (13 new) · `sim.ts` mutation 97.87% (the one survivor is
+> a proven equivalent: `dir/facing ≡ dir*facing` since `facing ∈ {±1}`) · branch cov
+> 98.62%. Delivers AC2, AC3, and the same-pre-tick-snapshot half of AC5. Added
+> `src/sim.ts` (`runFight`/`viewFor`) and the `Rules` frame table in `types.ts`.
+> Deferred (as agreed): PRNG (no randomness consumed yet), commitment (Slice 4),
+> dedicated replay/`rulesHash` field. `src/sim.ts`, `src/types.ts`, `src/run-fight.test.ts`.
 
 **Value**: the platform's core promise — two validated bots fight a fixed-timestep
 deterministic loop and the same inputs reproduce the fight **byte-for-byte**. Movement +
