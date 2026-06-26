@@ -13,9 +13,10 @@
 // committed are ignored), HEIGHT-BANDED guard/block (a strike is blocked only by a
 // guard at its own band; a wrong-height guard — or none — is hit), and PERCEPTION
 // LATENCY — the opponent is a coherent delayed snapshot (positional fields by lPos,
-// action fields by lAct) with dead-reckoned predictedDistance and seeded, clamped
-// per-tick jitter on the latencies (the sim's first PRNG consumer). Still pending:
-// the perceived attack band (so bots can read the incoming height), parry, and the
+// action fields — attacking + attackBand — by lAct) with dead-reckoned
+// predictedDistance and seeded, clamped per-tick jitter on the latencies (the sim's
+// first PRNG consumer). A bot can now read the incoming attack's height (attackBand)
+// on the same delayed layer as the attacking tell. Still pending: parry, and the
 // vertical axis (occupancy is hardwired open until then).
 // ============================================================================
 import type {
@@ -68,16 +69,28 @@ type Fighter = {
   state: MoveState;
 };
 
+// The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
+// bot can compare numerically — 0 = not attacking, then low < mid < high.
+const BAND_CODE: Record<Band, number> = { low: 1, mid: 2, high: 3 };
+
 // One tick's outward facts, recorded into a fighter's history so the OPPONENT can
 // perceive them delayed (invariant #4: a coherent delayed snapshot). Positional
-// fields (x, facing, vx) and the action field (attacking) carry independent
-// latencies. `vx` is the displacement since the previous frame (0 on the first).
-type Frame = { x: number; facing: Facing; attacking: boolean; vx: number };
+// fields (x, facing, vx) and the action fields (attacking, attackBand) carry
+// independent latencies. `vx` is the displacement since the previous frame (0 on
+// the first). `attackBand` rides the same action layer as `attacking`.
+type Frame = {
+  x: number;
+  facing: Facing;
+  attacking: boolean;
+  attackBand: number;
+  vx: number;
+};
 
 const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   x: f.x,
   facing: f.facing,
   attacking: f.state.kind === "attacking",
+  attackBand: f.state.kind === "attacking" ? BAND_CODE[f.state.band] : 0,
   vx: prev ? f.x - prev.x : 0,
 });
 
@@ -118,6 +131,7 @@ const perceiveOpponent = (
     facing: oppPos.facing,
     distance: Math.abs(oppPos.x - selfX),
     attacking: oppAct.attacking,
+    attackBand: oppAct.attackBand,
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
   };

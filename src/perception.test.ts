@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig, type FightEvent } from "./sim.js";
 import { validate, type BotDoc } from "./dsl.js";
-import type { Rules, Action } from "./types.js";
+import type { Rules, Action, Band } from "./types.js";
 
 // ─── factories ───────────────────────────────────────────────────────────────
 const bot = (rules: BotDoc["rules"], dflt: Action): BotDoc => ({
@@ -341,5 +341,188 @@ describe("perception latency — seeded clamped jitter on L", () => {
 
     expect(outcomes).toContain(0);
     expect(outcomes).toContain(1);
+  });
+});
+
+// ─── slice C3.2: perceived attack BAND, delayed by L_act ──────────────────────
+// The opponent's attack band rides the SAME coherent delayed layer as the
+// `attacking` tell (invariant #4), encoded numerically as a height-ordered enum:
+// 0 = not attacking, 1 = low, 2 = mid, 3 = high. A counter-bot reads it to raise
+// the matching guard — the read/counter game from C3 Slice 1 becomes playable.
+
+// Attacks once at `band` on tick 0, then idles: one committed move ⇒ one tell.
+const strikeOnce = (band: Band): BotDoc => ({
+  version: 1,
+  name: "atk1",
+  memory: { fired: 0 },
+  rules: [
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "mem", cell: "fired" },
+          { op: "const", value: 0 },
+        ],
+      },
+      set: [{ cell: "fired", to: { op: "const", value: 1 } }],
+      do: { type: "attack", move: "strike", band },
+    },
+  ],
+  default: { type: "idle" },
+});
+
+// Mirrors the PERCEIVED attack band into a same-band guard. The block band that
+// surfaces in the event log is therefore a direct read of `opponent.attackBand`
+// each tick (3 ⇒ block high, 2 ⇒ mid, 1 ⇒ low; 0 ⇒ idle).
+const BAND_MIRROR: BotDoc = bot(
+  [
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "field", path: "opponent.attackBand" },
+          { op: "const", value: 3 },
+        ],
+      },
+      do: { type: "block", band: "high" },
+    },
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "field", path: "opponent.attackBand" },
+          { op: "const", value: 2 },
+        ],
+      },
+      do: { type: "block", band: "mid" },
+    },
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "field", path: "opponent.attackBand" },
+          { op: "const", value: 1 },
+        ],
+      },
+      do: { type: "block", band: "low" },
+    },
+  ],
+  { type: "idle" },
+);
+
+describe("perception latency — perceived attack band (L_act, numerically encoded)", () => {
+  it("reads 0 until the tell, then the height-encoded band on the L_act layer", () => {
+    // lPos ≠ lAct: a wrong read off the positional frame would surface the band
+    // early (tick 3, not 7). Out of reach ⇒ a pure perception read, no scoring.
+    const probe = (band: Band): FightEvent[] =>
+      runFight(
+        getMockConfig({
+          botA: BAND_MIRROR,
+          botB: strikeOnce(band),
+          rules: getMockRules({
+            startGap: 300000,
+            perception: { lPos: 2, lAct: 6 },
+          }),
+          maxTicks: 12,
+        }),
+      ).events;
+
+    for (const band of ["high", "mid", "low"] as Band[]) {
+      const ev = probe(band);
+      // Baseline 0 (idle) right up to the tell; the encoded band appears the next
+      // tick — pinning both the off-by-one boundary and the high/mid/low encoding.
+      expect(ev[6].a.action).toEqual({ type: "idle" });
+      expect(ev[7].a.action).toEqual({ type: "block", band });
+    }
+  });
+
+  it("lets a band-reading counter block what a fixed-height guard would eat", () => {
+    const reactable = getMockRules({
+      perception: { lPos: 0, lAct: 6 },
+      // startup 7 ≥ L_act + 1 ⇒ the perceived band arrives in time to guard.
+      moves: {
+        strike: { startup: 7, active: 1, recovery: 6, score: 1, reach: 250000 },
+      },
+    });
+
+    const counterEats = (band: Band): number =>
+      runFight(
+        getMockConfig({
+          botA: BAND_MIRROR, // reads the incoming band, guards that height
+          botB: strikeOnce(band),
+          rules: reactable,
+          maxTicks: 30,
+        }),
+      ).scores.b;
+
+    // The counter guards whatever height it reads — both high and low are blocked.
+    // No single fixed-height guard could stop both, so the read is load-bearing.
+    expect(counterEats("high")).toBe(0);
+    expect(counterEats("low")).toBe(0);
+
+    // Contrast: a fixed mid guard cannot read the high strike and eats it.
+    const fixedMid = bot([], { type: "block", band: "mid" });
+
+    expect(
+      runFight(
+        getMockConfig({
+          botA: fixedMid,
+          botB: strikeOnce("high"),
+          rules: reactable,
+          maxTicks: 30,
+        }),
+      ).scores.b,
+    ).toBe(1);
+  });
+
+  it("perceives the band live at the 0 baseline when perception is absent, replaying byte-identically", () => {
+    const cfg = getMockConfig({
+      botA: BAND_MIRROR,
+      botB: strikeOnce("high"),
+      rules: getMockRules({ startGap: 300000 }), // no `perception` field at all
+      maxTicks: 12,
+    });
+
+    const ev = runFight(cfg).events;
+    // Live ⇒ only the structural one-tick observe-after-commit delay remains.
+    expect(ev[0].a.action).toEqual({ type: "idle" }); // baseline 0 before the tell
+    expect(ev[1].a.action).toEqual({ type: "block", band: "high" });
+    // The added field leaves replay byte-identical.
+    expect(runFight(cfg).events).toEqual(ev);
+  });
+
+  it("exposes the 0 baseline as a literal 0 a bot can test, not a missing value", () => {
+    // A non-attacking opponent must read as attackBand === 0 (not undefined): a bot
+    // can branch on "no incoming attack". B never attacks, so A advances every tick.
+    const onNoAttack = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "opponent.attackBand" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "move", dir: 1 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: onNoAttack,
+        botB: bot([], { type: "idle" }), // never attacks ⇒ band stays 0
+        rules: getMockRules({ startGap: 300000 }),
+        maxTicks: 3,
+      }),
+    );
+
+    expect(result.events[0].a.action).toEqual({ type: "move", dir: 1 });
+  });
+
+  it("accepts a bot that reads opponent.attackBand (additive to the allowlist)", () => {
+    expect(validate(BAND_MIRROR).ok).toBe(true);
   });
 });

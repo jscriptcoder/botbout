@@ -33,6 +33,7 @@ export type OpponentState = {
   facing: Facing;
   distance: number; // raw (delayed) gap to live self
   attacking: boolean; // is the (perceived) opponent committed to a move?
+  attackBand: number; // height-ordered enum of the perceived attack: 0 none, 1 low, 2 mid, 3 high
   vx: number; // perceived horizontal velocity (sub-units/tick), for dead-reckoning
   predictedDistance: number; // distance dead-reckoned forward over the L_pos gap
 };
