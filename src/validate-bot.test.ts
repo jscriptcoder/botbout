@@ -425,6 +425,7 @@ describe("validate — bot intake gate", () => {
       "opponent.facing",
       "opponent.distance",
       "opponent.y",
+      "opponent.posture",
       "ring.width",
       "clock.tick",
       "clock.ticksRemaining",

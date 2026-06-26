@@ -12,16 +12,17 @@
 // COMMITMENT (a started move runs startup→active→recovery; actions issued while
 // committed are ignored), HEIGHT-BANDED guard/block (a strike is blocked only by a
 // guard at its own band; a wrong-height guard — or none — is hit), and PERCEPTION
-// LATENCY — the opponent is a coherent delayed snapshot (positional fields by lPos,
-// action fields — attacking + attackBand — by lAct) with dead-reckoned
-// predictedDistance and seeded, clamped per-tick jitter on the latencies (the sim's
-// first PRNG consumer). A bot can now read the incoming attack's height (attackBand)
-// on the same delayed layer as the attacking tell. VERTICAL AXIS has begun: a
-// `crouch` posture vacates the `high` band, so a high strike whiffs a croucher (the
-// §11.3 step-3 occupancy gate, no longer hardwired open); and a `jump` launches a
-// fixed-point gravity arc (y += vy; vy -= gravity) that is committed while airborne
-// (canAct=0 until it lands at y=0). Still pending: airborne occupancy (an airborne
-// fighter vacating `low` so a sweep whiffs it) and parry.
+// LATENCY — the opponent is a coherent delayed snapshot (positional fields — x, y —
+// by lPos, action fields — attacking, attackBand, posture — by lAct) with
+// dead-reckoned predictedDistance and seeded, clamped per-tick jitter on the
+// latencies (the sim's first PRNG consumer). A bot reads the incoming attack's
+// height (attackBand) and the opponent's stance (posture) on the action layer, and
+// the opponent's height (y) on the positional layer. VERTICAL AXIS: a `crouch`
+// vacates the `high` band, and an airborne fighter (jump arc, committed: canAct=0
+// until it lands at y=0) vacates `low` once past `lowClearance` — so a high strike
+// whiffs a croucher and a sweep whiffs a jumper (the §11.3 step-3 occupancy gate,
+// no longer hardwired open). The arc is fixed-point (y += vy; vy -= gravity). Still
+// pending: parry.
 // ============================================================================
 import type {
   State,
@@ -79,11 +80,21 @@ type Fighter = {
   mem: Record<string, number>;
   points: number;
   state: MoveState;
+  posture: Posture; // last resolved stance, recorded into history for perception
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
 // bot can compare numerically — 0 = not attacking, then low < mid < high.
 const BAND_CODE: Record<Band, number> = { low: 1, mid: 2, high: 3 };
+
+// The perceived-posture encoding (invariant #4 layer): a height-ordered-ish stance
+// enum — 0 standing, 1 crouching, 2 airborne — matching attackBand's "0 = neutral"
+// convention so a bot can branch on a literal.
+const POSTURE_CODE: Record<Posture, number> = {
+  standing: 0,
+  crouching: 1,
+  airborne: 2,
+};
 
 // One tick's outward facts, recorded into a fighter's history so the OPPONENT can
 // perceive them delayed (invariant #4: a coherent delayed snapshot). Positional
@@ -96,6 +107,7 @@ type Frame = {
   facing: Facing;
   attacking: boolean;
   attackBand: number;
+  posture: number;
   vx: number;
 };
 
@@ -105,6 +117,7 @@ const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   facing: f.facing,
   attacking: f.state.kind === "attacking",
   attackBand: f.state.kind === "attacking" ? BAND_CODE[f.state.band] : 0,
+  posture: POSTURE_CODE[f.posture],
   vx: prev ? f.x - prev.x : 0,
 });
 
@@ -147,6 +160,7 @@ const perceiveOpponent = (
     distance: Math.abs(oppPos.x - selfX),
     attacking: oppAct.attacking,
     attackBand: oppAct.attackBand,
+    posture: oppAct.posture,
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
   };
@@ -311,6 +325,7 @@ export function runFight(cfg: FightConfig): FightResult {
     mem: initMem(botA),
     points: 0,
     state: { kind: "neutral" },
+    posture: "standing",
   };
 
   const b: Fighter = {
@@ -320,6 +335,7 @@ export function runFight(cfg: FightConfig): FightResult {
     mem: initMem(botB),
     points: 0,
     state: { kind: "neutral" },
+    posture: "standing",
   };
 
   const events: FightEvent[] = [];
@@ -391,6 +407,10 @@ export function runFight(cfg: FightConfig): FightResult {
     const bGuardBand = guardBandOf(b, bAction);
     const aPosture = postureOf(a, aAction, rules);
     const bPosture = postureOf(b, bAction, rules);
+    // Record the resolved stance so next tick's frameOf can serve it delayed —
+    // crouch is a per-tick, pre-action posture, so it must be carried here.
+    a.posture = aPosture;
+    b.posture = bPosture;
     intake(a, aAction, rules);
     intake(b, bAction, rules);
     resolveHit(a, b, rules, bGuardBand, bPosture);

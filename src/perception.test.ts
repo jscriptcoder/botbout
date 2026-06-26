@@ -635,3 +635,155 @@ describe("perception latency — delayed opponent height (L_pos)", () => {
     expect(validate(heightBlocker).ok).toBe(true);
   });
 });
+
+describe("perception latency — delayed opponent posture (L_act)", () => {
+  // B holds a crouch every tick; A reads the (delayed) posture enum.
+  const CROUCHER = bot([], { type: "crouch" });
+
+  // A bot that jumps the instant it is free to act, else idles.
+  const jumpWhenFree = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "jump", dir: 0 },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // A guards the instant it PERCEIVES posture === code, so firstBlockTick is a
+  // clean read of *when A perceived* that stance.
+  const blockOnPosture = (code: number): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "opponent.posture" },
+              { op: "const", value: code },
+            ],
+          },
+          do: { type: "block", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  const crouchDelay = (perception: {
+    lPos?: number;
+    lAct?: number;
+  }): FightConfig =>
+    getMockConfig({
+      rules: getMockRules({ perception }),
+      botA: blockOnPosture(1), // crouching
+      botB: CROUCHER,
+      maxTicks: 12,
+    });
+
+  it("delays the perception of a crouch by exactly L_act ticks (plus the structural tick)", () => {
+    // L_act = 0: the crouch is perceived at tick 1 — the structural observe-after-
+    // commit tick (history[0] is the pre-crouch baseline).
+    expect(firstBlockTick(runFight(crouchDelay({ lAct: 0 })).events)).toBe(1);
+    expect(firstBlockTick(runFight(crouchDelay({ lAct: 1 })).events)).toBe(2);
+    expect(firstBlockTick(runFight(crouchDelay({ lAct: 2 })).events)).toBe(3);
+  });
+
+  it("rides the action (L_act) layer, not the positional (L_pos) layer", () => {
+    // Only the positional layer delayed (L_act = 0, L_pos = 5): the posture read
+    // stays live ⇒ tick 1, proving opponent.posture follows the action layer.
+    expect(
+      firstBlockTick(runFight(crouchDelay({ lPos: 5, lAct: 0 })).events),
+    ).toBe(1);
+  });
+
+  // A reads the croucher and commits a strike at the band that connects.
+  const postureCounter = (band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "opponent.posture" },
+              { op: "const", value: 1 }, // crouching
+            ],
+          },
+          do: { type: "attack", move: "strike", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  const counterScore = (band: Band): number =>
+    runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }), // within reach (250000)
+        botA: postureCounter(band),
+        botB: CROUCHER,
+        maxTicks: 12,
+      }),
+    ).scores.a;
+
+  it("lets a posture-reading bot avoid high vs a croucher — mid connects where a fixed high whiffs", () => {
+    expect(counterScore("mid")).toBe(1); // reads crouching, strikes mid ⇒ connects
+    expect(counterScore("high")).toBe(0); // same read, high ⇒ sails over the croucher
+  });
+
+  it("exposes a standing opponent as the literal 0 a bot can branch on", () => {
+    // A non-crouching, non-jumping opponent reads posture === 0 (not undefined).
+    const onStanding = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "opponent.posture" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "move", dir: 1 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: onStanding,
+        botB: bot([], { type: "idle" }), // never crouches/jumps ⇒ posture stays 0
+        rules: getMockRules({ startGap: 300000 }),
+        maxTicks: 3,
+      }),
+    );
+
+    expect(result.events[0].a.action).toEqual({ type: "move", dir: 1 });
+  });
+
+  it("distinguishes airborne (2) from crouching (1) — a jumper is not read as a croucher", () => {
+    const vsJumper = (code: number): FightConfig =>
+      getMockConfig({
+        rules: getMockRules({
+          jumpImpulse: 12000,
+          gravity: 4000,
+          lowClearance: 1000,
+        }),
+        botA: blockOnPosture(code),
+        botB: jumpWhenFree,
+        maxTicks: 12,
+      });
+
+    expect(firstBlockTick(runFight(vsJumper(2)).events)).toBeDefined(); // read as airborne
+    expect(firstBlockTick(runFight(vsJumper(1)).events)).toBeUndefined(); // never as crouching
+  });
+
+  it("accepts a bot that reads opponent.posture (additive to the allowlist)", () => {
+    expect(validate(blockOnPosture(1)).ok).toBe(true);
+  });
+});

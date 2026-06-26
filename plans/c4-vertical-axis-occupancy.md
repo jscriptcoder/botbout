@@ -73,13 +73,13 @@ so a bot can read it and counter.
       _(Slice 2 — PR #18)_
 - [x] An airborne fighter occupies `{high, mid}`; a `low` strike (sweep) in reach **whiffs**
       a jumper, while `mid`/`high` strikes still score (anti-air). _(Slice 3 — PR #19)_
-- [ ] With perception latency, a bot can **read** `opponent.y` (`L_pos`-delayed) and anti-air
-      a jumper by perceived height. _(Slice 4a)_
-- [ ] With perception latency, a bot can **read** `opponent.posture` (`L_act`-delayed enum) and
+- [x] With perception latency, a bot can **read** `opponent.y` (`L_pos`-delayed) and anti-air
+      a jumper by perceived height. _(Slice 4a — PR #20)_
+- [x] With perception latency, a bot can **read** `opponent.posture` (`L_act`-delayed enum) and
       switch its strike's band — incl. avoiding `high` vs a perceived croucher. _(Slice 4b)_
-- [ ] With no `crouch`/`jump` anywhere, the fight is **byte-identical** to C3 (all fighters
+- [x] With no `crouch`/`jump` anywhere, the fight is **byte-identical** to C3 (all fighters
       stand at `y=0`, occupy all 3 bands).
-- [ ] All replays stay byte-identical and every `y`/`vy` stays an integer.
+- [x] All replays stay byte-identical and every `y`/`vy` stays an integer.
 
 ## Slices
 
@@ -186,7 +186,7 @@ airborne defender, while `mid`/`high` still score (anti-air). `lowClearance` add
   **REFACTOR**: fold the crouch (slice 1) and airborne occupancy into one clear table.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
-### Slice 4a: Perceive opponent height (`L_pos`) — anti-air by reading `opponent.y`
+### Slice 4a: Perceive opponent height (`L_pos`) — anti-air by reading `opponent.y` ✅ DONE (PR #20)
 
 **Value**: A counter-bot can **perceive** a jumper's height (delayed) and switch to a
 connecting band — the read/counter game keyed on height, the part that makes occupancy a
@@ -217,7 +217,7 @@ needs the height dead-reckoning); the `posture` enum + crouch perception (Slice 
   **REFACTOR**: assess only if it adds value.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
-### Slice 4b: Perceive opponent posture (`L_act`) — the `{standing, crouching, airborne}` enum
+### Slice 4b: Perceive opponent posture (`L_act`) — the `{standing, crouching, airborne}` enum ✅ DONE
 
 **Value**: A counter-bot can **recognize** the opponent's stance (delayed) — notably a croucher
 (invisible to the height read, since crouch is grounded) — and avoid a band that would whiff;
