@@ -64,12 +64,13 @@ so a bot can read it and counter.
 
 ## Acceptance Criteria
 
-- [ ] A `crouch` action is accepted by the validator and makes the fighter occupy
+- [x] A `crouch` action is accepted by the validator and makes the fighter occupy
       mid+low; a `high` strike in reach **whiffs** a croucher (no score), while `mid`/`low`
-      strikes still score.
-- [ ] A `jump` action launches a deterministic **integer gravity arc** (`y` rises, gravity
+      strikes still score. _(Slice 1 — PR #17)_
+- [x] A `jump` action launches a deterministic **integer gravity arc** (`y` rises, gravity
       pulls it back, lands at `y=0`); the fighter is **committed while airborne** (mid-air
       actions are ignored, like an attacking fighter); `y` appears in the event log.
+      _(Slice 2 — PR #18)_
 - [ ] An airborne fighter occupies `{high, mid}`; a `low` strike (sweep) in reach **whiffs**
       a jumper, while `mid`/`high` strikes still score (anti-air).
 - [ ] With perception latency, a bot can **read** `opponent.posture` (`L_act`-delayed) and
@@ -83,7 +84,7 @@ so a bot can read it and counter.
 Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code without a
 failing test. Load `tdd`, `testing`, `mutation-testing`, `refactoring` before each slice.
 
-### Slice 1: Crouch vacates `high` — a strike can whiff on posture (occupancy gate goes live)
+### Slice 1: Crouch vacates `high` — a strike can whiff on posture (occupancy gate goes live) ✅ DONE (PR #17)
 
 **Value**: A bot author can duck a high attack — the first time a strike misses on posture
 alone; the §11 step-3 occupancy gate runs for real (no longer hardwired open).
@@ -122,7 +123,7 @@ while crouching (deferred numeric).
   clearer); keep the `resolveHit` gate linear and short-circuiting per §11.3.
   **Done when**: all criteria met, mutation report reviewed, human approves commit.
 
-### Slice 2: A fighter can jump — a deterministic integer gravity arc, committed while airborne
+### Slice 2: A fighter can jump — a deterministic integer gravity arc, committed while airborne ✅ DONE (PR #18)
 
 **Value**: Fighters gain the vertical axis: a real jump (the platform's first `y` motion),
 visible in the event log — the walking skeleton for the low/high game (mirrors how C1's

@@ -216,20 +216,34 @@ const guardBandOf = (fighter: Fighter, action: Action): Band | null =>
     : null;
 
 // A fighter's vertical posture this tick. `crouch` is a free per-tick posture
-// (like `block`): a fighter crouches only when free to act and choosing it; a
-// committed fighter stands. (The set of postures widens with the airborne state.)
-type Posture = "standing" | "crouching";
+// (like `block`): a fighter crouches only when free to act and choosing it.
+// `airborne` is the committed jump arc, but only once it has cleared
+// `lowClearance` — below that height (just after launch / before landing) it is
+// still grounded for occupancy. Absent `lowClearance` ⇒ never airborne-vacating.
+type Posture = "standing" | "crouching" | "airborne";
 
-const postureOf = (fighter: Fighter, action: Action): Posture =>
-  fighter.state.kind === "neutral" && action.type === "crouch"
-    ? "crouching"
-    : "standing";
+const postureOf = (fighter: Fighter, action: Action, rules: Rules): Posture =>
+  fighter.state.kind === "airborne"
+    ? rules.lowClearance !== undefined && fighter.y >= rules.lowClearance
+      ? "airborne"
+      : "standing"
+    : fighter.state.kind === "neutral" && action.type === "crouch"
+      ? "crouching"
+      : "standing";
 
-// Which bands a posture's hurtbox occupies (§2 / §11.3 step 3). A croucher
-// vacates `high`, so a high strike sails over it; everyone else occupies all
-// three. A strike connects only if the defender occupies the attacked band.
+// Which bands a posture's hurtbox occupies (§2 / §11.3 step 3). Each posture
+// vacates at most one band — a croucher vacates `high` (a high strike sails over
+// it), an airborne fighter vacates `low` (a sweep passes under it); `mid` is
+// always occupied. A strike connects only if the defender occupies the attacked
+// band.
+const VACATED_BAND: Record<Posture, Band | null> = {
+  standing: null,
+  crouching: "high",
+  airborne: "low",
+};
+
 const occupies = (posture: Posture, band: Band): boolean =>
-  posture === "crouching" ? band !== "high" : true;
+  VACATED_BAND[posture] !== band;
 
 // During its active window, a strike in reach scores once (per activation) —
 // unless the defender's hurtbox does NOT occupy the attacked band (it whiffs on
@@ -372,8 +386,8 @@ export function runFight(cfg: FightConfig): FightResult {
     //    touches only its own fighter, so it is order-independent.
     const aGuardBand = guardBandOf(a, aAction);
     const bGuardBand = guardBandOf(b, bAction);
-    const aPosture = postureOf(a, aAction);
-    const bPosture = postureOf(b, bAction);
+    const aPosture = postureOf(a, aAction, rules);
+    const bPosture = postureOf(b, bAction, rules);
     intake(a, aAction, rules);
     intake(b, bAction, rules);
     resolveHit(a, b, rules, bGuardBand, bPosture);

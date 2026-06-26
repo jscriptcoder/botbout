@@ -813,3 +813,88 @@ describe("runFight — vertical axis (the jump arc)", () => {
     }
   });
 });
+
+describe("runFight — airborne occupancy (a jumper vacates the low band)", () => {
+  // A bot that jumps the instant it is free to act, else idles (committed mid-air).
+  const jumpWhenFree = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "jump", dir: 0 },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // jumpImpulse 12000 / gravity 4000 ⇒ the arc holds its apex at y=24000; the
+  // striker's single active frame (startup 4, active 1) resolves on the tick the
+  // defender sits at exactly 24000, so the sweep meets a defender at that height.
+  const sweepRules = (lowClearance?: number): Rules =>
+    getMockRules({
+      jumpImpulse: 12000,
+      gravity: 4000,
+      startGap: 200000, // within reach (250000)
+      lowClearance,
+      moves: {
+        strike: { startup: 4, active: 1, recovery: 6, score: 1, reach: 250000 },
+      },
+    });
+
+  // A strikes `band` into a jumper (B jumps at tick 0); report A's score.
+  const sweepScore = (band: Band, lowClearance?: number): number =>
+    runFight(
+      getMockConfig({
+        rules: sweepRules(lowClearance),
+        botA: bot([], { type: "attack", move: "strike", band }),
+        botB: jumpWhenFree,
+        maxTicks: 8,
+      }),
+    ).scores.a;
+
+  it("a low strike (sweep) whiffs an airborne fighter at/above clearance, but mid and high connect (anti-air)", () => {
+    expect(sweepScore("low", 24000)).toBe(0); // the sweep passes under the jumper
+    expect(sweepScore("mid", 24000)).toBe(1); // mid still occupied ⇒ anti-air lands
+    expect(sweepScore("high", 24000)).toBe(1); // high still occupied ⇒ anti-air lands
+  });
+
+  it("the boundary is y ≥ lowClearance: a sweep lands when the jumper is just below clearance", () => {
+    // Same geometry (defender at y=24000), threshold one sub-unit higher ⇒ low is
+    // still occupied ⇒ the sweep connects. Pins `>=` (not `>`) — the timing window.
+    expect(sweepScore("low", 24001)).toBe(1);
+  });
+
+  it("with no lowClearance an airborne fighter is hittable everywhere (byte-identical to the pre-vacate engine)", () => {
+    expect(sweepScore("low")).toBe(1); // absent ⇒ low never vacated ⇒ sweep lands
+  });
+
+  it("resolves airborne occupancy identically from either slot (swap-symmetric)", () => {
+    const striker = bot([], { type: "attack", move: "strike", band: "low" });
+
+    const jumperAsB = runFight(
+      getMockConfig({
+        rules: sweepRules(24000),
+        botA: striker,
+        botB: jumpWhenFree,
+        maxTicks: 8,
+      }),
+    );
+
+    const jumperAsA = runFight(
+      getMockConfig({
+        rules: sweepRules(24000),
+        botA: jumpWhenFree,
+        botB: striker,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(jumperAsB.scores.a).toBe(0); // striker (A) whiffs the airborne defender (B)
+    expect(jumperAsA.scores.b).toBe(0); // striker (B) whiffs the airborne defender (A)
+  });
+});

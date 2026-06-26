@@ -75,6 +75,10 @@ export type Rules = {
   // applied to that velocity. Integer sub-units only — the arc is replay-stable.
   jumpImpulse?: number;
   gravity?: number;
+  // The height (sub-units) at/above which an airborne fighter vacates the `low`
+  // band — a sweep passes under it. Absent ⇒ `low` is never vacated ⇒ an airborne
+  // fighter stays hittable everywhere (byte-identical to the pre-vacate engine).
+  lowClearance?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
