@@ -15,13 +15,20 @@
 // op/field/move never rejects a previously valid bot).
 // ============================================================================
 
-export type Band = "high" | "mid" | "low";
-export type MoveId = "strike";
+import type { State, Action, Band, MoveId } from "./types.js";
+
+// The DSL read surface: the whitelisted state leaves a bot may read. This is the
+// SINGLE source — the validator's allowlist is derived from FIELD_READERS' keys
+// (below) and the interpreter reads through the same map.
+export type FieldPath =
+  | "self.x" | "self.facing" | "self.points" | "self.canAct" | "self.phaseRemaining"
+  | "opponent.x" | "opponent.facing" | "opponent.distance"
+  | "ring.width" | "clock.tick" | "clock.ticksRemaining";
 
 // ─── Numeric expressions (values are fixed-point integers) ───────────────────
 export type NumExpr =
   | { op: "const"; value: number }
-  | { op: "field"; path: string }
+  | { op: "field"; path: FieldPath }
   | { op: "mem"; cell: string };
 
 // ─── Boolean expressions ─────────────────────────────────────────────────────
@@ -29,14 +36,6 @@ export type BoolExpr =
   | { op: "gt" | "lt" | "gte" | "lte" | "eq" | "neq"; args: [NumExpr, NumExpr] }
   | { op: "and" | "or"; args: BoolExpr[] }
   | { op: "not"; arg: BoolExpr };
-
-// ─── Action grammar — a bot returns exactly ONE per tick ─────────────────────
-// `dir` is RELATIVE to facing: +1 = toward opponent, -1 = away, 0 = hold.
-export type Action =
-  | { type: "idle" }
-  | { type: "move"; dir: -1 | 0 | 1 }
-  | { type: "block"; band: Band }
-  | { type: "attack"; move: MoveId; band: Band };
 
 export type Rule = {
   when: BoolExpr;
@@ -64,11 +63,22 @@ export const LIMITS = {
 } as const;
 
 // ─── Allowlists (the read surface + grammar the skeleton exposes) ────────────
-const ALLOWED_FIELDS: ReadonlySet<string> = new Set([
-  "self.x", "self.facing", "self.points", "self.canAct", "self.phaseRemaining",
-  "opponent.x", "opponent.facing", "opponent.distance",
-  "ring.width", "clock.tick", "clock.ticksRemaining",
-]);
+// Field read surface: path → accessor. Total over FieldPath, so the interpreter
+// never needs a fallback branch. The validator's allowlist is exactly its keys.
+const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
+  "self.x": (s) => s.self.x,
+  "self.facing": (s) => s.self.facing,
+  "self.points": (s) => s.self.points,
+  "self.canAct": (s) => (s.self.canAct ? 1 : 0),
+  "self.phaseRemaining": (s) => s.self.phaseRemaining,
+  "opponent.x": (s) => s.opponent.x,
+  "opponent.facing": (s) => s.opponent.facing,
+  "opponent.distance": (s) => s.opponent.distance,
+  "ring.width": (s) => s.ring.width,
+  "clock.tick": (s) => s.clock.tick,
+  "clock.ticksRemaining": (s) => s.clock.ticksRemaining,
+};
+const ALLOWED_FIELDS: ReadonlySet<string> = new Set(Object.keys(FIELD_READERS));
 const MOVES: ReadonlySet<string> = new Set<MoveId>(["strike"]);
 const BANDS: ReadonlySet<string> = new Set<Band>(["high", "mid", "low"]);
 const CELL_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/;
@@ -228,4 +238,44 @@ export function validate(doc: unknown): ValidationResult {
   action(d.default, "default");
 
   return { ok: issues.length === 0, issues, nodeCount };
+}
+
+// ─── Interpreter ─────────────────────────────────────────────────────────────
+// Operates on an ALREADY-VALIDATED BotDoc. Pure w.r.t. (doc, state); the only
+// effect is writing the per-fighter `mem` the engine threads across ticks.
+function evalNum(n: NumExpr, state: State, mem: Record<string, number>): number {
+  switch (n.op) {
+    case "const": return n.value;
+    case "field": return FIELD_READERS[n.path](state);
+    case "mem": return mem[n.cell] ?? 0;
+  }
+}
+
+function evalBool(n: BoolExpr, state: State, mem: Record<string, number>): boolean {
+  switch (n.op) {
+    case "gt": return evalNum(n.args[0], state, mem) > evalNum(n.args[1], state, mem);
+    case "lt": return evalNum(n.args[0], state, mem) < evalNum(n.args[1], state, mem);
+    case "gte": return evalNum(n.args[0], state, mem) >= evalNum(n.args[1], state, mem);
+    case "lte": return evalNum(n.args[0], state, mem) <= evalNum(n.args[1], state, mem);
+    case "eq": return evalNum(n.args[0], state, mem) === evalNum(n.args[1], state, mem);
+    case "neq": return evalNum(n.args[0], state, mem) !== evalNum(n.args[1], state, mem);
+    case "and": return n.args.every((a) => evalBool(a, state, mem));
+    case "or": return n.args.some((a) => evalBool(a, state, mem));
+    case "not": return !evalBool(n.arg, state, mem);
+  }
+}
+
+/**
+ * Run one tick for one fighter. Rules evaluate top-to-bottom; the first rule
+ * whose `when` holds and that carries a `do` returns the tick's Action. A rule
+ * with no `do` is a TRACKER: its `set` writes apply and evaluation continues.
+ * No rule fires ⇒ `default`. Mutates `mem` in place (the engine owns it).
+ */
+export function runTick(doc: BotDoc, state: State, mem: Record<string, number>): Action {
+  for (const rule of doc.rules) {
+    if (!evalBool(rule.when, state, mem)) continue;
+    if (rule.set) for (const w of rule.set) mem[w.cell] = evalNum(w.to, state, mem);
+    if (rule.do) return rule.do;
+  }
+  return doc.default;
 }

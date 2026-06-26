@@ -82,7 +82,14 @@ and the negated allowlist `.has(...)` check.
 
 ---
 
-### Slice 2: Interpret one tick — a bot's policy returns exactly one Action for a state
+### Slice 2: Interpret one tick — a bot's policy returns exactly one Action for a state  ✅ DONE
+
+> ✅ **Done** — 103 tests total (34 new) · interpreter 100% mutation score (63/63) ·
+> branch cov 98.56% (`dsl.ts:145-146` = same documented defensive budget guards).
+> Added `src/types.ts` (State/Action contract); read surface unified via
+> `FIELD_READERS` + a `FieldPath` union (total readers). `div`/arithmetic + int32
+> clamp **deferred** to the perception/dead-reckoning slice (NumExpr stays leaf-only).
+> `src/types.ts`, `src/dsl.ts`, `src/interpret-tick.test.ts`.
 
 **Value**: the engine turns a validated bot + a state snapshot into one deterministic
 `Action` — the per-tick decision the loop will call.
