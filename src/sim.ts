@@ -55,6 +55,10 @@ type Fighter = {
   state: MoveState;
 };
 
+// One tick's outward positional facts, recorded into a fighter's history so the
+// OPPONENT can perceive it delayed (invariant #4: a coherent delayed snapshot).
+type Frame = { x: number; facing: Facing };
+
 const initMem = (bot: BotDoc): Record<string, number> => ({
   ...(bot.memory ?? {}),
 });
@@ -69,10 +73,16 @@ const clamp = (v: number, lo: number, hi: number): number =>
 const totalFrames = (spec: MoveSpec): number =>
   spec.startup + spec.active + spec.recovery;
 
-// Build one fighter's view of tick T: self is live; opponent is live too (L = 0).
+// The opponent frame a fighter perceives this tick: its history `lPos` ticks ago,
+// clamped to the start of the fight (the first lPos ticks read the opening frame).
+const perceivedFrame = (history: Frame[], tick: number, lPos: number): Frame =>
+  history[Math.max(0, tick - lPos)];
+
+// Build one fighter's view of tick T: self is live; the opponent is the delayed
+// frame it perceives (distance is measured from that frame to live self).
 const viewFor = (
   self: Fighter,
-  other: Fighter,
+  oppFrame: Frame,
   rules: Rules,
   tick: number,
   maxTicks: number,
@@ -93,9 +103,9 @@ const viewFor = (
       phaseRemaining,
     },
     opponent: {
-      x: other.x,
-      facing: other.facing,
-      distance: Math.abs(other.x - self.x),
+      x: oppFrame.x,
+      facing: oppFrame.facing,
+      distance: Math.abs(oppFrame.x - self.x),
     },
     ring: { width: rules.ring.width },
     clock: { tick, ticksRemaining: maxTicks - tick },
@@ -175,15 +185,33 @@ export function runFight(cfg: FightConfig): FightResult {
   };
 
   const events: FightEvent[] = [];
+  const lPos = rules.perception?.lPos ?? 0;
+  const histA: Frame[] = [];
+  const histB: Frame[] = [];
 
   for (let tick = 0; tick < maxTicks; tick++) {
     // 1. Auto-face from pre-tick positions.
     a.facing = facingToward(a.x, b.x);
     b.facing = facingToward(b.x, a.x);
 
+    // 1b. Record each fighter's pre-tick frame, then read the opponent's delayed
+    //     frame from history (lPos = 0 ⇒ this tick's frame ⇒ live perception).
+    histA.push({ x: a.x, facing: a.facing });
+    histB.push({ x: b.x, facing: b.facing });
+    const aOpp = perceivedFrame(histB, tick, lPos);
+    const bOpp = perceivedFrame(histA, tick, lPos);
+
     // 2. Both fighters decide against one immutable pre-tick snapshot.
-    const aAction = runTick(botA, viewFor(a, b, rules, tick, maxTicks), a.mem);
-    const bAction = runTick(botB, viewFor(b, a, rules, tick, maxTicks), b.mem);
+    const aAction = runTick(
+      botA,
+      viewFor(a, aOpp, rules, tick, maxTicks),
+      a.mem,
+    );
+    const bAction = runTick(
+      botB,
+      viewFor(b, bOpp, rules, tick, maxTicks),
+      b.mem,
+    );
 
     // 3. Resolve together: honour/ignore intake, then hits, then advance clocks.
     //    A fighter guards this tick only if it was free to act and chose `block`

@@ -63,4 +63,7 @@ export type Rules = {
   ring: { width: number }; // ring width in sub-units
   startGap: number; // initial separation between the two fighters (sub-units)
   moves: Record<MoveId, MoveSpec>; // the frame table
+  // Opponent perception latency (ticks). Self is always live. Absent ⇒ all 0 ⇒
+  // the opponent is perceived live (forward-compatible with the L=0 skeleton).
+  perception?: { lPos: number }; // positional fields delayed by lPos
 };
