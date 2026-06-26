@@ -41,17 +41,18 @@ arrives with C4).
 
 ## Acceptance Criteria
 
-- [ ] A strike whose band **differs** from the defender's raised guard band **connects and
-      scores** (wrong-height guard ⇒ hit), for every band pairing.
-- [ ] A strike whose band **matches** the defender's raised guard band is **blocked** (no
-      score), for `high`, `mid`, and `low`.
-- [ ] An **open** defender (not guarding — idle, moving, or committed/attacking) is **hit**
-      by a strike of any band.
+- [x] A strike whose band **differs** from the defender's raised guard band **connects and
+      scores** (wrong-height guard ⇒ hit), for every band pairing. _(Slice 1)_
+- [x] A strike whose band **matches** the defender's raised guard band is **blocked** (no
+      score), for `high`, `mid`, and `low`. _(Slice 1)_
+- [x] An **open** defender (not guarding — idle, moving, or committed/attacking) is **hit**
+      by a strike of any band. _(Slice 1)_
 - [ ] A bot can read `opponent.attackBand` — the opponent's current attack band, perceived
       **delayed by `L_act`** (same layer as `opponent.attacking`), encoded numerically — and
-      branch on it to raise the matching guard.
-- [ ] Regression: simultaneous **same-band** strikes still **trade** (both score); fights
+      branch on it to raise the matching guard. _(Slice 2)_
+- [x] Regression: simultaneous **same-band** strikes still **trade** (both score); fights
       stay **byte-reproducible** and **swap-symmetric**; `perception` absent ⇒ unchanged.
+      _(Slice 1)_
 
 ## Slices
 
@@ -59,7 +60,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 failing test. Read `.claude/CLAUDE.md`, `docs/DESIGN.md` §11, and the testing rules before
 writing slices.
 
-### Slice 1: A wrong-height guard gets hit; a correct-height guard blocks
+### Slice 1: A wrong-height guard gets hit; a correct-height guard blocks — ✅ DONE (`29a04b9` feat, `584b54d` refactor)
 
 **Value**: Bot author — the core karate read. The guard you raise must match the incoming
 height or you eat the strike.
