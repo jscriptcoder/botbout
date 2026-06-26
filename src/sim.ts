@@ -28,7 +28,14 @@
 // parrying fighter lands within `counterWindow` ticks scores an extra `counterBonus`.
 // Strikes resolve via the §11 compute-then-apply union (both outcomes computed from the
 // frozen snapshot, then applied) so the counter's cross-fighter effect stays
-// swap-symmetric. Still pending: perceiving the counter window (self.counterWindow).
+// swap-symmetric. THROW: a committed grab (startup → grab-active → recovery) GRABS a
+// grounded defender in reach — beating any guard/parry (it is unbanded) — scoring and
+// knocking them DOWN (canAct=0, untargetable) for knockdownDuration ticks. The §11.4
+// precedence strike > throw is resolved in the same union: a fighter is open while
+// throwing, so an opposing active in-range strike (a HIT) STUFFS the throw — the grab is
+// voided and the throw marked resolved (it cannot grab on a later frame), but the thrower
+// stays committed through its recovery (punishable). Still pending: perceiving the counter
+// window (self.counterWindow) and the incoming throw (opponent.throwing); throw-break; throw clash.
 // ============================================================================
 import type {
   State,
@@ -80,7 +87,7 @@ type MoveState =
       extra: number; // extra recovery ticks added when this strike is parried (§5 deflect)
     }
   | { kind: "airborne"; vy: number }
-  | { kind: "throwing"; elapsed: number } // committed grab (single-shot: a grab downs the target ⇒ untargetable)
+  | { kind: "throwing"; elapsed: number; stuffed: boolean } // committed grab; `stuffed` once a strike beats it (§11.4) ⇒ cannot grab
   | { kind: "downed"; elapsed: number }; // knocked down for rules.knockdownDuration ticks
 
 type Fighter = {
@@ -263,7 +270,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
   } else if (action.type === "throw" && rules.throw !== undefined) {
     // Commit to a grab (startup → grab-active → recovery). Without a throw frame table
     // the action is inert (no state change) ⇒ byte-identical to the pre-throw engine.
-    f.state = { kind: "throwing", elapsed: 0 };
+    f.state = { kind: "throwing", elapsed: 0, stuffed: false };
   }
   // idle / block / crouch (or throw with no frame table): no positional effect.
 };
@@ -428,6 +435,7 @@ const computeThrow = (
 ): ThrowOutcome | null => {
   const st = att.state;
   if (st.kind !== "throwing") return null;
+  if (st.stuffed) return null; // a strike-beaten throw is resolved (§11.4) — it cannot grab
   const spec = rules.throw;
   if (spec === undefined) return null; // inert without a throw frame table
 
@@ -436,7 +444,12 @@ const computeThrow = (
 
   if (!inGrabWindow) return null;
   if (Math.abs(def.x - att.x) > spec.reach) return null;
-  if (def.state.kind !== "neutral") return null; // grabbable iff grounded & free
+  // Grabbable iff GROUNDED: open / guarding / crouching (neutral) or mid-strike (attacking).
+  // An airborne (jumper), downed (no pile-on), or throwing (clash → later slice) defender cannot
+  // be grabbed. An active in-range strike beats the grab — that is the §11.4 precedence resolved
+  // in runFight (a grab computed here is voided there), NOT by treating a striker as ungrabbable.
+  if (def.state.kind !== "neutral" && def.state.kind !== "attacking")
+    return null;
 
   return { score: spec.score };
 };
@@ -457,6 +470,19 @@ const applyThrow = (
 
   att.points += outcome.score;
   def.state = { kind: "downed", elapsed: 0 };
+};
+
+// §11.4 precedence — strike > throw. A fighter is OPEN while throwing, so an opposing active
+// in-range strike (a HIT from computeStrike) STUFFS the throw: this marks the throwing move
+// resolved (`stuffed` ⇒ it cannot grab on a later active frame) and returns true so the caller
+// voids the grab outcome. The thrower still runs out its recovery — a stuffed throw is
+// punishable. Reads only the frozen pre-apply strike outcome, so resolution stays swap-symmetric.
+const stuffIfStruck = (f: Fighter, incoming: StrikeOutcome | null): boolean => {
+  if (f.state.kind !== "throwing") return false;
+  if (incoming?.result !== "hit") return false;
+  f.state.stuffed = true;
+
+  return true;
 };
 
 // Advance a committed fighter's clock. A strike ticks its move frames; an
@@ -641,15 +667,19 @@ export function runFight(cfg: FightConfig): FightResult {
     );
 
     // Throws are computed from the same frozen snapshot (a throw beats any guard, so it
-    // has no band gate). In this slice throws don't yet interact with the opponent's
-    // offense (strike-beats-throw is a later slice), so each side resolves independently.
+    // has no band gate). The §11.4 precedence strike > throw is then applied: an opposing
+    // active in-range strike (a HIT) STUFFS a throw — void the grab and mark it resolved
+    // (it cannot grab on a later frame), leaving the thrower committed through its recovery
+    // (punishable). Both decisions read the frozen snapshot before any apply ⇒ swap-symmetric.
     const aThrow = computeThrow(a, b, rules);
     const bThrow = computeThrow(b, a, rules);
+    const aThrowFinal = stuffIfStruck(a, bOutcome) ? null : aThrow;
+    const bThrowFinal = stuffIfStruck(b, aOutcome) ? null : bThrow;
 
     applyStrike(a, b, aOutcome);
     applyStrike(b, a, bOutcome);
-    applyThrow(a, b, aThrow);
-    applyThrow(b, a, bThrow);
+    applyThrow(a, b, aThrowFinal);
+    applyThrow(b, a, bThrowFinal);
     advance(a, rules);
     advance(b, rules);
     // A counter window ticks down once per tick (clamped at 0) after it has been read.
