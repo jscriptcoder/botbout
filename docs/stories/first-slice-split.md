@@ -16,7 +16,7 @@
   perception-latency meta, Pixi render, Vercel API, KotH ladder — is far too large for
   one increment.
 
-## Recommended First Slice
+## C1 — Walking skeleton (recommended first slice) · ✅ done (PRs #1–#5)
 
 **Walking skeleton — a deterministic, reproducible _headless_ fight.**
 
@@ -54,7 +54,7 @@ replay-verify). Everything after it is feature addition onto a proven spine.
 - **Pixi render / viewer** — safe to defer: the renderer is a **pure function of the
   integer event log** (LOCKED render/authority seam). The event log is the demonstrable
   artifact for now.
-- **Perception latency** (`L_pos`/`L_act`, ring buffer, seeded jitter) — slice 2. The
+- **Perception latency** (`L_pos`/`L_act`, ring buffer, seeded jitter) — **C2**. The
   skeleton runs at **L=0** (perfect info) to isolate loop determinism.
 - **Height bands + _uke_ guards · vertical axis (y/gravity/jump/crouch) · parry ·
   cancels/combos · throws/sweeps/okizeme · stamina · _yame_ + full WKF 0–3 scoring +
@@ -88,15 +88,22 @@ initialConditions}`, _When_ the fight runs twice, _Then_ the two event logs are
 **Release constraint:** internal / dev-only, **headless**. Demonstrable via the test
 suite (replay-equality + scoring) and a printed result/event-log trace. No deployment.
 
-## Split Candidates (near-term follow-ups)
+## Capability roadmap (C2–C6, near-term follow-ups)
 
-| Slice                                | Value                                                   | Includes                                                                                                                                        | Defers                 | Acceptance example                                                                                     | Release      |
-| ------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
-| **2. Perception latency keystone**   | Makes frame data _mean_ something; the distinctive meta | Split `L_pos`/`L_act`, per-fighter history ring buffer, one coherent delayed snapshot, dead-reckoned `predictedDistance`, seeded clamped jitter | bands, y, parry        | A strike with `startup < L_act+B` **cannot** be reaction-blocked; one with `startup ≥ L_act+B` **can** | dev/headless |
-| **3. Height bands + 3 _uke_ guards** | Core read/counter game                                  | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring                                                 | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked                                    | dev/headless |
-| **4. Vertical axis + occupancy**     | The low/high game becomes physical                      | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`)                                       | parry, cancels         | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper                               | dev/headless |
-| **5. Parry windows**                 | The skill gradient (predict vs react)                   | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block                           | cancels, throws        | A guard raised within the parry window deflects; the same guard raised late only blocks                | dev/headless |
-| **6. On-contact cancel combos**      | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff                 | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
+> **Labeling convention.** Capabilities are **C1, C2, C3…** (C1 = the walking skeleton
+> above). The `C` prefix is deliberate: it keeps these stable roadmap IDs from colliding
+> with `slice/N` **git branch names**. The walking skeleton (C1) shipped as branches
+> `slice/1`–`slice/5` — those are PR stages of C1, **not** capabilities C1–C5. Don't read
+> "C3" as "PR #3" or branch `slice/3`. Done: **C1** (PRs #1–#5), **C2** (PRs #7–#11).
+> Next: **C3**.
+
+| Capability                                     | Value                                                   | Includes                                                                                                                                        | Defers                 | Acceptance example                                                                                     | Release      |
+| ---------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| **C2. Perception latency keystone** · ✅ done  | Makes frame data _mean_ something; the distinctive meta | Split `L_pos`/`L_act`, per-fighter history ring buffer, one coherent delayed snapshot, dead-reckoned `predictedDistance`, seeded clamped jitter | bands, y, parry        | A strike with `startup < L_act+B` **cannot** be reaction-blocked; one with `startup ≥ L_act+B` **can** | dev/headless |
+| **C3. Height bands + 3 _uke_ guards** · ← next | Core read/counter game                                  | `high/mid/low` attack band; `block-{high,mid,low}`; wrong-height guard ⇒ hit; band keys scoring                                                 | y-axis, parry, cancels | A `high` strike vs `block-mid` connects; vs `block-high` is blocked                                    | dev/headless |
+| **C4. Vertical axis + occupancy**              | The low/high game becomes physical                      | fixed-point `y`, gravity arc, jump/crouch; band occupancy (croucher vacates `high`, jumper vacates `low`)                                       | parry, cancels         | A `jodan` (high) kick **whiffs** a croucher; a sweep **whiffs** a jumper                               | dev/headless |
+| **C5. Parry windows**                          | The skill gradient (predict vs react)                   | opening ticks of a matching guard ⇒ deflect + attacker extra-recovery + counter-hit bonus; later ticks ⇒ normal block                           | cancels, throws        | A guard raised within the parry window deflects; the same guard raised late only blocks                | dev/headless |
+| **C6. On-contact cancel combos**               | Within-exchange score escalation; the no-feint property | `cancelInto` windows, `canCancel` state, hit-confirm signal (`self.lastAttackConnected`); cancel only on hit/block, never whiff                 | throws, stamina        | An attack cancelled into a follow-up **on hit** chains; the same attempted **on whiff** does not       | dev/headless |
 
 ## Parking Lot (later — not pre-enumerated rigidly)
 
@@ -117,18 +124,21 @@ suite (replay-equality + scoring) and a printed result/event-log trace. No deplo
 ## Warnings
 
 - **Do not split the skeleton by layer.** "validator", "interpreter", "loop" are
-  `planning` **stages within slice 1**, not independent stories — none is independently
+  `planning` **stages within C1**, not independent stories — none is independently
   valuable or demoable alone.
 - **Design gap #1 is still open:** the precise _ordered_ combat-resolution procedure for
   the deep model (band-match + parry-vs-block + cancels + throw-triangle + occupancy).
-  Slice 1 only needs the thin version; **slices 3/5/6/7 need that procedure pinned** —
-  run `find-gaps` (or write it into `DESIGN.md`) before those.
+  C1 only needs the thin version; **C3 (bands), C5 (parry), C6 (cancels), and throws
+  (parking lot) need that procedure pinned** — run `find-gaps` (or write it into
+  `DESIGN.md`) before those.
 - **P9 implied a Pixi visual in the first slice.** We're deferring it deliberately. If a
   visual milestone is required sooner, pull render forward as its own slice — don't bloat
   the skeleton with it.
 
 ## Next Step
 
-Load **`planning`** on **Slice 1 (walking skeleton)** to stage it into PR-sized TDD
-increments (each: RED → GREEN → MUTATE → KILL MUTANTS → REFACTOR). Optionally run
-**`find-gaps`** on this split first to harden acceptance examples.
+C1 and C2 are shipped. **C3 (height bands + 3 _uke_ guards)** is the next capability,
+but it is **gated on Design gap #1** (the ordered combat-resolution procedure — see
+Warnings). Pin that into `DESIGN.md` first (via `find-gaps` or directly), then load
+**`planning`** on **C3** to stage it into PR-sized TDD increments (each:
+RED → GREEN → MUTATE → KILL MUTANTS → REFACTOR).

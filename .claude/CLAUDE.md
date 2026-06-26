@@ -81,10 +81,13 @@ generating code; flag any change that would.
   in test mocks); no 2D/vertical axis, height bands, *uke* guards, parry, cancels,
   *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
 - NEXT: **height bands + 3 *uke* guards** (`high/mid/low` attack band; wrong-height
-  guard ⇒ hit; band keys scoring) — Slice 3 of `docs/stories/first-slice-split.md`.
-  Then vertical axis + occupancy, parry windows, cancel combos. **Combat design gap #1**
-  (the ordered resolution procedure) must be pinned before bands/parry/cancels — see
-  the split's Warnings. Flow: `story-splitting`/`planning` → TDD, **PR per slice**.
+  guard ⇒ hit; band keys scoring) — capability **C3** of
+  `docs/stories/first-slice-split.md`. Then C4 vertical axis + occupancy, C5 parry
+  windows, C6 cancel combos. (Roadmap capabilities are **C1–C6** — the `C` prefix avoids
+  colliding with `slice/N` git branch names; C1 = walking skeleton shipped as branches
+  `slice/1`–`slice/5`, C2 = perception keystone.) **Combat design gap #1** (the ordered
+  resolution procedure) must be pinned before bands/parry/cancels — see the split's
+  Warnings. Flow: `story-splitting`/`planning` → TDD, **PR per capability**.
 
 ## Commands
 
