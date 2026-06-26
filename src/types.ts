@@ -43,3 +43,13 @@ export type State = {
   ring: RingState;
   clock: ClockState;
 };
+
+// ─── Rules: the immutable frame table (never changes during a fight) ─────────
+// Skeleton scope: just what movement needs. All quantities are integer sub-units
+// (SCALE = 1000 sub-units per world unit). Grows with the deep frame table.
+export type Rules = {
+  tickRate: number; // ticks per second (60)
+  walkSpeed: number; // sub-units travelled per tick while moving
+  ring: { width: number }; // ring width in sub-units
+  startGap: number; // initial separation between the two fighters (sub-units)
+};
