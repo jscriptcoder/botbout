@@ -91,6 +91,7 @@ type Fighter = {
   guardBand: Band | null; // band guarded last tick (null = open), for parry-window age
   guardAge: number; // consecutive ticks the current guard has been held (0 = open)
   counterRemaining: number; // post-parry counter-window ticks left (0 = closed)
+  cancelRemaining: number; // on-contact cancel-window ticks left after a connect (0 = closed)
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
@@ -210,20 +211,40 @@ const viewFor = (
   };
 };
 
+// A fresh attacking move: startup begins now (elapsed 0), nothing resolved yet, no
+// parry-extended recovery. The single source for "start an attack" — used both when a
+// neutral fighter strikes and when an on-contact cancel interrupts into a follow-up.
+const startAttack = (move: MoveId, band: Band): MoveState => ({
+  kind: "attacking",
+  move,
+  band,
+  elapsed: 0,
+  scored: false,
+  extra: 0,
+});
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
-  if (f.state.kind !== "neutral") return;
+  if (f.state.kind !== "neutral") {
+    // Cancel (§3 / §11.3 `CancelEnable`): a committed, cancelable fighter may interrupt the
+    // rest of its move into a follow-up listed in its current move's `cancelInto`. This is
+    // the one deliberate exception to commitment — every other locked-in action is ignored.
+    if (
+      f.state.kind === "attacking" &&
+      f.cancelRemaining > 0 &&
+      action.type === "attack" &&
+      (rules.moves[f.state.move].cancelInto ?? []).includes(action.move)
+    ) {
+      f.state = startAttack(action.move, action.band);
+      f.cancelRemaining = 0; // the fresh move re-opens the window only when IT connects
+    }
+
+    return;
+  }
 
   if (action.type === "attack") {
-    f.state = {
-      kind: "attacking",
-      move: action.move,
-      band: action.band,
-      elapsed: 0,
-      scored: false,
-      extra: 0,
-    };
+    f.state = startAttack(action.move, action.band);
   } else if (action.type === "move") {
     f.x = clamp(
       f.x + action.dir * f.facing * rules.walkSpeed,
@@ -291,7 +312,7 @@ const occupies = (posture: Posture, band: Band): boolean =>
 // effect until cancels arrive in C6). A `hit` adds points to the attacker; a `parry`
 // deflects — extra recovery on the attacker AND a counter window on the defender.
 type StrikeOutcome =
-  | { result: "hit"; points: number }
+  | { result: "hit"; points: number; cancel: number }
   | { result: "parry"; extra: number; counter: number };
 
 // Classify the strike att→def from the frozen snapshot. Gate order is §11.3: active →
@@ -330,10 +351,11 @@ const computeStrike = (
       : null; // stale guard ⇒ BLOCK, no effect
   }
 
-  // HIT — base score plus a counter bonus if this attacker's counter window is open.
+  // HIT — base score plus a counter bonus if this attacker's counter window is open. A hit
+  // also opens the on-contact cancel window (C6); absent config ⇒ 0 ⇒ no cancel.
   const bonus = att.counterRemaining > 0 ? (rules.counterBonus ?? 0) : 0;
 
-  return { result: "hit", points: spec.score + bonus };
+  return { result: "hit", points: spec.score + bonus, cancel: rules.cancelWindow ?? 0 };
 };
 
 // Apply one strike outcome. A `hit` scores on the attacker; a `parry` lands its
@@ -352,6 +374,7 @@ const applyStrike = (
   if (outcome.result === "hit") {
     att.points += outcome.points;
     st.scored = true;
+    att.cancelRemaining = outcome.cancel; // a connect opens the cancel window on the attacker
 
     return;
   }
@@ -404,6 +427,7 @@ export function runFight(cfg: FightConfig): FightResult {
     guardBand: null,
     guardAge: 0,
     counterRemaining: 0,
+    cancelRemaining: 0,
   };
 
   const b: Fighter = {
@@ -417,6 +441,7 @@ export function runFight(cfg: FightConfig): FightResult {
     guardBand: null,
     guardAge: 0,
     counterRemaining: 0,
+    cancelRemaining: 0,
   };
 
   const events: FightEvent[] = [];
@@ -530,6 +555,9 @@ export function runFight(cfg: FightConfig): FightResult {
     // A counter window ticks down once per tick (clamped at 0) after it has been read.
     a.counterRemaining = Math.max(0, a.counterRemaining - 1);
     b.counterRemaining = Math.max(0, b.counterRemaining - 1);
+    // The cancel window likewise ticks down (set this tick on a connect ⇒ readable next tick).
+    a.cancelRemaining = Math.max(0, a.cancelRemaining - 1);
+    b.cancelRemaining = Math.max(0, b.cancelRemaining - 1);
 
     // 4. Record the integer event (the bot's RETURNED action, honoured or not).
     events.push({

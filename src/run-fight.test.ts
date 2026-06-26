@@ -1296,3 +1296,260 @@ describe("runFight — parry counter window (the deflect pays off)", () => {
     expect(result.scores.a).toBe(0); // gate stays shut ⇒ no counter thrown
   });
 });
+
+describe("runFight — on-contact cancel combos (a connecting strike can cancel into a follow-up)", () => {
+  // A bot that returns `attack` at exactly the given ticks (idle otherwise), so its
+  // move-starts and cancel attempts land at known, bounded ticks. The first entry (tick 0)
+  // is the opener (started while neutral); a later entry fires while the fighter is still
+  // committed — a CANCEL ATTEMPT the engine honours only if the move is cancelable.
+  const strikeAtTicks = (ticks: number[], band: Band): BotDoc =>
+    bot(
+      ticks.map((t) => ({
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: t },
+          ],
+        },
+        do: { type: "attack", move: "strike", band },
+      })),
+      { type: "idle" },
+    );
+
+  // Crouches (vacating the `high` band) while tick < until, then stands. Used to whiff a
+  // high opener during its active frame while standing again later, so a (wrongly enabled)
+  // cancelled re-strike WOULD land — proving it does not.
+  const crouchUntil = (until: number): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "lt",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: until },
+            ],
+          },
+          do: { type: "crouch" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // Raises a `band` guard only on ticks [from, until); open otherwise. A fresh guard on the
+  // opener's active frame PARRIES it, while being open later so a re-strike could connect.
+  const guardWindow = (from: number, until: number, band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "and",
+            args: [
+              {
+                op: "gte",
+                args: [
+                  { op: "field", path: "clock.tick" },
+                  { op: "const", value: from },
+                ],
+              },
+              {
+                op: "lt",
+                args: [
+                  { op: "field", path: "clock.tick" },
+                  { op: "const", value: until },
+                ],
+              },
+            ],
+          },
+          do: { type: "block", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // strike: startup 4, active 2 (active frames at elapsed 4–5) ⇒ a fresh opener connects at
+  // tick 4; total 12 ticks ⇒ a non-cancelled re-strike could not start before tick 12. The
+  // move cancels into itself; cancelWindow 10 is wide (its exact length is pinned separately).
+  const cancelRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within reach (250000)
+      cancelWindow: 10,
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          cancelInto: ["strike"],
+        },
+      },
+      ...o,
+    });
+
+  it("a connecting (HIT) strike cancels into a follow-up that lands during its recovery", () => {
+    // Opener strikes at tick 0 (connects tick 4); a second `attack` at tick 6 (move 1 now in
+    // recovery, the cancel window open) cancels into move 2, whose active frame lands at tick
+    // 10 — far earlier than a fresh re-strike, which could not start until tick 12 (landing 16).
+    const result = runFight(
+      getMockConfig({
+        rules: cancelRules(),
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: IDLE, // open, in range ⇒ both strikes connect
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.events[10].a.points).toBe(2); // the cancelled 2nd hit has already landed
+    expect(result.scores.a).toBe(2); // opener + cancelled follow-up (within-exchange escalation)
+  });
+
+  it("a strike that WHIFFS does not become cancelable — the follow-up is ignored", () => {
+    // Same opener+cancel-attempt bot, but striking HIGH into a croucher: the opener whiffs (a
+    // croucher vacates `high`) on its active frame (ticks 4–5), so no cancel window opens. The
+    // opponent stands from tick 6, so a wrongly-enabled cancel's re-strike would hit at tick 10.
+    const result = runFight(
+      getMockConfig({
+        rules: cancelRules(),
+        botA: strikeAtTicks([0, 6], "high"),
+        botB: crouchUntil(6),
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // whiffed opener never connected ⇒ no cancel ⇒ no follow-up
+  });
+
+  it("a PARRIED strike does not become cancelable — the deflect is not rescued", () => {
+    // The opener is parried (a fresh mid guard on its active frame). A parry never opens the
+    // cancel window — only a hit does (block arrives in slice 2). The opponent opens from tick
+    // 6, so a wrongly-enabled cancel's re-strike would hit at tick 10.
+    const result = runFight(
+      getMockConfig({
+        rules: cancelRules({ parryWindow: 2, parryRecovery: 8 }),
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: guardWindow(4, 6, "mid"),
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // parried ⇒ no cancel ⇒ the tick-6 follow-up is ignored
+  });
+
+  it("an empty cancel-route list blocks the cancel even on a clean hit", () => {
+    // The opener connects (tick 4) and the window opens, but `strike` lists NO routes, so the
+    // tick-6 follow-up is rejected — proving the route membership check is a live gate.
+    const result = runFight(
+      getMockConfig({
+        rules: cancelRules({
+          moves: {
+            strike: {
+              startup: 4,
+              active: 2,
+              recovery: 6,
+              score: 1,
+              reach: 250000,
+              cancelInto: [],
+            },
+          },
+        }),
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // connected, but no legal route ⇒ no cancel ⇒ opener only
+  });
+
+  it("with no cancelWindow the follow-up is ignored (byte-identical to the pre-cancel engine)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }), // no cancelWindow / cancelInto
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.events[10].a.points).toBe(1); // no early 2nd hit
+    expect(result.scores.a).toBe(1); // the tick-6 cancel attempt is inert
+  });
+
+  it("resolves the cancel identically from either slot (swap-symmetric)", () => {
+    const attacker = strikeAtTicks([0, 6], "mid");
+
+    const asA = runFight(
+      getMockConfig({
+        rules: cancelRules(),
+        botA: attacker,
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    const asB = runFight(
+      getMockConfig({
+        rules: cancelRules(),
+        botA: IDLE,
+        botB: attacker,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(asA.scores.a).toBe(2);
+    expect(asB.scores.b).toBe(2);
+  });
+
+  it("the cancel window has a pinned length: open at cancelWindow 5, expired at 4 (either slot)", () => {
+    // The opener connects at tick 4; a cancel attempt at tick 8 is honoured iff the window
+    // (set to cancelWindow at the connect, decremented each tick) is still open then — i.e.
+    // iff cancelWindow ≥ 5. The cancelled follow-up then lands a 2nd hit (score 2). Asserted
+    // from both slots so the per-fighter countdown is pinned on each side.
+    const cancelScore = (cancelWindow: number, slot: "a" | "b"): number => {
+      const attacker = strikeAtTicks([0, 8], "mid");
+
+      return runFight(
+        getMockConfig({
+          rules: cancelRules({ cancelWindow }),
+          botA: slot === "a" ? attacker : IDLE,
+          botB: slot === "b" ? attacker : IDLE,
+          maxTicks: 16,
+        }),
+      ).scores[slot];
+    };
+
+    expect(cancelScore(5, "a")).toBe(2); // window still open at tick 8 ⇒ cancel ⇒ 2nd hit
+    expect(cancelScore(4, "a")).toBe(1); // window expired by tick 8 ⇒ no cancel ⇒ opener only
+    expect(cancelScore(5, "b")).toBe(2); // same countdown when the canceller is fighter B
+    expect(cancelScore(4, "b")).toBe(1);
+  });
+
+  it("a move with no cancel routes cannot cancel, even with a global cancelWindow", () => {
+    // The opener connects and the window opens, but `strike` declares no `cancelInto` at all
+    // (per-move opt-out), so the tick-6 follow-up is rejected.
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({
+          startGap: 200000,
+          cancelWindow: 10,
+          moves: {
+            strike: {
+              startup: 4,
+              active: 2,
+              recovery: 6,
+              score: 1,
+              reach: 250000,
+            },
+          },
+        }),
+        botA: strikeAtTicks([0, 6], "mid"),
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // connected, window open, but no routes ⇒ no cancel
+  });
+});

@@ -64,6 +64,11 @@ export type MoveSpec = {
   recovery: number; // ticks after the active window, still committed
   score: number; // WKF points awarded on hit (0–3)
   reach: number; // horizontal reach in sub-units
+  // On-contact cancel routes (C6). The moves this move may cancel INTO once it
+  // connects (hit, later also block — §3 / §11.3 `CancelEnable`). A committed
+  // fighter whose move is cancelable may start a follow-up listed here, skipping
+  // the rest of its recovery. Absent/empty ⇒ no routes ⇒ this move cannot cancel.
+  cancelInto?: MoveId[];
 };
 
 export type Rules = {
@@ -95,6 +100,12 @@ export type Rules = {
   // bonus ⇒ byte-identical to the deflect-only (C5 slice 1) engine.
   counterWindow?: number;
   counterBonus?: number;
+  // On-contact cancel window (C6). When a strike CONNECTS (hit; later also block),
+  // its attacker may cancel into a follow-up move (one listed in the striking move's
+  // `cancelInto`) for the next `cancelWindow` ticks — interrupting the rest of its
+  // recovery. A whiff or a parry never opens the window (the no-feint property, §3).
+  // Absent/`0` ⇒ no cancel ⇒ byte-identical to the pre-cancel (C5) engine.
+  cancelWindow?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
