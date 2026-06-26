@@ -57,7 +57,7 @@ before its recovery ends — escalating the within-exchange score — while a st
       **ignored** — the move runs full recovery; no early follow-up. _(Slice 1)_
 - [x] A **parried** strike does **not** become cancelable — the follow-up is ignored and the
       attacker eats full `parryRecovery` (cancel never rescues a parry). _(Slice 1)_
-- [ ] A strike **BLOCKed** by a stale matching guard becomes cancelable too (block is a
+- [x] A strike **BLOCKed** by a stale matching guard becomes cancelable too (block is a
       first-class connect alongside hit); whiff and parry still do not. _(Slice 2)_
 - [x] The cancel is gated by the **route list**: with the move's `cancelInto` empty, even a
       connecting strike + follow-up `attack` does **not** cancel. _(Slice 1)_
@@ -145,7 +145,13 @@ lint pass, human approves commit.
 
 ---
 
-### Slice 2: A BLOCKed strike is also cancelable (block becomes a first-class connect)
+### Slice 2: A BLOCKed strike is also cancelable (block becomes a first-class connect) · ✅ done
+
+> **Shipped** on `feat/c6-cancel-on-block` — `feat` (1872823). 4 new tests (218 suite):
+> block-opens / parry-doesn't contrast, inertness, swap, and a block-doesn't-resolve lock
+> (guard dropped mid-active still hits — protects the byte-identical guarantee). `sim.ts`
+> mutation **95.09%**; the new block code has no survivors. `computeStrike`'s stale-guard
+> branch returns a `block` outcome (cancel `0` when unconfigured ⇒ no-op ⇒ byte-identical to C5).
 
 **Value**: A bot author gets **frame-trap pressure** — a blocked attacker can keep its turn by
 cancelling into a follow-up, where a whiffing one cannot. This is the §11.3 "BLOCK is
