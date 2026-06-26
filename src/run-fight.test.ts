@@ -2058,3 +2058,166 @@ describe("runFight — throws (a throw beats a guard, scores, and knocks down)",
     expect(withThrow.events).toEqual(without.events);
   });
 });
+
+describe("runFight — strike beats throw (the §11.4 precedence: strike > throw)", () => {
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+
+  // Throws once at tick 0 then idles (commits to the grab at tick 0).
+  const throwOnce = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: 0 },
+          ],
+        },
+        do: { type: "throw" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // Default strike: startup 4, active 2 ⇒ active at ticks 4–5. A throw with startup 4, active 1
+  // is grab-active at exactly tick 4 — so a throw and a strike both started at tick 0 collide on
+  // the strike's first active frame. Both reaches 250000; startGap 200000 ⇒ both connect.
+  const collideRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000,
+      knockdownDuration: 6,
+      throw: { startup: 4, active: 1, recovery: 3, reach: 250000, score: 3 },
+      ...o,
+    });
+
+  it("an active in-range strike beats a colliding throw: the strike scores, the throw is voided", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: collideRules(),
+        botA: throwOnce, // grab-active at tick 4
+        botB: STRIKER, // strike active at tick 4
+        maxTicks: 8,
+      }),
+    );
+
+    // Strike lands (b:1); the throw is voided ⇒ A scores nothing (not 3) and B is not downed.
+    expect(result.scores).toEqual({ a: 0, b: 1 });
+  });
+
+  it("resolves strike-beats-throw identically from either slot (swap-symmetric)", () => {
+    const asA = runFight(
+      getMockConfig({
+        rules: collideRules(),
+        botA: throwOnce,
+        botB: STRIKER,
+        maxTicks: 8,
+      }),
+    );
+
+    const asB = runFight(
+      getMockConfig({
+        rules: collideRules(),
+        botA: STRIKER,
+        botB: throwOnce,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(asA.scores).toEqual({ a: 0, b: 1 });
+    expect(asB.scores).toEqual({ a: 1, b: 0 }); // mirror — the striker always wins the clash
+  });
+
+  it("a throw still lands against an opponent whose strike is only in startup (an inactive strike is no threat)", () => {
+    // Throw startup 2 ⇒ grab-active at tick 2, while the defender's default strike is still
+    // winding up (active only at ticks 4–5). The non-threatening startup does not save it.
+    const result = runFight(
+      getMockConfig({
+        rules: collideRules({
+          throw: { startup: 2, active: 1, recovery: 3, reach: 250000, score: 3 },
+        }),
+        botA: throwOnce, // grab-active at tick 2
+        botB: STRIKER, // strike still in startup at tick 2
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // the grab lands ⇒ B downed before its strike turns active
+    expect(result.scores.b).toBe(0);
+  });
+
+  it("a throw still lands when the opposing active strike is out of range (beaten only when active AND in range)", () => {
+    // Grab reach 300000 > strike reach 250000; at a 280000 gap the grab reaches but the active
+    // strike whiffs — so the throw is not beaten and lands.
+    const result = runFight(
+      getMockConfig({
+        rules: collideRules({
+          startGap: 280000,
+          throw: { startup: 4, active: 1, recovery: 3, reach: 300000, score: 3 },
+        }),
+        botA: throwOnce, // grab-active at tick 4, reaches 300000
+        botB: STRIKER, // strike active at tick 4, but only reaches 250000
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // out-of-range strike is no threat ⇒ the grab lands
+    expect(result.scores.b).toBe(0); // and the strike whiffed
+  });
+
+  it("an active strike during throw startup interrupts it: the throw cannot grab on a later frame", () => {
+    // Throw startup 6 ⇒ still winding up when the strike is active (ticks 4–5). The strike hits
+    // the open thrower at tick 4; the throw — now stuffed — reaches its grab-active frame at tick
+    // 6 but does NOT grab (the defender is in strike recovery and grabbable, so only the
+    // interrupt explains the miss).
+    const result = runFight(
+      getMockConfig({
+        rules: collideRules({
+          throw: { startup: 6, active: 1, recovery: 3, reach: 250000, score: 3 },
+        }),
+        botA: throwOnce, // grab-active at tick 6
+        botB: STRIKER, // strike active at tick 4 (during A's throw startup)
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // throw interrupted ⇒ it never grabs
+    expect(result.scores.b).toBe(1); // the strike hit the winding-up thrower
+  });
+
+  it("a stuffed throw stays committed through its recovery (punishable) — it is not cancelled to neutral", () => {
+    // The tick-4 collision stuffs A's throw (total 8 ⇒ committed through tick 7). A would step
+    // forward the instant it is neutral; while committed the step is ignored, so A's x is frozen
+    // until the throw fully recovers at tick 8 — proving the stuffed throw is not cut short.
+    const throwThenStep = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "throw" },
+        },
+      ],
+      { type: "move", dir: 1 },
+    );
+
+    const rules = collideRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: throwThenStep,
+        botB: STRIKER,
+        maxTicks: 10,
+      }),
+    );
+
+    const startX = aStartX(rules);
+    expect(result.events[7].a.x).toBe(startX); // still committed in throw recovery ⇒ step ignored
+    expect(result.events[8].a.x).toBe(startX + rules.walkSpeed); // neutral at tick 8 ⇒ steps
+    expect(result.scores.a).toBe(0); // the stuffed throw never scored
+  });
+});

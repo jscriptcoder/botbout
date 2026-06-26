@@ -60,9 +60,9 @@ the **defender** (knockdown) while a strike mutates the **attacker** (score).
 - [x] A throw whose grab window connects scores `throwScore` (3) against an **open or guarding**
       defender (incl. a parry-window guard) and knocks the defender down for `knockdownDuration`
       ticks (`canAct=0`), then they return to neutral. _(Slice 1 ✓)_
-- [ ] An active in-range strike **beats** a colliding throw: the throw fails (no score, no
+- [x] An active in-range strike **beats** a colliding throw: the throw fails (no score, no
       knockdown) and the strike scores; a strike landing during throw **startup** interrupts it.
-      Resolution is swap-symmetric (A↔B assignment cannot change the outcome).
+      Resolution is swap-symmetric (A↔B assignment cannot change the outcome). _(Slice 2 ✓)_
 - [ ] A timed `throw-break` escapes a grab: no score, no knockdown.
 - [ ] Two throws that collide **clash**: neither scores, neither is downed.
 - [ ] The opponent's throw is perceivable as a delayed tell on the `L_act` layer so a bot can
@@ -130,8 +130,20 @@ opposing offense yet ⇒ precedence is trivial (throw just lands). _Skipped here
 
 ---
 
-### Slice 2: A strike beats a throw (and interrupts throw startup)
+### Slice 2: A strike beats a throw (and interrupts throw startup) ✅ SHIPPED
 
+**Status**: Done — `src/sim.ts`: throw grabbability widened so a GROUNDED committed defender
+(`attacking`) is grabbable (was: any non-`neutral` defender ungrabbable), and the §11.4
+precedence resolver `stuffIfStruck` sits in the C5 compute-then-apply union — an opposing HIT
+(active+in-range, encoded by `computeStrike`) voids the colliding/startup throw and marks the
+throwing move `stuffed` (re-added to the state — genuinely needed now: a strike-interrupted
+throw has no knockdown to make it untargetable) so it cannot grab on a later frame, while the
+thrower stays committed through recovery (punishable). `src/run-fight.test.ts`: 6 tests (collide,
+swap-symmetry, throw-lands-vs-startup, throw-lands-vs-out-of-range, startup-interrupt,
+stuffed-stays-committed). 909 tests; changed-line mutation 50 killed / 4 survived — all 4
+equivalent (2 carried-over Slice-1 `computeThrow` guard equivalents; 2 new at `stuffIfStruck`'s
+non-throwing guard, where the voided throw outcome is always `null` ⇒ no observable effect). No
+new `Rules` fields ⇒ byte-identical-to-C6 guarantee preserved (throw config absent ⇒ no stuffing).
 **Branch**: `feat/c7-strike-beats-throw`
 **Value**: The throw is not oppressive — `strike > throw` closes that leg of the triangle. This
 is the **genuine same-tick mutual dependency** the compute-then-apply union exists for.
