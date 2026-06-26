@@ -20,6 +20,7 @@ const getMockRules = (o: Partial<Rules> = {}): Rules => ({
   walkSpeed: 4000,
   ring: { width: 600000 },
   startGap: 200000,
+  moves: { strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 } },
   ...o,
 });
 
@@ -170,5 +171,72 @@ describe("runFight — view wiring and memory", () => {
     const result = runFight(getMockConfig({ botA: endBot, botB: IDLE, maxTicks: 3 }));
     expect(result.events[0].a.action).toEqual({ type: "idle" });
     expect(result.events[2].a.action).toEqual({ type: "move", dir: 1 });
+  });
+});
+
+describe("runFight — strikes and scoring", () => {
+  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" }); // strike every tick
+
+  it("scores when an active strike reaches an idle opponent in range", () => {
+    const rules = getMockRules({ startGap: 200000 }); // within reach (250000)
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+  });
+
+  it("does not score a strike thrown out of range (whiff)", () => {
+    const rules = getMockRules({ startGap: 300000 }); // beyond reach
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    expect(result.winner).toBe("draw");
+  });
+
+  it("scores at exactly the reach boundary but not one sub-unit beyond", () => {
+    const reach = getMockRules().moves.strike.reach;
+    const atEdge = runFight(getMockConfig({ rules: getMockRules({ startGap: reach }), botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    const beyond = runFight(getMockConfig({ rules: getMockRules({ startGap: reach + 1 }), botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    expect(atEdge.scores.a).toBe(1);
+    expect(beyond.scores.a).toBe(0);
+  });
+
+  it("scores at most once per activation (a multi-tick active window counts once)", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 12 }));
+    expect(result.scores.a).toBe(1); // active window is 2 ticks, not 2 points
+  });
+
+  it("ignores an action issued while committed and re-triggers only when neutral", () => {
+    // ATTACKER returns "attack" every tick, but only the neutral-tick attack starts
+    // a move. Over two full 12-tick move cycles it scores exactly twice.
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 24 }));
+    expect(result.scores.a).toBe(2);
+    // tick 1 is mid-startup (committed): the returned attack is logged but starts nothing.
+    expect(result.events[1].a.action).toEqual({ type: "attack", move: "strike", band: "mid" });
+    expect(result.events[1].a.points).toBe(0);
+  });
+
+  it("awards the win to whoever has more points", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: IDLE, botB: ATTACKER, maxTicks: 12 }));
+    expect(result.scores).toEqual({ a: 0, b: 1 });
+    expect(result.winner).toBe("B");
+  });
+
+  it("declares a draw when neither fighter scores", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: IDLE, botB: IDLE, maxTicks: 12 }));
+    expect(result.winner).toBe("draw");
+  });
+
+  it("scores on the first active frame and re-arms only after a full move", () => {
+    const rules = getMockRules({ startGap: 200000 });
+    const result = runFight(getMockConfig({ rules, botA: ATTACKER, botB: IDLE, maxTicks: 24 }));
+    // startup 4 -> first active frame lands the point at tick 4; the move's total
+    // is 12 ticks, so the next strike's active frame lands at tick 16.
+    expect(result.events[3].a.points).toBe(0);
+    expect(result.events[4].a.points).toBe(1);
+    expect(result.events[15].a.points).toBe(1);
+    expect(result.events[16].a.points).toBe(2);
   });
 });

@@ -45,11 +45,22 @@ export type State = {
 };
 
 // ─── Rules: the immutable frame table (never changes during a fight) ─────────
-// Skeleton scope: just what movement needs. All quantities are integer sub-units
+// Skeleton scope: movement + one strike. All quantities are integer sub-units
 // (SCALE = 1000 sub-units per world unit). Grows with the deep frame table.
+
+// One technique's frame data (skeleton: just what scoring needs).
+export type MoveSpec = {
+  startup: number; // ticks before the active window opens
+  active: number; // ticks the strike can connect
+  recovery: number; // ticks after the active window, still committed
+  score: number; // WKF points awarded on hit (0–3)
+  reach: number; // horizontal reach in sub-units
+};
+
 export type Rules = {
   tickRate: number; // ticks per second (60)
   walkSpeed: number; // sub-units travelled per tick while moving
   ring: { width: number }; // ring width in sub-units
   startGap: number; // initial separation between the two fighters (sub-units)
+  moves: Record<MoveId, MoveSpec>; // the frame table
 };

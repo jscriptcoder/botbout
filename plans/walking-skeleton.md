@@ -24,11 +24,11 @@ blocked), read from a **result object + integer event log**.
       winner/most-points and an integer event log.
 - [x] AC3 — The same config (`{rules, botA, botB, maxTicks, seed}`) reproduces a
       **byte-identical** event log on re-run.
-- [ ] AC4 — An aggressor that approaches and strikes an idle opponent in reach gains
+- [x] AC4 — An aggressor that approaches and strikes an idle opponent in reach gains
       points and wins.
 - [ ] AC5 — Both bots decide against the **tick-T snapshot** and simultaneous strikes
       resolve by a fixed, documented, order-independent tiebreak.
-- [ ] AC6 — An action returned while `canAct=0` (mid-recovery) is ignored and logged
+- [x] AC6 — An action returned while `canAct=0` (mid-recovery) is ignored and logged
       (commitment).
 
 > **Invariants (do not violate — see `.claude/CLAUDE.md`):** integer/fixed-point only
@@ -156,7 +156,14 @@ sign/magnitude, clamp boundary (exactly at the edge).
 
 ---
 
-### Slice 4: A strike that scores — aggressor lands a hit and wins on points
+### Slice 4: A strike that scores — aggressor lands a hit and wins on points  ✅ DONE
+
+> ✅ **Done** — 124 tests total (8 new) · `sim.ts` mutation 94.4% (7 accepted survivors:
+> 4 forward-compat self-fields `phaseRemaining`/`canAct` not outcome-observable until
+> cancels, the `dir/facing` equivalent, 2 moot active-window end-boundary mutants) ·
+> branch cov 98.81%. Adds the attack state machine (startup→active→recovery),
+> once-per-activation scoring, commitment, win-by-points; `MoveSpec`/`Rules.moves`.
+> Delivers AC4 + AC6. `src/sim.ts`, `src/types.ts`, `src/run-fight.test.ts`.
 
 **Value**: the first real combat behavior + scoring + winner — an aggressor that
 approaches and strikes an idle opponent in reach gains a point and wins. (Delivers AC4, AC6.)
