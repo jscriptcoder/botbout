@@ -67,7 +67,8 @@ export type FightResult = {
 };
 
 // A fighter is either free to act (neutral) or locked into a committed move —
-// striking, or airborne in a gravity arc (carrying its vertical velocity `vy`).
+// striking, throwing, airborne in a gravity arc (carrying its vertical velocity `vy`),
+// or knocked DOWN after being thrown (committed, untargetable, until it wakes).
 type MoveState =
   | { kind: "neutral" }
   | {
@@ -78,7 +79,9 @@ type MoveState =
       scored: boolean; // terminal flag: the strike has resolved (scored OR was deflected)
       extra: number; // extra recovery ticks added when this strike is parried (§5 deflect)
     }
-  | { kind: "airborne"; vy: number };
+  | { kind: "airborne"; vy: number }
+  | { kind: "throwing"; elapsed: number } // committed grab (single-shot: a grab downs the target ⇒ untargetable)
+  | { kind: "downed"; elapsed: number }; // knocked down for rules.knockdownDuration ticks
 
 type Fighter = {
   x: number;
@@ -257,8 +260,12 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     // in `advance`; `dir` is reserved (vertical-only for now). Absent impulse ⇒ 0
     // ⇒ an inert jump that lands the same tick (forward-compatible with no-y rules).
     f.state = { kind: "airborne", vy: rules.jumpImpulse ?? 0 };
+  } else if (action.type === "throw" && rules.throw !== undefined) {
+    // Commit to a grab (startup → grab-active → recovery). Without a throw frame table
+    // the action is inert (no state change) ⇒ byte-identical to the pre-throw engine.
+    f.state = { kind: "throwing", elapsed: 0 };
   }
-  // idle / block / crouch: no positional effect in this slice.
+  // idle / block / crouch (or throw with no frame table): no positional effect.
 };
 
 // The height band a fighter guards this tick, or null if it is open. A fighter
@@ -339,6 +346,7 @@ const computeStrike = (
 
   if (!inActiveWindow) return null;
   if (Math.abs(def.x - att.x) > spec.reach) return null;
+  if (def.state.kind === "downed") return null; // a downed fighter vacates all bands ⇒ untargetable
   if (!occupies(defPosture, st.band)) return null; // vacated band ⇒ whiff (over/under)
 
   if (guardBand === st.band) {
@@ -359,7 +367,11 @@ const computeStrike = (
   // also opens the on-contact cancel window (C6); absent config ⇒ 0 ⇒ no cancel.
   const bonus = att.counterRemaining > 0 ? (rules.counterBonus ?? 0) : 0;
 
-  return { result: "hit", points: spec.score + bonus, cancel: rules.cancelWindow ?? 0 };
+  return {
+    result: "hit",
+    points: spec.score + bonus,
+    cancel: rules.cancelWindow ?? 0,
+  };
 };
 
 // Apply one strike outcome. A `hit` scores on the attacker; a `parry` lands its
@@ -399,6 +411,54 @@ const applyStrike = (
   }
 };
 
+// The effect of one throw att→def, computed PURELY from the frozen pre-apply snapshot
+// (§11 compute-then-apply). `null` ⇒ no grab this tick (not throwing, already grabbed,
+// outside the grab-active window, out of reach, or the defender is not grabbable). A
+// grab scores on the attacker AND knocks the defender down (a cross-fighter effect).
+type ThrowOutcome = { score: number };
+
+// Classify a throw att→def from the frozen snapshot. A throw beats any guard (it is not
+// height-banded), so there is no guard/band gate — only: grab-active → reach → the
+// defender is GROUNDED and free (a `neutral` state). An airborne, downed, or committed
+// defender cannot be grabbed. Pure — reads only; the caller applies the outcome.
+const computeThrow = (
+  att: Fighter,
+  def: Fighter,
+  rules: Rules,
+): ThrowOutcome | null => {
+  const st = att.state;
+  if (st.kind !== "throwing") return null;
+  const spec = rules.throw;
+  if (spec === undefined) return null; // inert without a throw frame table
+
+  const inGrabWindow =
+    st.elapsed >= spec.startup && st.elapsed < spec.startup + spec.active;
+
+  if (!inGrabWindow) return null;
+  if (Math.abs(def.x - att.x) > spec.reach) return null;
+  if (def.state.kind !== "neutral") return null; // grabbable iff grounded & free
+
+  return { score: spec.score };
+};
+
+// Apply one throw outcome. A grab scores on the attacker and lands its CROSS-FIGHTER effect
+// — the defender is knocked DOWN (its clock runs in `advance`). The grab is single-shot
+// without a flag: the knockdown makes the defender untargetable, so a multi-tick grab window
+// cannot re-grab. Both directions' outcomes are computed from the frozen snapshot before any
+// are applied, so this stays swap-symmetric (§11.1).
+const applyThrow = (
+  att: Fighter,
+  def: Fighter,
+  outcome: ThrowOutcome | null,
+): void => {
+  if (outcome === null) return;
+  const st = att.state;
+  if (st.kind !== "throwing") return; // a throw outcome only applies to the throwing fighter
+
+  att.points += outcome.score;
+  def.state = { kind: "downed", elapsed: 0 };
+};
+
 // Advance a committed fighter's clock. A strike ticks its move frames; an
 // airborne fighter integrates the gravity arc (y += vy, then vy -= gravity) and
 // lands — clamped to exactly y=0 — once the arc returns to (or past) the ground.
@@ -423,6 +483,25 @@ const advance = (f: Fighter, rules: Rules): void => {
     } else {
       st.vy -= rules.gravity ?? 0;
     }
+
+    return;
+  }
+
+  if (st.kind === "throwing") {
+    const spec = rules.throw;
+    const total = spec ? spec.startup + spec.active + spec.recovery : 0;
+    const next = st.elapsed + 1;
+    if (next >= total) f.state = { kind: "neutral" };
+    else st.elapsed = next;
+
+    return;
+  }
+
+  if (st.kind === "downed") {
+    // Stay down for knockdownDuration ticks, then wake to neutral.
+    const next = st.elapsed + 1;
+    if (next >= (rules.knockdownDuration ?? 0)) f.state = { kind: "neutral" };
+    else st.elapsed = next;
   }
 };
 
@@ -561,8 +640,16 @@ export function runFight(cfg: FightConfig): FightResult {
       aPosture,
     );
 
+    // Throws are computed from the same frozen snapshot (a throw beats any guard, so it
+    // has no band gate). In this slice throws don't yet interact with the opponent's
+    // offense (strike-beats-throw is a later slice), so each side resolves independently.
+    const aThrow = computeThrow(a, b, rules);
+    const bThrow = computeThrow(b, a, rules);
+
     applyStrike(a, b, aOutcome);
     applyStrike(b, a, bOutcome);
+    applyThrow(a, b, aThrow);
+    applyThrow(b, a, bThrow);
     advance(a, rules);
     advance(b, rules);
     // A counter window ticks down once per tick (clamped at 0) after it has been read.

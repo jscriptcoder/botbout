@@ -1713,3 +1713,348 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
     expect(result.scores.a).toBe(2);
   });
 });
+
+describe("runFight — throws (a throw beats a guard, scores, and knocks down)", () => {
+  // Throws every tick; only the neutral-tick throw starts a grab (commitment).
+  const THROWER = bot([], { type: "throw" });
+
+  // Throws once at tick 0, then idles — so the thrower stays put while we observe the
+  // thrown fighter (no re-grab muddying the knockdown window).
+  const throwOnce = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: 0 },
+          ],
+        },
+        do: { type: "throw" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // throw: startup 2, active 1 ⇒ grab-active at elapsed 2 (tick 2 for a throw started at
+  // tick 0); recovery 3 ⇒ total 6 ticks. reach matches the strike (250000). A clean grab
+  // scores 3 and downs the defender for knockdownDuration ticks.
+  const throwRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within grab reach (250000)
+      knockdownDuration: 6,
+      throw: { startup: 2, active: 1, recovery: 3, reach: 250000, score: 3 },
+      ...o,
+    });
+
+  it("connects on an open opponent: scores 3", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: IDLE,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 3, b: 0 });
+    expect(result.winner).toBe("A");
+  });
+
+  it("beats a guard at any band (throw > guard)", () => {
+    const scoreVsGuard = (band: Band): number =>
+      runFight(
+        getMockConfig({
+          rules: throwRules(),
+          botA: throwOnce,
+          botB: bot([], { type: "block", band }),
+          maxTicks: 6,
+        }),
+      ).scores.a;
+
+    expect(scoreVsGuard("high")).toBe(3);
+    expect(scoreVsGuard("mid")).toBe(3);
+    expect(scoreVsGuard("low")).toBe(3);
+  });
+
+  it("beats a fresh parry-window guard (throw beats parry)", () => {
+    // A guard raised on the grab tick (age 1, within the parry window) would DEFLECT a
+    // strike — but a throw is not a strike, so the grab still lands for 3.
+    const guardFromGrab = bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 2 },
+            ],
+          },
+          do: { type: "block", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({ parryWindow: 3, parryRecovery: 8 }),
+        botA: throwOnce,
+        botB: guardFromGrab,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3);
+  });
+
+  it("scores on the grab-active frame only (not during startup or recovery)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: IDLE,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.events[1].a.points).toBe(0); // startup (elapsed 1) — not yet active
+    expect(result.events[2].a.points).toBe(3); // grab-active (elapsed 2) — connects
+    expect(result.events[5].a.points).toBe(3); // recovery — no second grab
+  });
+
+  it("re-throws after recovery: the second grab lands at the throw's full length", () => {
+    // throw total = startup 2 + active 1 + recovery 3 = 6; with a short knockdown B is back up
+    // by the second grab. THROWER re-throws the instant it is neutral (tick 6), so the second
+    // grab connects at tick 8 (6 + startup 2) — pinning the throw's total duration.
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({ knockdownDuration: 2 }),
+        botA: THROWER,
+        botB: IDLE,
+        maxTicks: 9,
+      }),
+    );
+
+    expect(result.events[7].a.points).toBe(3); // still only the first grab
+    expect(result.events[8].a.points).toBe(6); // second grab lands at exactly tick 8
+  });
+
+  it("grabs only within the active window: a defender entering range one tick late is not grabbed", () => {
+    // A wider grab window — elapsed [2, 4) ⇒ ticks {2, 3}. B walks toward a stationary thrower,
+    // crossing into reach at a tunable tick: entering on tick 3 (last in-window tick) ⇒ grabbed;
+    // entering on tick 4 (one tick after the window closes) ⇒ whiff. Pins the window's upper edge.
+    const wideThrow = {
+      startup: 2,
+      active: 2,
+      recovery: 3,
+      reach: 250000,
+      score: 3,
+    };
+
+    const scoreEnteringAtGap = (startGap: number): number =>
+      runFight(
+        getMockConfig({
+          rules: throwRules({ startGap, throw: wideThrow }),
+          botA: throwOnce, // stationary thrower
+          botB: AGGRESSOR, // walks toward A at walkSpeed 4000/tick
+          maxTicks: 6,
+        }),
+      ).scores.a;
+
+    expect(scoreEnteringAtGap(266000)).toBe(3); // in reach by tick 3 (within window) ⇒ grab
+    expect(scoreEnteringAtGap(270000)).toBe(0); // in reach only by tick 4 (window closed) ⇒ whiff
+  });
+
+  it("whiffs out of range, scoring nothing — at the reach boundary it still grabs", () => {
+    const reach = 250000;
+
+    const scoreAtGap = (gap: number): number =>
+      runFight(
+        getMockConfig({
+          rules: throwRules({ startGap: gap }),
+          botA: throwOnce,
+          botB: IDLE,
+          maxTicks: 6,
+        }),
+      ).scores.a;
+
+    expect(scoreAtGap(reach)).toBe(3); // exactly at reach ⇒ grabs
+    expect(scoreAtGap(reach + 1)).toBe(0); // one sub-unit beyond ⇒ whiff
+  });
+
+  it("knocks the defender down: its actions are ignored until it recovers, then it acts again", () => {
+    // B advances toward A whenever free. Thrown at tick 2 (knockdownDuration 6 ⇒ neutral
+    // again at tick 8): its movement is frozen while downed, then resumes.
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({ knockdownDuration: 6 }),
+        botA: throwOnce,
+        botB: AGGRESSOR, // moves toward A whenever free
+        maxTicks: 10,
+      }),
+    );
+
+    expect(result.events[7].b.x).toBe(result.events[3].b.x); // downed ticks 3..7 ⇒ frozen
+    expect(result.events[8].b.x).not.toBe(result.events[7].b.x); // recovered ⇒ moves again
+  });
+
+  it("a downed fighter is not targetable: a strike whiffs while it is down but lands once recovered", () => {
+    // A throws B at tick 2, then strikes when free (re-arms at tick 6, strike active at
+    // tick 10). A long knockdown leaves B down at tick 10 ⇒ the strike whiffs; a short one
+    // lets B recover ⇒ the same strike connects.
+    const throwThenStrike = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "throw" },
+        },
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const scoreWithKnockdown = (knockdownDuration: number): number =>
+      runFight(
+        getMockConfig({
+          rules: throwRules({ knockdownDuration }),
+          botA: throwThenStrike,
+          botB: IDLE,
+          maxTicks: 12,
+        }),
+      ).scores.a;
+
+    expect(scoreWithKnockdown(10)).toBe(3); // still down at tick 10 ⇒ strike whiffs ⇒ throw only
+    expect(scoreWithKnockdown(2)).toBe(4); // recovered by tick 10 ⇒ strike connects ⇒ throw + hit
+  });
+
+  it("cannot grab an airborne fighter (you can't throw a jumper), but grabs a grounded one", () => {
+    const jumpRules = throwRules({ jumpImpulse: 12000, gravity: 4000 });
+
+    const jumpWhenFree = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "jump", dir: 0 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const airborne = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: throwOnce,
+        botB: jumpWhenFree, // mid-arc at the grab tick
+        maxTicks: 6,
+      }),
+    ).scores.a;
+
+    const grounded = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: throwOnce,
+        botB: IDLE,
+        maxTicks: 6,
+      }),
+    ).scores.a;
+
+    expect(airborne).toBe(0); // a jumper cannot be grabbed
+    expect(grounded).toBe(3); // a grounded defender is grabbed
+  });
+
+  it("grabs a crouching fighter — crouch does not dodge a throw (grounded, unbanded grab)", () => {
+    const CROUCHER = bot([], { type: "crouch" });
+
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: CROUCHER,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3);
+  });
+
+  it("resolves identically regardless of which fighter throws (swap-symmetric)", () => {
+    const asA = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: IDLE,
+        maxTicks: 6,
+      }),
+    );
+
+    const asB = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: IDLE,
+        botB: throwOnce,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(asA.scores).toEqual({ a: 3, b: 0 });
+    expect(asB.scores).toEqual({ a: 0, b: 3 });
+  });
+
+  it("with no throw config the throw action is inert (byte-identical to the pre-throw engine)", () => {
+    const rules = getMockRules({ startGap: 200000 }); // no throw / knockdownDuration
+
+    const result = runFight(
+      getMockConfig({ rules, botA: THROWER, botB: IDLE, maxTicks: 6 }),
+    );
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    // Never committed, never moved — the throw spam does nothing.
+    for (const e of result.events) expect(e.a.x).toBe(aStartX(rules));
+  });
+
+  it("adding throw config does not perturb a fight where nobody throws (additive)", () => {
+    const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+
+    const without = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    const withThrow = runFight(
+      getMockConfig({
+        rules: throwRules({ startGap: 200000 }),
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(withThrow.events).toEqual(without.events);
+  });
+});

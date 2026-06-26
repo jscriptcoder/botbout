@@ -19,7 +19,8 @@ export type Action =
   | { type: "block"; band: Band }
   | { type: "crouch" } // grounded posture: vacates the `high` band (a high strike whiffs)
   | { type: "jump"; dir: -1 | 0 | 1 } // gravity arc; airborne ⇒ committed (`dir` reserved, vertical-only for now)
-  | { type: "attack"; move: MoveId; band: Band };
+  | { type: "attack"; move: MoveId; band: Band }
+  | { type: "throw" }; // grapple: beats any guard, grabs a grounded defender ⇒ scores + knockdown
 
 // ─── State: self is live (skeleton has no perception latency yet) ────────────
 export type SelfState = {
@@ -72,6 +73,18 @@ export type MoveSpec = {
   cancelInto?: MoveId[];
 };
 
+// One throw/grapple's frame data (C7). A throw is NOT height-banded — it beats any
+// guard (and parry) at any band. `active` is the grab-active window; the throw
+// connects (grabs) only during it, and only on a GROUNDED, non-downed defender in
+// `reach`. A clean grab scores `score` (the design's "scores 3").
+export type ThrowSpec = {
+  startup: number; // ticks before the grab becomes active
+  active: number; // ticks the grab can connect
+  recovery: number; // ticks after the grab window, still committed
+  reach: number; // horizontal grab range in sub-units
+  score: number; // WKF points awarded on a clean throw
+};
+
 export type Rules = {
   tickRate: number; // ticks per second (60)
   walkSpeed: number; // sub-units travelled per tick while moving
@@ -107,6 +120,13 @@ export type Rules = {
   // recovery. A whiff or a parry never opens the window (the no-feint property, §3).
   // Absent/`0` ⇒ no cancel ⇒ byte-identical to the pre-cancel (C5) engine.
   cancelWindow?: number;
+  // Throw / grapple (C7). The throw triangle's anti-guard option: a `throw` action
+  // starts this committed move; during its grab-active window it GRABS a grounded,
+  // non-downed defender in `reach` — beating any guard (and parry) — scoring `throw.score`
+  // and knocking the defender DOWN for `knockdownDuration` ticks (canAct=0). Both absent
+  // ⇒ a `throw` action is inert ⇒ byte-identical to the pre-throw (C6) engine.
+  throw?: ThrowSpec;
+  knockdownDuration?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
