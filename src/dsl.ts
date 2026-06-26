@@ -86,10 +86,12 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "clock.tick": (s) => s.clock.tick,
   "clock.ticksRemaining": (s) => s.clock.ticksRemaining,
 };
+
 const ALLOWED_FIELDS: ReadonlySet<string> = new Set(Object.keys(FIELD_READERS));
 const MOVES: ReadonlySet<string> = new Set<MoveId>(["strike"]);
 const BANDS: ReadonlySet<string> = new Set<Band>(["high", "mid", "low"]);
 const CELL_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/;
+
 const FORBIDDEN_KEYS: ReadonlySet<string> = new Set([
   "__proto__",
   "constructor",
@@ -97,6 +99,7 @@ const FORBIDDEN_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const isInt = (x: unknown): x is number => Number.isInteger(x);
+
 const asRecord = (x: unknown): Record<string, unknown> =>
   x != null && typeof x === "object" ? (x as Record<string, unknown>) : {};
 
@@ -122,10 +125,12 @@ export function safeParse(text: string): unknown {
       { path: "$", reason: `document exceeds ${LIMITS.maxBytes} bytes` },
     ]);
   }
+
   return JSON.parse(text, (key, value) => {
     if (FORBIDDEN_KEYS.has(key)) {
       throw new ValidationError([{ path: key, reason: "forbidden key" }]);
     }
+
     return value;
   });
 }
@@ -133,15 +138,18 @@ export function safeParse(text: string): unknown {
 // ─── Validator ───────────────────────────────────────────────────────────────
 export function validate(doc: unknown): ValidationResult {
   const issues: ValidationIssue[] = [];
+
   const fail = (path: string, reason: string): void => {
     issues.push({ path, reason });
   };
+
   let nodeCount = 0;
   const cells = new Set<string>();
 
   const d = asRecord(doc);
 
   if (d.version !== 1) fail("version", "must be 1");
+
   if (typeof d.name !== "string" || d.name.length < 1 || d.name.length > 64) {
     fail("name", "must be a string of 1..64 characters");
   }
@@ -154,6 +162,7 @@ export function validate(doc: unknown): ValidationResult {
       const keys = Object.keys(mem);
       if (keys.length > LIMITS.maxCells)
         fail("memory", `more than ${LIMITS.maxCells} cells`);
+
       for (const k of keys) {
         if (!CELL_RE.test(k)) fail(`memory.${k}`, "invalid cell name");
         if (!isInt(mem[k]))
@@ -171,6 +180,7 @@ export function validate(doc: unknown): ValidationResult {
     if (n == null || typeof n !== "object")
       return fail(path, "expected a numeric expression");
     const e = n as Record<string, unknown>;
+
     switch (e.op) {
       case "const": {
         const v = e.value;
@@ -179,15 +189,18 @@ export function validate(doc: unknown): ValidationResult {
           fail(path, "const out of int32 range");
         break;
       }
+
       case "field":
         if (typeof e.path !== "string" || !ALLOWED_FIELDS.has(e.path)) {
           fail(path, `field not allowed: ${String(e.path)}`);
         }
+
         break;
       case "mem":
         if (typeof e.cell !== "string" || !cells.has(e.cell)) {
           fail(path, `undeclared cell: ${String(e.cell)}`);
         }
+
         break;
       default:
         fail(path, `unknown numeric op: ${String(e.op)}`);
@@ -202,6 +215,7 @@ export function validate(doc: unknown): ValidationResult {
     if (n == null || typeof n !== "object")
       return fail(path, "expected a condition");
     const e = n as Record<string, unknown>;
+
     switch (e.op) {
       case "gt":
       case "lt":
@@ -237,6 +251,7 @@ export function validate(doc: unknown): ValidationResult {
     if (a == null || typeof a !== "object")
       return fail(path, "expected an action");
     const e = a as Record<string, unknown>;
+
     switch (e.type) {
       case "idle":
         break;
@@ -267,22 +282,26 @@ export function validate(doc: unknown): ValidationResult {
     d.rules.forEach((r, i) => {
       const rule = asRecord(r);
       bool(rule.when, `rules[${i}].when`, 0);
+
       if (rule.set != null) {
         if (!Array.isArray(rule.set)) {
           fail(`rules[${i}].set`, "must be an array");
         } else {
           rule.set.forEach((s, j) => {
             const w = asRecord(s);
+
             if (typeof w.cell !== "string" || !cells.has(w.cell)) {
               fail(
                 `rules[${i}].set[${j}].cell`,
                 `undeclared cell: ${String(w.cell)}`,
               );
             }
+
             num(w.to, `rules[${i}].set[${j}].to`, 0);
           });
         }
       }
+
       if (rule.do != null) action(rule.do, `rules[${i}].do`);
     });
   }
@@ -354,5 +373,6 @@ export function runTick(
       for (const w of rule.set) mem[w.cell] = evalNum(w.to, state, mem);
     if (rule.do) return rule.do;
   }
+
   return doc.default;
 }

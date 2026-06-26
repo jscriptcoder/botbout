@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { validate, safeParse, LIMITS, type BotDoc } from "./dsl.js";
+import {
+  validate,
+  safeParse,
+  LIMITS,
+  type BotDoc,
+  type FieldPath,
+} from "./dsl.js";
 
 // A complete, well-formed bot document. Overrides customize valid variations;
 // invalid cases are built by spreading into a plain object (validate takes
@@ -79,6 +85,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       } as unknown as Partial<BotDoc>);
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -88,6 +95,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         rules: [{ when: { op: "xnor", args: [] }, do: { type: "idle" } }],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -108,6 +116,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
       expect(result.issues).toContainEqual(
@@ -132,6 +141,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
   });
@@ -154,6 +164,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
       expect(result.issues).toContainEqual(
@@ -179,6 +190,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       const result = validate(doc);
       expect(result.ok).toBe(false);
     });
@@ -195,6 +207,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "teleport" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -208,6 +221,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "attack", move: "fireball", band: "mid" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -216,6 +230,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         default: { type: "block", band: "behind" },
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -257,6 +272,7 @@ describe("validate — bot intake gate", () => {
           default: { type: "idle" },
         }),
       );
+
       expect(result.ok).toBe(true);
     });
   });
@@ -264,21 +280,25 @@ describe("validate — bot intake gate", () => {
   describe("static limits", () => {
     it("accepts exactly maxRules rules", () => {
       const oneRule = getMockBotDoc().rules[0];
+
       const result = validate(
         getMockBotDoc({
           rules: Array.from({ length: LIMITS.maxRules }, () => oneRule),
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
     it("rejects one rule over maxRules", () => {
       const oneRule = getMockBotDoc().rules[0];
+
       const result = validate(
         getMockBotDoc({
           rules: Array.from({ length: LIMITS.maxRules + 1 }, () => oneRule),
         }),
       );
+
       expect(result.ok).toBe(false);
     });
 
@@ -335,6 +355,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
@@ -346,10 +367,12 @@ describe("validate — bot intake gate", () => {
           { op: "const", value: 1 },
         ],
       }));
+
       const doc = {
         ...getMockBotDoc(),
         rules: [{ when: { op: "and", args: many }, do: { type: "idle" } }],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -361,17 +384,20 @@ describe("validate — bot intake gate", () => {
           { op: "const", value: 1 },
         ],
       };
+
       for (let i = 0; i < 40; i++) expr = { op: "not", arg: expr };
+
       const doc = {
         ...getMockBotDoc(),
         rules: [{ when: expr, do: { type: "idle" } }],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
   });
 
   describe("hardening — structure, integers, boundaries", () => {
-    const allowedFields = [
+    const allowedFields: FieldPath[] = [
       "self.x",
       "self.facing",
       "self.points",
@@ -402,6 +428,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
@@ -441,6 +468,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -472,6 +500,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -496,6 +525,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -521,6 +551,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
@@ -540,6 +571,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -573,6 +605,7 @@ describe("validate — bot intake gate", () => {
           ],
         }),
       );
+
       expect(result.ok).toBe(true);
     });
 
@@ -592,6 +625,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -605,6 +639,7 @@ describe("validate — bot intake gate", () => {
           },
         ],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 
@@ -613,6 +648,7 @@ describe("validate — bot intake gate", () => {
         ...getMockBotDoc(),
         rules: [{ when: { op: "and", args: [] }, do: { type: "idle" } }],
       };
+
       expect(validate(doc).ok).toBe(false);
     });
 

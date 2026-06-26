@@ -26,6 +26,7 @@ type StateOverrides = {
   ring?: Partial<RingState>;
   clock?: Partial<ClockState>;
 };
+
 const getMockState = (o: StateOverrides = {}): State => ({
   self: {
     x: 0,
@@ -47,6 +48,7 @@ const TRUE: BoolExpr = {
     { op: "const", value: 1 },
   ],
 };
+
 const FALSE: BoolExpr = {
   op: "eq",
   args: [
@@ -54,6 +56,7 @@ const FALSE: BoolExpr = {
     { op: "const", value: 0 },
   ],
 };
+
 const MOVE_IN: Action = { type: "move", dir: 1 };
 
 // does a `when` cause the (only) rule to fire?
@@ -66,6 +69,7 @@ describe("runTick — rule selection", () => {
       { when: TRUE, do: { type: "move", dir: 1 } },
       { when: TRUE, do: { type: "block", band: "mid" } },
     ]);
+
     expect(runTick(doc, getMockState(), {})).toEqual({ type: "move", dir: 1 });
   });
 
@@ -74,6 +78,7 @@ describe("runTick — rule selection", () => {
       { when: FALSE, do: { type: "move", dir: 1 } },
       { when: TRUE, do: { type: "block", band: "high" } },
     ]);
+
     expect(runTick(doc, getMockState(), {})).toEqual({
       type: "block",
       band: "high",
@@ -86,6 +91,7 @@ describe("runTick — rule selection", () => {
       move: "strike",
       band: "mid",
     });
+
     expect(runTick(doc, getMockState(), {})).toEqual({
       type: "attack",
       move: "strike",
@@ -109,6 +115,7 @@ describe("runTick — memory", () => {
         do: { type: "move", dir: -1 },
       },
     ]);
+
     const mem: Record<string, number> = { seen: 0 };
     const action = runTick(doc, getMockState(), mem);
     expect(action).toEqual({ type: "move", dir: -1 });
@@ -122,6 +129,7 @@ describe("runTick — memory", () => {
         set: [{ cell: "d", to: { op: "field", path: "opponent.distance" } }],
       },
     ]);
+
     const mem: Record<string, number> = { d: 0 };
     runTick(doc, getMockState({ opponent: { distance: 77 } }), mem);
     expect(mem.d).toBe(77);
@@ -137,6 +145,7 @@ describe("runTick — memory", () => {
         ],
       },
     ]);
+
     const mem: Record<string, number> = { a: 0, b: 0 };
     runTick(doc, getMockState(), mem);
     expect(mem).toEqual({ a: 1, b: 2 });
@@ -155,6 +164,7 @@ describe("runTick — memory", () => {
         do: MOVE_IN,
       },
     ]);
+
     expect(runTick(doc, getMockState(), {})).toEqual(MOVE_IN);
   });
 });
@@ -185,6 +195,7 @@ describe("runTick — numeric reads", () => {
         do: MOVE_IN,
       },
     ]);
+
     expect(runTick(doc, getMockState(override), {})).toEqual(MOVE_IN);
   });
 
@@ -201,6 +212,7 @@ describe("runTick — numeric reads", () => {
         do: MOVE_IN,
       },
     ]);
+
     expect(runTick(doc, getMockState({ self: { canAct: false } }), {})).toEqual(
       MOVE_IN,
     );
@@ -237,6 +249,7 @@ describe("runTick — boolean operators", () => {
         { op: "const", value: b },
       ],
     } as BoolExpr;
+
     expect(fires(when)).toBe(expected);
   });
 

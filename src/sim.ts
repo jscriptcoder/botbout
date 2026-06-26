@@ -78,10 +78,12 @@ const viewFor = (
   maxTicks: number,
 ): State => {
   const st = self.state;
+
   const phaseRemaining =
     st.kind === "attacking"
       ? totalFrames(rules.moves[st.move]) - st.elapsed
       : 0;
+
   return {
     self: {
       x: self.x,
@@ -104,6 +106,7 @@ const viewFor = (
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
   if (f.state.kind !== "neutral") return;
+
   if (action.type === "attack") {
     f.state = {
       kind: "attacking",
@@ -132,8 +135,10 @@ const resolveHit = (
   const st = att.state;
   if (st.kind !== "attacking" || st.scored) return;
   const spec = rules.moves[st.move];
+
   const inActiveWindow =
     st.elapsed >= spec.startup && st.elapsed < spec.startup + spec.active;
+
   if (!inActiveWindow) return;
   if (Math.abs(def.x - att.x) > spec.reach) return;
   if (defGuarding) return; // blocked — no score
@@ -160,6 +165,7 @@ export function runFight(cfg: FightConfig): FightResult {
     points: 0,
     state: { kind: "neutral" },
   };
+
   const b: Fighter = {
     x: Math.trunc((rules.ring.width + rules.startGap) / 2),
     facing: 1,
@@ -167,6 +173,7 @@ export function runFight(cfg: FightConfig): FightResult {
     points: 0,
     state: { kind: "neutral" },
   };
+
   const events: FightEvent[] = [];
 
   for (let tick = 0; tick < maxTicks; tick++) {
@@ -200,6 +207,7 @@ export function runFight(cfg: FightConfig): FightResult {
   }
 
   const winner = a.points > b.points ? "A" : b.points > a.points ? "B" : "draw";
+
   return {
     winner,
     ticks: maxTicks,

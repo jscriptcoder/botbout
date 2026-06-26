@@ -32,6 +32,7 @@ npm test           # vitest (test-first; the suite grows with each TDD slice)
 npm run build      # tsc → dist/
 npm run typecheck  # tsc --noEmit
 npm run format     # prettier --write . (format:check to verify only)
+npm run lint       # eslint . (lint:fix to auto-fix; adds block spacing)
 ```
 
 ## Layout
