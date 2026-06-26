@@ -16,10 +16,12 @@
 // action fields — attacking + attackBand — by lAct) with dead-reckoned
 // predictedDistance and seeded, clamped per-tick jitter on the latencies (the sim's
 // first PRNG consumer). A bot can now read the incoming attack's height (attackBand)
-// on the same delayed layer as the attacking tell. VERTICAL OCCUPANCY has begun: a
+// on the same delayed layer as the attacking tell. VERTICAL AXIS has begun: a
 // `crouch` posture vacates the `high` band, so a high strike whiffs a croucher (the
-// §11.3 step-3 occupancy gate, no longer hardwired open). Still pending: the rest of
-// the vertical axis (y / gravity / jump ⇒ airborne vacates `low`) and parry.
+// §11.3 step-3 occupancy gate, no longer hardwired open); and a `jump` launches a
+// fixed-point gravity arc (y += vy; vy -= gravity) that is committed while airborne
+// (canAct=0 until it lands at y=0). Still pending: airborne occupancy (an airborne
+// fighter vacating `low` so a sweep whiffs it) and parry.
 // ============================================================================
 import type {
   State,
@@ -34,7 +36,12 @@ import type {
 import { runTick, type BotDoc } from "./dsl.js";
 import { mulberry32 } from "./prng.js";
 
-export type FighterFrame = { x: number; action: Action; points: number };
+export type FighterFrame = {
+  x: number;
+  y: number;
+  action: Action;
+  points: number;
+};
 export type FightEvent = { tick: number; a: FighterFrame; b: FighterFrame };
 
 export type FightConfig = {
@@ -52,7 +59,8 @@ export type FightResult = {
   events: FightEvent[];
 };
 
-// A fighter is either free to act (neutral) or locked into a committed move.
+// A fighter is either free to act (neutral) or locked into a committed move —
+// striking, or airborne in a gravity arc (carrying its vertical velocity `vy`).
 type MoveState =
   | { kind: "neutral" }
   | {
@@ -61,10 +69,12 @@ type MoveState =
       band: Band;
       elapsed: number;
       scored: boolean;
-    };
+    }
+  | { kind: "airborne"; vy: number };
 
 type Fighter = {
   x: number;
+  y: number;
   facing: Facing;
   mem: Record<string, number>;
   points: number;
@@ -188,8 +198,13 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
       0,
       rules.ring.width,
     );
+  } else if (action.type === "jump") {
+    // Launch: commit to a gravity arc with the initial upward velocity. `y` rises
+    // in `advance`; `dir` is reserved (vertical-only for now). Absent impulse ⇒ 0
+    // ⇒ an inert jump that lands the same tick (forward-compatible with no-y rules).
+    f.state = { kind: "airborne", vy: rules.jumpImpulse ?? 0 };
   }
-  // idle / block: no positional effect in this slice.
+  // idle / block / crouch: no positional effect in this slice.
 };
 
 // The height band a fighter guards this tick, or null if it is open. A fighter
@@ -242,13 +257,31 @@ const resolveHit = (
   st.scored = true;
 };
 
-// Advance a committed fighter's move clock; return to neutral when it completes.
+// Advance a committed fighter's clock. A strike ticks its move frames; an
+// airborne fighter integrates the gravity arc (y += vy, then vy -= gravity) and
+// lands — clamped to exactly y=0 — once the arc returns to (or past) the ground.
 const advance = (f: Fighter, rules: Rules): void => {
   const st = f.state;
-  if (st.kind !== "attacking") return;
-  const next = st.elapsed + 1;
-  if (next >= totalFrames(rules.moves[st.move])) f.state = { kind: "neutral" };
-  else st.elapsed = next;
+
+  if (st.kind === "attacking") {
+    const next = st.elapsed + 1;
+    if (next >= totalFrames(rules.moves[st.move]))
+      f.state = { kind: "neutral" };
+    else st.elapsed = next;
+
+    return;
+  }
+
+  if (st.kind === "airborne") {
+    f.y += st.vy;
+
+    if (f.y <= 0) {
+      f.y = 0;
+      f.state = { kind: "neutral" };
+    } else {
+      st.vy -= rules.gravity ?? 0;
+    }
+  }
 };
 
 export function runFight(cfg: FightConfig): FightResult {
@@ -256,6 +289,7 @@ export function runFight(cfg: FightConfig): FightResult {
 
   const a: Fighter = {
     x: Math.trunc((rules.ring.width - rules.startGap) / 2),
+    y: 0,
     facing: 1,
     mem: initMem(botA),
     points: 0,
@@ -264,6 +298,7 @@ export function runFight(cfg: FightConfig): FightResult {
 
   const b: Fighter = {
     x: Math.trunc((rules.ring.width + rules.startGap) / 2),
+    y: 0,
     facing: 1,
     mem: initMem(botB),
     points: 0,
@@ -349,8 +384,8 @@ export function runFight(cfg: FightConfig): FightResult {
     // 4. Record the integer event (the bot's RETURNED action, honoured or not).
     events.push({
       tick,
-      a: { x: a.x, action: aAction, points: a.points },
-      b: { x: b.x, action: bAction, points: b.points },
+      a: { x: a.x, y: a.y, action: aAction, points: a.points },
+      b: { x: b.x, y: b.y, action: bAction, points: b.points },
     });
   }
 

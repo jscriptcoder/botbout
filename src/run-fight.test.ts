@@ -710,3 +710,106 @@ describe("runFight — vertical occupancy (a croucher vacates the high band)", (
     expect(croucherAsA.scores.b).toBe(0); // striker (B) whiffs the croucher (A)
   });
 });
+
+describe("runFight — vertical axis (the jump arc)", () => {
+  // jumpImpulse 12000, gravity 4000 ⇒ the arc rises and returns to exactly 0:
+  // y += vy; vy -= gravity each tick ⇒ 12000, 20000, 24000, 24000, 20000, 12000, 0.
+  const jumpRules = getMockRules({ jumpImpulse: 12000, gravity: 4000 });
+
+  // A bot that issues `action` whenever free to act (neutral), else idles.
+  const onNeutral = (action: Action): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: action,
+        },
+      ],
+      { type: "idle" },
+    );
+
+  it("launches a deterministic integer gravity arc that returns to exactly y=0", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: onNeutral({ type: "jump", dir: 0 }),
+        botB: IDLE,
+        maxTicks: 8,
+      }),
+    );
+
+    // up to a held apex, back down, land at tick 6, then re-arm and jump again.
+    expect(result.events.map((e) => e.a.y)).toEqual([
+      12000, 20000, 24000, 24000, 20000, 12000, 0, 12000,
+    ]);
+  });
+
+  it("keeps every y an integer (no floats in the vertical outcome path)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: onNeutral({ type: "jump", dir: 0 }),
+        botB: IDLE,
+        maxTicks: 20,
+      }),
+    );
+
+    for (const e of result.events) expect(Number.isInteger(e.a.y)).toBe(true);
+  });
+
+  it("is committed while airborne: a returned move is ignored until it lands", () => {
+    // A jumps on its neutral tick; its default `move` would advance x, but while
+    // airborne it is committed (canAct=0), so x does not change mid-air.
+    const jumpThenMove = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.canAct" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "jump", dir: 0 },
+        },
+      ],
+      { type: "move", dir: 1 },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: jumpThenMove,
+        botB: IDLE,
+        maxTicks: 6,
+      }),
+    );
+
+    const startX = aStartX(jumpRules);
+    expect(result.events[3].a.y).toBeGreaterThan(0); // mid-air at tick 3
+    expect(result.events[3].a.x).toBe(startX); // move ignored ⇒ x unchanged
+    expect(result.events[5].a.x).toBe(startX);
+  });
+
+  it("leaves y at 0 for a fighter that never jumps", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: jumpRules,
+        botA: AGGRESSOR,
+        botB: IDLE,
+        maxTicks: 10,
+      }),
+    );
+
+    for (const e of result.events) {
+      expect(e.a.y).toBe(0);
+      expect(e.b.y).toBe(0);
+    }
+  });
+});

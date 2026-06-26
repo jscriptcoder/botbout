@@ -18,6 +18,7 @@ export type Action =
   | { type: "move"; dir: -1 | 0 | 1 }
   | { type: "block"; band: Band }
   | { type: "crouch" } // grounded posture: vacates the `high` band (a high strike whiffs)
+  | { type: "jump"; dir: -1 | 0 | 1 } // gravity arc; airborne ⇒ committed (`dir` reserved, vertical-only for now)
   | { type: "attack"; move: MoveId; band: Band };
 
 // ─── State: self is live (skeleton has no perception latency yet) ────────────
@@ -68,6 +69,12 @@ export type Rules = {
   ring: { width: number }; // ring width in sub-units
   startGap: number; // initial separation between the two fighters (sub-units)
   moves: Record<MoveId, MoveSpec>; // the frame table
+  // Vertical axis (C4). Both absent ⇒ inert (a `jump` launches no arc) ⇒
+  // byte-identical to the pre-vertical engine. `jumpImpulse` is the initial
+  // upward velocity (sub-units/tick); `gravity` is the per-tick downward delta
+  // applied to that velocity. Integer sub-units only — the arc is replay-stable.
+  jumpImpulse?: number;
+  gravity?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.

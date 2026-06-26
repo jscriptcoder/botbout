@@ -273,6 +273,10 @@ export function validate(doc: unknown): ValidationResult {
         break;
       case "crouch":
         break;
+      case "jump":
+        if (e.dir !== -1 && e.dir !== 0 && e.dir !== 1)
+          fail(path, "jump dir must be -1, 0, or 1");
+        break;
       case "attack":
         if (typeof e.move !== "string" || !MOVES.has(e.move))
           fail(path, `unknown move: ${String(e.move)}`);

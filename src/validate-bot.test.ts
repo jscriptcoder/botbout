@@ -239,6 +239,19 @@ describe("validate — bot intake gate", () => {
       expect(validate(doc).ok).toBe(true);
     });
 
+    it.each([-1, 0, 1] as const)(
+      "accepts the jump action with dir %i",
+      (dir) => {
+        const doc = getMockBotDoc({ default: { type: "jump", dir } });
+        expect(validate(doc).ok).toBe(true);
+      },
+    );
+
+    it("rejects a jump with an out-of-range dir", () => {
+      const doc = { ...getMockBotDoc(), default: { type: "jump", dir: 2 } };
+      expect(validate(doc).ok).toBe(false);
+    });
+
     it("accepts every skeleton action form", () => {
       const result = validate(
         getMockBotDoc({
