@@ -185,11 +185,15 @@ generating code; flag any change that would.
 - NOT YET BUILT (later slices): no real frame table (concrete move numbers live only
   in test mocks); no horizontal jump displacement or air-actions,
   *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT: **capability not yet resolved.** C1–C8 (the resolved combat tree) are shipped; the remaining
-  items are unresolved in design. Candidates from the deferred list: **match structure** (*yame* resets
-  / rounds / WKF win conditions), a **real frame table** (concrete move numbers — today they live only
-  in test mocks), or **air-actions** (air strikes / horizontal jump displacement). Pick one and run
-  **`grill-me` → `planning` → TDD** before any code. (Roadmap capabilities are **C1–C8** — the `C`
+- NEXT (IN PROGRESS): **the canonical frame table** — selected from the candidates below, **grilled +
+  planned**. Replaces the provisional `src/cli/demo-rules.ts` with an authoritative engine-level
+  `CANONICAL_RULES` (`src/engine/rules.ts`) whose every number is proven by a behavioral `runFight`
+  test. Decisions → `plans/canonical-frame-table-decisions.md`; the 6-slice PR plan →
+  `plans/canonical-frame-table.md` (Slice 1 = a small additive `finishScore` engine knob; Slices 2–5
+  build + behaviorally verify the table; Slice 6 wires the runner + refreshes docs). **To resume: read
+  that plan (or run `/continue`) and start at Slice 1.** Still-unresolved candidates to tackle AFTER it:
+  **match structure** (*yame* resets / rounds / WKF win conditions) and **air-actions** (air strikes /
+  horizontal jump displacement). (Roadmap capabilities are **C1–C8** — the `C`
   prefix avoids colliding with `slice/N` git branch names; C1 = walking skeleton (branches
   `slice/1`–`slice/5`), C2 = perception keystone, C3 = height bands, C4 = vertical axis + occupancy,
   C5 = parry windows, C6 = on-contact cancel combos, C7 = throw triangle + knockdown, C8 = sweeps +
