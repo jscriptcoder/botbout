@@ -131,9 +131,25 @@ guard it's a **normal block** (blockstun + pushback + small stamina chip). Fast
 ### 6. Ground game — limited okizeme
 
 A clean **throw/takedown** (_o-goshi_), if not broken, grounds the opponent and
-**scores 3 directly**. A **sweep** (_ashi-barai_) knocks down (low/no score) and
-opens **exactly one** guaranteed follow-up "finish" window before the opponent
-wakes with **i-frames**. WKF _ippon_ drama + sweep setups, **no ground loops**.
+**scores 3 directly**. A **sweep** (_ashi-barai_) is a **low-band strike that
+knocks down instead of scoring** (`score 0`, an `onHit.knockdown` move): it runs
+the normal strike contact gate, so a **low guard blocks it** and a **fresh low
+guard parries it**, it **whiffs a jumper** (low-band occupancy) but **hits a
+croucher**, and it **trades with strikes / stuffs throws** like any strike
+(`strike > throw`). Its payoff is tempo, not points.
+
+**Okizeme (C8-resolved).** Every knockdown — throw _or_ sweep — opens **exactly
+one** guaranteed "finish" window: for the first `finishWindow` ticks of the
+knockdown the grounded fighter is **targetable** by a single opposing strike
+(guard / occupancy ignored — it is prone), which **scores and closes the window**.
+After that, **wake-up i-frames** (the untargetable tail of the knockdown) run
+until the fighter **wakes to a fully-agentive neutral** — no re-down, no clock
+extension, **no ground loops**. WKF _ippon_ drama + sweep setups. Perception: the
+finisher reads its own window **live** as **`self.finishWindow`**; the grounded
+state is a delayed **`opponent.knockdown`** tell (`L_act`). `finishWindow` is
+**optional** — absent ⇒ no finish for any knockdown ⇒ a throw stays the C7
+pure-3-point untargetable knockdown.
+
 The throw triangle is locked: **strike > throw > guard > strike**; `throw-break`
 escapes throws; strikes interrupt throw startup.
 
@@ -327,6 +343,37 @@ _yame_ / match-scoring reset (§7) is match structure, **outside** this procedur
 > a **perception / State-contract** change (§9), not a resolution-order change — the
 > procedure is sound without it; the _game_ is not interesting without it. Pull it into C3
 > planning alongside this section.
+
+#### 11.6 C8 scope (sweeps + limited okizeme) — RESOLVED
+
+C8 realizes the deferred **knockdown / i-frames** insertion point. **No new
+resolution machinery** — a sweep is a **strike** (§11.3 gate, §11.4 precedence), so
+it slots into the existing `computeStrike` / `applyStrike` union:
+
+- **Sweep = a knockdown-flagged low strike.** `{type:"sweep"}` starts an
+  `attacking` move at band `low` reading `rules.moves.sweep` (a `MoveSpec` with
+  `score 0` + the new `knockdown?: boolean`). On **HIT**, `applyStrike` downs the
+  defender (no score) instead of scoring; on **BLOCK / PARRY** it behaves as any
+  strike (no knockdown). Inert without a `moves.sweep` spec ⇒ byte-identical to C7.
+  Precedence falls out for free: **sweep stuffs throws**, **sweep ∥ strike trades**
+  (the sweep downs, the poke scores), **sweep ∥ sweep ⇒ mutual knockdown**.
+- **One knockdown lifecycle (throw and sweep alike).** A knockdown sets
+  `downed{ elapsed, finish: finishWindow }`. `computeStrike` against a downed
+  defender returns a **finish HIT** iff `finish > 0` (gated by active + reach
+  **only** — band / guard / occupancy ignored, the target is prone), else `null`
+  (i-frames). `applyStrike` scores the finisher and sets the target's `finish = 0`
+  ⇒ **exactly one** finish; it **never re-downs or extends `knockdownDuration`** (no
+  ground loops). The i-frames are the untargetable tail; the fighter then **wakes to
+  neutral** with full agency.
+- **`finishWindow` optional in `Rules`.** Absent ⇒ `F = 0` ⇒ no finish for any
+  knockdown ⇒ **throws stay byte-identical to C7** (downed fully untargetable); a
+  sweep is then a pure tempo knockdown.
+- **Perception (§9, additive).** `self.finishWindow` — the finisher's window, read
+  **live** from the live opponent's `downed.finish` (the "guaranteed" enabler, like
+  `self.cancelWindow` / `self.counterWindow`). `opponent.knockdown` — a **bare
+  boolean** grounded tell on the **`L_act`** layer (like `opponent.throwing`).
+  Combined read: `knockdown ∧ finishWindow > 0` ⇒ finish; `knockdown ∧
+finishWindow == 0` ⇒ i-frames (reset); else the opponent is up.
 
 ---
 
