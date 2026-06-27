@@ -132,22 +132,44 @@ generating code; flag any change that would.
   tests; `sim.ts` mutation ~95%, `dsl.ts` interpreter 100%. `MoveSpec.cancelInto` +
   `Rules.cancelWindow` are optional; absent ⇒ **byte-identical** to C5. Self-cancel
   (`strike→strike`) demonstrates the mechanic; a multi-move arsenal + distinct routes is a later
-  additive slice. **Throws** remain the union's genuine test-forcing consumer.
+  additive slice. **Throws** (C7) are the union's genuine test-forcing consumer — now shipped.
+- DONE (throw triangle + knockdown — C7, PRs #29–#33): the §11.4 anti-turtle mind-game and the
+  compute-then-apply union's genuine **test-forcing** consumer. A committed `throw` (startup →
+  grab-active → recovery) GRABS a grounded, non-downed defender in `reach` — beating any guard/parry
+  (it is **unbanded**) — scoring `throw.score` (3) and knocking them **down** (`canAct=0`,
+  untargetable) for `knockdownDuration` ticks (Slice 1). The full precedence **`strike > throw >
+  guard`** then resolves *in* the union: an opposing active in-range strike (a HIT) **stuffs** the
+  throw — voided + marked `stuffed`, thrower left committed (punishable) — which also **interrupts
+  throw startup** (Slice 2); a defender's **`throw-break`** on a grab-active tick defeats the grab the
+  same way (`throw-break > throw`), and a break is a per-tick **non-guard** action so a strike still
+  hits it (the anti-break-spam balance, Slice 3); two live grabs **clash** — both whiff — one of only
+  two swap-symmetric outcomes in §11.4 (the other is the strike∥strike trade, Slice 4). The incoming
+  grab is perceivable as a bare **`opponent.throwing`** boolean on the **`L_act`** layer (invariant #4,
+  like `attacking`/`attackBand`/`posture`), making `throw-break` a **reaction** skill-gradient —
+  escapable iff `S ≥ L_act + 1` (Slice 5). This is the union's **strictly-forced** consumer: throws
+  create the first same-tick **cross-fighter mutual dependencies** (a throw mutates the *defender* via
+  knockdown while a strike mutates the *attacker* via score), which the frozen-snapshot
+  **compute-then-apply** split (`computeThrow`/`applyThrow` alongside `computeStrike`/`applyStrike`,
+  live since C5) resolves order-independently. 926 tests; `sim.ts` mutation ~95%, `dsl.ts` interpreter
+  100%. The `throw`/`throw-break` actions are allowlisted in `src/dsl.ts`; `Rules.throw` (a
+  `ThrowSpec`) + `knockdownDuration` are optional ⇒ a `throw` is inert when unconfigured ⇒
+  **byte-identical** to C6. Deferred to **C8**: sweeps, the one guaranteed **finish window** (okizeme),
+  wake-up i-frames, and `opponent.knockdown`.
 - NOT YET BUILT (later slices): no real frame table (concrete move numbers live only
-  in test mocks); no horizontal jump displacement or air-actions, throws/sweeps,
+  in test mocks); no horizontal jump displacement or air-actions, **sweeps / okizeme**,
   *yame*/match structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT: **throws / sweeps** (the §11.4 throw triangle + knockdown / limited okizeme). A clean throw
-  beats guard and scores 3; a sweep knocks down and opens exactly one finish window before wake-up
-  i-frames. The locked precedence is **strike > throw > guard > strike**; `throw-break` escapes
-  throws; strikes interrupt throw startup. These are the union's genuine **test-forcing** consumer —
-  same-tick mutual dependencies (strike-beats-throw, throw-clash) that the compute-then-apply union
-  (live since C5, reused by C6) exists to resolve order-independently. (Roadmap capabilities are
-  **C1–C6** — the `C` prefix avoids colliding with `slice/N` git branch names; C1 = walking skeleton
+- NEXT: **sweeps + limited okizeme (C8)** — the ground game on top of the throw triangle. A `sweep`
+  knocks down (low / no score) and is gated by `low`-band **occupancy** (it whiffs a jumper, like a
+  low strike); a knockdown opens **exactly one guaranteed finish window** before wake-up **i-frames**;
+  the okizeme state (likely **`opponent.knockdown`**) becomes perceivable. C7 shipped the throw
+  triangle + knockdown-as-tempo; C8 builds wake-up / finish on top. (Roadmap capabilities are
+  **C1–C7** — the `C` prefix avoids colliding with `slice/N` git branch names; C1 = walking skeleton
   (branches `slice/1`–`slice/5`), C2 = perception keystone, C3 = height bands, C4 = vertical axis +
-  occupancy, C5 = parry windows, C6 = on-contact cancel combos.) The spine is pinned in
-  `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply (live from C5),
-  S1 posture → S2 intake → S3 compute → S4 apply → S5 advance, `strike > throw > guard` precedence,
-  HIT/BLOCK/WHIFF gate. Flow: `planning` → TDD, **PR per capability**.
+  occupancy, C5 = parry windows, C6 = on-contact cancel combos, C7 = throw triangle + knockdown.) The
+  spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply
+  (live from C5, **strictly forced by C7's throws**), S1 posture → S2 intake → S3 compute → S4 apply →
+  S5 advance, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. Flow: `planning` → TDD,
+  **PR per capability**.
 
 ## Commands
 
