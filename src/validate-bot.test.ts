@@ -244,6 +244,11 @@ describe("validate — bot intake gate", () => {
       expect(validate(doc).ok).toBe(true);
     });
 
+    it("accepts the throw-break action", () => {
+      const doc = { ...getMockBotDoc(), default: { type: "throw-break" } };
+      expect(validate(doc).ok).toBe(true);
+    });
+
     it.each([-1, 0, 1] as const)(
       "accepts the jump action with dir %i",
       (dir) => {

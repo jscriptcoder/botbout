@@ -283,6 +283,8 @@ export function validate(doc: unknown): ValidationResult {
         break;
       case "throw":
         break;
+      case "throw-break":
+        break;
       case "jump":
         if (e.dir !== -1 && e.dir !== 0 && e.dir !== 1)
           fail(path, "jump dir must be -1, 0, or 1");

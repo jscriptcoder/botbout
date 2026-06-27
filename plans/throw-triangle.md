@@ -63,7 +63,7 @@ the **defender** (knockdown) while a strike mutates the **attacker** (score).
 - [x] An active in-range strike **beats** a colliding throw: the throw fails (no score, no
       knockdown) and the strike scores; a strike landing during throw **startup** interrupts it.
       Resolution is swap-symmetric (A↔B assignment cannot change the outcome). _(Slice 2 ✓)_
-- [ ] A timed `throw-break` escapes a grab: no score, no knockdown.
+- [x] A timed `throw-break` escapes a grab: no score, no knockdown. _(Slice 3 ✓)_
 - [ ] Two throws that collide **clash**: neither scores, neither is downed.
 - [ ] The opponent's throw is perceivable as a delayed tell on the `L_act` layer so a bot can
       time a break (reactable only when `S ≥ L_act + 1`, consistent with the perception keystone).
@@ -182,8 +182,18 @@ thrower — a whiffing strike is no threat. Confirmed via find-gaps 2026-06-26.)
 
 ---
 
-### Slice 3: `throw-break` escapes a throw
+### Slice 3: `throw-break` escapes a throw ✅ SHIPPED
 
+**Status**: Done — `src/types.ts` (`{type:"throw-break"}` added to the Action union), `src/dsl.ts`
+(`throw-break` allowlisted in the validator), `src/sim.ts` (the Slice-2 `stuffIfStruck` generalized
+to `stuffIfDefeated` — a throw is now defeated by an opposing HIT **or**, on a grab-active tick, the
+defender's `throw-break`; both void + mark the throw `stuffed`, thrower stays committed). `throw-break`
+needs **no** `intake`/`guardBandOf`/`postureOf` change — it is a per-tick no-op like `idle` and not a
+guard, so a striker hits it for free (strike > throw-break falls out of existing rules). 917 tests;
+changed-line mutation 26 killed / 2 survived (both the carried-over Slice-2 equivalents at the
+`stuffIfDefeated` non-throwing guard — a non-throwing fighter's throw outcome is always `null`, so
+voiding it / `.stuffed` are unobservable); `dsl.ts` 100%. `Rules.throw` absent ⇒ `throw-break` parses
+but is inert ⇒ byte-identical to C6.
 **Branch**: `feat/c7-throw-break`
 **Value**: The defender's out against a grab read — `throw-break > throw` completes the third
 leg. Turns the throw into a true mixup rather than a guaranteed turtle-buster.

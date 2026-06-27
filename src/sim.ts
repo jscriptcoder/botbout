@@ -34,8 +34,10 @@
 // precedence strike > throw is resolved in the same union: a fighter is open while
 // throwing, so an opposing active in-range strike (a HIT) STUFFS the throw — the grab is
 // voided and the throw marked resolved (it cannot grab on a later frame), but the thrower
-// stays committed through its recovery (punishable). Still pending: perceiving the counter
-// window (self.counterWindow) and the incoming throw (opponent.throwing); throw-break; throw clash.
+// stays committed through its recovery (punishable). A defender's THROW-BREAK on a grab-active
+// tick defeats the grab the same way (throw-break > throw); a break is a per-tick action (no
+// commitment) and NOT a guard, so a strike still hits it. Still pending: perceiving the counter
+// window (self.counterWindow) and the incoming throw (opponent.throwing); throw clash.
 // ============================================================================
 import type {
   State,
@@ -472,17 +474,30 @@ const applyThrow = (
   def.state = { kind: "downed", elapsed: 0 };
 };
 
-// §11.4 precedence — strike > throw. A fighter is OPEN while throwing, so an opposing active
-// in-range strike (a HIT from computeStrike) STUFFS the throw: this marks the throwing move
-// resolved (`stuffed` ⇒ it cannot grab on a later active frame) and returns true so the caller
-// voids the grab outcome. The thrower still runs out its recovery — a stuffed throw is
-// punishable. Reads only the frozen pre-apply strike outcome, so resolution stays swap-symmetric.
-const stuffIfStruck = (f: Fighter, incoming: StrikeOutcome | null): boolean => {
-  if (f.state.kind !== "throwing") return false;
-  if (incoming?.result !== "hit") return false;
-  f.state.stuffed = true;
+// §11.4 precedence — a throw is DEFEATED this tick by either leg of the triangle:
+//   • strike > throw — the defender lands an active in-range strike (a HIT from computeStrike)
+//     on the OPEN thrower. Works in any throw phase, so it also INTERRUPTS a throw still in
+//     startup.
+//   • throw-break > throw — on a GRAB-ACTIVE tick (`grabActive`) the defender returns
+//     `throw-break`. A break mistimed to startup/recovery is wasted (single-tick coincidence).
+// Either defeat marks the throwing move resolved (`stuffed` ⇒ it cannot grab on a later active
+// frame) and returns true so the caller voids the grab; the thrower still runs out its recovery
+// (punishable). Reads only the frozen pre-apply snapshot, so resolution stays swap-symmetric.
+const stuffIfDefeated = (
+  att: Fighter,
+  incoming: StrikeOutcome | null,
+  defAction: Action,
+  grabActive: boolean,
+): boolean => {
+  if (att.state.kind !== "throwing") return false;
 
-  return true;
+  const defeated =
+    incoming?.result === "hit" ||
+    (grabActive && defAction.type === "throw-break");
+
+  if (defeated) att.state.stuffed = true;
+
+  return defeated;
 };
 
 // Advance a committed fighter's clock. A strike ticks its move frames; an
@@ -666,15 +681,21 @@ export function runFight(cfg: FightConfig): FightResult {
       aPosture,
     );
 
-    // Throws are computed from the same frozen snapshot (a throw beats any guard, so it
-    // has no band gate). The §11.4 precedence strike > throw is then applied: an opposing
-    // active in-range strike (a HIT) STUFFS a throw — void the grab and mark it resolved
-    // (it cannot grab on a later frame), leaving the thrower committed through its recovery
-    // (punishable). Both decisions read the frozen snapshot before any apply ⇒ swap-symmetric.
+    // Throws are computed from the same frozen snapshot (a throw beats any guard, so it has no
+    // band gate). The §11.4 precedence is then applied: a throw is DEFEATED — voided and marked
+    // resolved, the thrower left committed (punishable) — by the opponent's active in-range strike
+    // (strike > throw, even mid-startup) or, on a grab-active tick, the opponent's throw-break
+    // (throw-break > throw). All decisions read the frozen snapshot before any apply ⇒ swap-symmetric.
     const aThrow = computeThrow(a, b, rules);
     const bThrow = computeThrow(b, a, rules);
-    const aThrowFinal = stuffIfStruck(a, bOutcome) ? null : aThrow;
-    const bThrowFinal = stuffIfStruck(b, aOutcome) ? null : bThrow;
+
+    const aThrowFinal = stuffIfDefeated(a, bOutcome, bAction, aThrow !== null)
+      ? null
+      : aThrow;
+
+    const bThrowFinal = stuffIfDefeated(b, aOutcome, aAction, bThrow !== null)
+      ? null
+      : bThrow;
 
     applyStrike(a, b, aOutcome);
     applyStrike(b, a, bOutcome);

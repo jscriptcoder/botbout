@@ -2221,3 +2221,240 @@ describe("runFight — strike beats throw (the §11.4 precedence: strike > throw
     expect(result.scores.a).toBe(0); // the stuffed throw never scored
   });
 });
+
+describe("runFight — throw-break (the §11.4 third leg: throw-break > throw)", () => {
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+
+  // Throws once at tick 0 then idles (commits at tick 0 ⇒ grab-active at tick 2).
+  const throwOnce = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: 0 },
+          ],
+        },
+        do: { type: "throw" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // Returns `throw-break` on exactly tick `t` (idle otherwise).
+  const breakAt = (t: number): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: t },
+            ],
+          },
+          do: { type: "throw-break" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // Returns `action` from tick `from` onward (idle before). For comparing a continuous
+  // throw-break (open) against a continuous guard (negates) across a strike's active window.
+  const from = (start: number, action: Action): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: start },
+            ],
+          },
+          do: action,
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // throw: startup 2, active 1 ⇒ grab-active at tick 2; reach 250000, score 3; knockdown 6.
+  const throwRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within grab reach (250000)
+      knockdownDuration: 6,
+      throw: { startup: 2, active: 1, recovery: 3, reach: 250000, score: 3 },
+      ...o,
+    });
+
+  it("a throw-break on the grab-active tick escapes the grab; a break mistimed to startup is wasted (either slot)", () => {
+    // The thrower occupies `slot`; report its score. Asserted from both slots so the grab-active
+    // gate on the break is pinned for each fighter (not just when fighter A throws).
+    const throwerScore = (breakTick: number, slot: "a" | "b"): number =>
+      runFight(
+        getMockConfig({
+          rules: throwRules(), // grab-active at tick 2
+          botA: slot === "a" ? throwOnce : breakAt(breakTick),
+          botB: slot === "b" ? throwOnce : breakAt(breakTick),
+          maxTicks: 6,
+        }),
+      ).scores[slot];
+
+    expect(throwerScore(2, "a")).toBe(0); // break coincides with grab-active ⇒ escaped
+    expect(throwerScore(1, "a")).toBe(3); // break one tick early (throw startup) ⇒ wasted ⇒ grab lands
+    expect(throwerScore(2, "b")).toBe(0); // mirror — on-time break escapes when fighter B throws
+    expect(throwerScore(1, "b")).toBe(3); // mirror — a break in B's throw startup is wasted
+  });
+
+  it("an escaped throw scores nothing AND does not knock down (the broken defender stays free)", () => {
+    // B breaks the grab at tick 2, then steps the next tick — a downed fighter could not. Pins the
+    // PAIRED escape effect (neither score nor knockdown).
+    const breakThenStep = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 2 },
+            ],
+          },
+          do: { type: "throw-break" },
+        },
+      ],
+      { type: "move", dir: 1 },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: breakThenStep,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // no score
+    expect(result.events[3].b.x).not.toBe(result.events[2].b.x); // free at tick 3 ⇒ not downed
+  });
+
+  it("a throw-break resolves the throw — it cannot re-grab on a later active frame", () => {
+    // Wide grab window (active 2 ⇒ grab-active ticks 2,3). B breaks only on the first active tick;
+    // the break resolves the throw, so the now-open second frame does NOT grab.
+    const wideThrow = {
+      startup: 2,
+      active: 2,
+      recovery: 3,
+      reach: 250000,
+      score: 3,
+    };
+
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({ throw: wideThrow }),
+        botA: throwOnce,
+        botB: breakAt(2), // breaks tick 2 only, open at tick 3
+        maxTicks: 6,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // resolved by the tick-2 break ⇒ no grab on tick 3
+  });
+
+  it("a fighter inputting throw-break is open to strikes (strike > throw-break, the anti-spam balance)", () => {
+    // Break is not a guard: an active in-range strike HITs the breaker, where a real guard negates
+    // it. STRIKER's strike is active at ticks 4–5, so the defender breaks/guards from tick 4 on.
+    const vsBreak = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: STRIKER,
+        botB: from(4, { type: "throw-break" }),
+        maxTicks: 8,
+      }),
+    ).scores.a;
+
+    const vsBlock = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: STRIKER,
+        botB: from(4, { type: "block", band: "mid" }),
+        maxTicks: 8,
+      }),
+    ).scores.a;
+
+    expect(vsBreak).toBe(1); // break is open ⇒ the strike lands
+    expect(vsBlock).toBe(0); // a matching guard negates it
+  });
+
+  it("a lone throw-break is inert and uncommitted — free to act the next tick, nothing scored", () => {
+    // A breaks at tick 0 with no incoming grab (B idle): it does nothing AND does not commit A,
+    // so A's default step lands the very next tick.
+    const breakThenStep = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "throw-break" },
+        },
+      ],
+      { type: "move", dir: 1 },
+    );
+
+    const rules = throwRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: breakThenStep,
+        botB: IDLE,
+        maxTicks: 4,
+      }),
+    );
+
+    const startX = aStartX(rules);
+    expect(result.events[0].a.x).toBe(startX); // tick 0: broke (no step), but not committed
+    expect(result.events[1].a.x).toBe(startX + rules.walkSpeed); // free the next tick ⇒ steps
+    expect(result.scores).toEqual({ a: 0, b: 0 }); // inert
+  });
+
+  it("resolves the throw-break escape identically from either slot (swap-symmetric)", () => {
+    const asA = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwOnce,
+        botB: breakAt(2),
+        maxTicks: 6,
+      }),
+    );
+
+    const asB = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: breakAt(2),
+        botB: throwOnce,
+        maxTicks: 6,
+      }),
+    );
+
+    expect(asA.scores).toEqual({ a: 0, b: 0 });
+    expect(asB.scores).toEqual({ a: 0, b: 0 });
+  });
+
+  it("with no throw config a throw-break is inert (byte-identical physics to idling)", () => {
+    const BREAKER = bot([], { type: "throw-break" });
+    const rules = getMockRules({ startGap: 200000 }); // no throw config
+
+    const result = runFight(
+      getMockConfig({ rules, botA: BREAKER, botB: IDLE, maxTicks: 6 }),
+    );
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    for (const e of result.events) expect(e.a.x).toBe(aStartX(rules)); // never moved / committed
+  });
+});

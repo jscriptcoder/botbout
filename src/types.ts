@@ -20,7 +20,8 @@ export type Action =
   | { type: "crouch" } // grounded posture: vacates the `high` band (a high strike whiffs)
   | { type: "jump"; dir: -1 | 0 | 1 } // gravity arc; airborne ⇒ committed (`dir` reserved, vertical-only for now)
   | { type: "attack"; move: MoveId; band: Band }
-  | { type: "throw" }; // grapple: beats any guard, grabs a grounded defender ⇒ scores + knockdown
+  | { type: "throw" } // grapple: beats any guard, grabs a grounded defender ⇒ scores + knockdown
+  | { type: "throw-break" }; // per-tick grab escape: voids an opponent's grab-active throw. No commitment, NOT a guard (open to strikes)
 
 // ─── State: self is live (skeleton has no perception latency yet) ────────────
 export type SelfState = {
