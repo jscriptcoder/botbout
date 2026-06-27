@@ -113,7 +113,12 @@ _delayed_ `opponent.knockdown` tell.) Categorical self-state read via predicates
 - derived (engine dead-reckons over staleness): `predictedDistance`, `predictedY`.
 - action/intent (delayed by `L_act`): perceived via `phase`/`move_is`/`band_is`/
   `posture_is`; numeric `phaseElapsed`, `moveRecoveryRemaining` (derived),
-  `staleness` (= `L_act`).
+  `staleness` (= `L_act`); bare tells `attacking`, `throwing`, `knockdown` (each
+  1/0). `knockdown` is `1` for the **whole** opponent knockdown (finish window
+  _and_ wake-up i-frame tail), `0` otherwise — pair it with the live
+  `self.finishWindow` for the okizeme read: `knockdown ∧ finishWindow > 0` ⇒ go for
+  the guaranteed finish; `knockdown ∧ finishWindow == 0` ⇒ the foe is prone but
+  invulnerable, so reset.
 - status: `points`, `stamina`.
 
 **`ring`:** `width`, `leftEdge`, `rightEdge`.

@@ -70,7 +70,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
   **MUTATE / KILL MUTANTS / REFACTOR**: as per cycle.
   **Done when**: all ACs met (incl. the C7 byte-identical replay), mutation report reviewed, human approves commit. (Note: this slice intentionally **changes C7 throw behavior when `finishWindow` is configured** — update the affected C7 throw tests to assert the finishable-knockdown behavior under that config.)
 
-### Slice 3: A bot reads its live finish window via `self.finishWindow`
+### Slice 3: A bot reads its live finish window via `self.finishWindow` — ✅ DONE (PR #37)
 
 **Value**: The finisher can reliably time the guaranteed finish (hit-confirm) instead of dead-reckoning its own knockdown.
 **Path**: `viewFor` exposes `self.finishWindow` computed **live** from the live opponent's `downed.finish` (0 when the opponent is not downed) → `dsl` `FIELD_READERS["self.finishWindow"]` → a bot rule branches on it. Observable via `runFight`: a bot that only strikes `when self.finishWindow > 0` lands exactly the guaranteed finish and never wastes a strike otherwise.

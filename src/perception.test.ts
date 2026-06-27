@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig, type FightEvent } from "./sim.js";
-import { validate, type BotDoc } from "./dsl.js";
+import { validate, type BotDoc, type BoolExpr, type FieldPath } from "./dsl.js";
 import type { Rules, Action, Band } from "./types.js";
 
 // ─── factories ───────────────────────────────────────────────────────────────
@@ -987,5 +987,133 @@ describe("perception latency — delayed incoming throw (L_act)", () => {
 
   it("accepts a bot that reads opponent.throwing (additive to the allowlist)", () => {
     expect(validate(REACTIVE_BREAKER).ok).toBe(true);
+  });
+});
+
+// ─── slice C8.4: perceived opponent KNOCKDOWN, delayed by L_act ─────────────────
+// A grounded opponent rides the SAME coherent delayed action layer as the
+// `attacking`/`throwing` tells (invariant #4), exposed as a bare boolean
+// `opponent.knockdown` (1 while the perceived opponent is downed, 0 otherwise — for
+// the WHOLE knockdown, finish window AND i-frame tail). Paired with the live
+// `self.finishWindow` it expresses the full okizeme read: knockdown ∧ finishWindow>0
+// ⇒ go for the finish; knockdown ∧ finishWindow==0 ⇒ reset against an invulnerable foe.
+describe("perception latency — delayed opponent knockdown (L_act)", () => {
+  const eqField = (path: FieldPath, n: number): BoolExpr => ({
+    op: "eq",
+    args: [
+      { op: "field", path },
+      { op: "const", value: n },
+    ],
+  });
+
+  // A fast sweep so A is free again the tick after it downs B (recovery 0 ⇒ total 2,
+  // active at elapsed 1) — A's commitment never masks the knockdown-perception lag.
+  const SWEEP = {
+    startup: 1,
+    active: 1,
+    recovery: 0,
+    score: 0,
+    reach: 250000,
+    knockdown: true,
+  };
+
+  // A sweeps B down at tick 0, then BLOCKS the instant it PERCEIVES the knockdown —
+  // so the first `block` tick is a clean read of *when A perceived* B go down.
+  const SWEEP_THEN_BLOCK = bot(
+    [
+      { when: eqField("clock.tick", 0), do: { type: "sweep" } },
+      {
+        when: eqField("opponent.knockdown", 1),
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // B (idle, standing, in sweep reach) gets swept and stays down (knockdownDuration 10).
+  const knockdownDelay = (perception: {
+    lPos?: number;
+    lAct?: number;
+  }): FightConfig =>
+    getMockConfig({
+      rules: getMockRules({
+        startGap: 200000, // within sweep reach (250000)
+        moves: { strike: getMockRules().moves.strike, sweep: SWEEP },
+        knockdownDuration: 10,
+        perception,
+      }),
+      botA: SWEEP_THEN_BLOCK,
+      botB: bot([], { type: "idle" }),
+      maxTicks: 12,
+    });
+
+  it("delays the perception of a knockdown by exactly L_act ticks (plus the structural tick)", () => {
+    // B is swept on tick 1 and enters A's history downed on tick 2, so at L_act = 0 the
+    // knockdown is perceived on tick 2 (the structural observe-after-commit tick); each
+    // extra tick of action latency pushes that read one tick later.
+    expect(firstBlockTick(runFight(knockdownDelay({ lAct: 0 })).events)).toBe(
+      2,
+    );
+    expect(firstBlockTick(runFight(knockdownDelay({ lAct: 1 })).events)).toBe(
+      3,
+    );
+    expect(firstBlockTick(runFight(knockdownDelay({ lAct: 2 })).events)).toBe(
+      4,
+    );
+  });
+
+  it("rides the action (L_act) layer, not the positional (L_pos) layer", () => {
+    // Only the positional layer delayed (L_pos = 5, L_act = 0): the knockdown read stays
+    // live ⇒ tick 2, proving opponent.knockdown follows the action layer.
+    expect(
+      firstBlockTick(runFight(knockdownDelay({ lPos: 5, lAct: 0 })).events),
+    ).toBe(2);
+  });
+
+  it("exposes a standing opponent as the literal 0 a bot can branch on", () => {
+    // A non-downed opponent must read as knockdown === 0 (not undefined): a bot can branch
+    // on "the foe is upright". B never goes down, so A advances every tick.
+    const onStanding = bot(
+      [
+        {
+          when: eqField("opponent.knockdown", 0),
+          do: { type: "move", dir: 1 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: onStanding,
+        botB: bot([], { type: "idle" }), // never downed ⇒ knockdown stays 0
+        rules: getMockRules({ startGap: 300000 }),
+        maxTicks: 3,
+      }),
+    );
+
+    expect(result.events[0].a.action).toEqual({ type: "move", dir: 1 });
+  });
+
+  it("perceives the knockdown live (structural delay only) when perception is absent, replaying byte-identically", () => {
+    const cfg = getMockConfig({
+      rules: getMockRules({
+        startGap: 200000,
+        moves: { strike: getMockRules().moves.strike, sweep: SWEEP },
+        knockdownDuration: 10,
+      }), // no `perception` field at all
+      botA: SWEEP_THEN_BLOCK,
+      botB: bot([], { type: "idle" }),
+      maxTicks: 12,
+    });
+
+    // Live ⇒ only the structural delay remains (perceived the tick after it enters history).
+    expect(firstBlockTick(runFight(cfg).events)).toBe(2);
+    // The added field leaves replay byte-identical (additive + deterministic).
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  it("accepts a bot that reads opponent.knockdown (additive to the allowlist)", () => {
+    expect(validate(SWEEP_THEN_BLOCK).ok).toBe(true);
   });
 });

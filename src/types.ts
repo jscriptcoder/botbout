@@ -45,6 +45,7 @@ export type OpponentState = {
   attackBand: number; // height-ordered enum of the perceived attack: 0 none, 1 low, 2 mid, 3 high
   posture: number; // perceived stance enum: 0 standing, 1 crouching, 2 airborne (action ⇒ L_act-delayed)
   throwing: boolean; // is the (perceived) opponent committed to a grab? (action ⇒ L_act-delayed)
+  knockdown: boolean; // is the (perceived) opponent knocked down? (action ⇒ L_act-delayed; true for the WHOLE knockdown — finish window AND i-frame tail)
   vx: number; // perceived horizontal velocity (sub-units/tick), for dead-reckoning
   predictedDistance: number; // distance dead-reckoned forward over the L_pos gap
 };

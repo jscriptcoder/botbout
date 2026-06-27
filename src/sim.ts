@@ -44,7 +44,10 @@
 // emergent ("a sweep is a strike"). OKIZEME: the opening finishWindow ticks of ANY knockdown
 // (throw or sweep) are a guaranteed FINISH window — an opposing active in-range strike scores once,
 // ignoring band/guard/occupancy (the target is prone), then the window closes (exactly one finish;
-// never re-downs or extends the knockdown). The untargetable tail is the wake-up i-frames.
+// never re-downs or extends the knockdown). The untargetable tail is the wake-up i-frames. The
+// okizeme read is split across the two layers: the finish window is read LIVE as self.finishWindow
+// (self-proprioception), while the grounded state is PERCEIVED as a delayed boolean tell —
+// opponent.knockdown on the lAct action layer (like attacking/throwing), 1 for the whole knockdown.
 // ============================================================================
 import type {
   State,
@@ -138,6 +141,7 @@ type Frame = {
   attackBand: number;
   posture: number;
   throwing: boolean;
+  knockdown: boolean;
   vx: number;
 };
 
@@ -149,6 +153,7 @@ const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   attackBand: f.state.kind === "attacking" ? BAND_CODE[f.state.band] : 0,
   posture: POSTURE_CODE[f.posture],
   throwing: f.state.kind === "throwing",
+  knockdown: f.state.kind === "downed",
   vx: prev ? f.x - prev.x : 0,
 });
 
@@ -193,6 +198,7 @@ const perceiveOpponent = (
     attackBand: oppAct.attackBand,
     posture: oppAct.posture,
     throwing: oppAct.throwing,
+    knockdown: oppAct.knockdown,
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
   };
