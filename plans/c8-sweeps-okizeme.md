@@ -22,8 +22,8 @@ Add the ground game on top of C7's throw triangle: a `sweep` that knocks down (l
 
 ## Acceptance Criteria (feature-level)
 
-- [ ] A bot can author `{type:"sweep"}`; it validates and resolves as a low-band strike that knocks down on hit (score 0).
-- [ ] A sweep is blocked/parried by a matching low guard (no knockdown), whiffs a jumper, hits a croucher, trades with strikes, and stuffs throws.
+- [x] A bot can author `{type:"sweep"}`; it validates and resolves as a low-band strike that knocks down on hit (score 0). _(Slice 1 — PR #35)_
+- [x] A sweep is blocked/parried by a matching low guard (no knockdown), whiffs a jumper, hits a croucher, trades with strikes, and stuffs throws. _(Slice 1 — PR #35)_
 - [ ] With `finishWindow` configured, any knockdown (throw or sweep) is finishable by exactly one opposing strike during the first `F` ticks; afterwards the downed fighter is untargetable (i-frames) until it wakes.
 - [ ] A finish never re-downs or extends the knockdown; the fighter wakes to a normal neutral.
 - [ ] `self.finishWindow` and `opponent.knockdown` are readable in the DSL and drive a hit-confirmed finish.
@@ -33,7 +33,7 @@ Add the ground game on top of C7's throw triangle: a `sweep` that knocks down (l
 
 Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code without a failing test. Read `.claude/CLAUDE.md` and the testing rules before each slice.
 
-### Slice 1: A sweep is a low-band strike that knocks down on hit
+### Slice 1: A sweep is a low-band strike that knocks down on hit — ✅ DONE (PR #35)
 
 **Value**: A bot author gains the `sweep` technique — a low attack that grounds an open opponent (tempo, no points), countered by blocking low or jumping.
 **Path**: bot returns `{type:"sweep"}` → `dsl` validates (new action case + `"sweep"` in `MOVES`) → `intake` → `startAttack("sweep","low")` → `computeStrike` (existing §11.3 gate) classifies HIT/BLOCK/PARRY/WHIFF → `applyStrike` HIT branch downs the defender (`downed{elapsed:0}`, the C7 shape) instead of scoring → `advance` runs the existing knockdown clock. Observable via `runFight`: the downed fighter's actions are ignored for `knockdownDuration` ticks and the sweeper scores 0. **Intentionally skipped**: the finish window (Slice 2) — here a sweep-knockdown is fully untargetable, exactly like a C7 throw.

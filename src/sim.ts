@@ -39,7 +39,12 @@
 // commitment) and NOT a guard, so a strike still hits it. Two live grabs CLASH (both grab-active
 // in reach ⇒ both whiff, the §11.4 symmetric outcome). The incoming grab is PERCEIVED as a delayed
 // boolean tell — opponent.throwing on the lAct action layer (like attacking/attackBand/posture) —
-// so throw-break is a reaction skill-gradient: escapable iff startup ≥ lAct + 1.
+// so throw-break is a reaction skill-gradient: escapable iff startup ≥ lAct + 1. SWEEP: a low-band
+// strike (reusing the strike union) that knocks DOWN instead of scoring — all precedence is
+// emergent ("a sweep is a strike"). OKIZEME: the opening finishWindow ticks of ANY knockdown
+// (throw or sweep) are a guaranteed FINISH window — an opposing active in-range strike scores once,
+// ignoring band/guard/occupancy (the target is prone), then the window closes (exactly one finish;
+// never re-downs or extends the knockdown). The untargetable tail is the wake-up i-frames.
 // ============================================================================
 import type {
   State,
@@ -91,7 +96,7 @@ type MoveState =
     }
   | { kind: "airborne"; vy: number }
   | { kind: "throwing"; elapsed: number; stuffed: boolean } // committed grab; `stuffed` once a strike beats it (§11.4) ⇒ cannot grab
-  | { kind: "downed"; elapsed: number }; // knocked down for rules.knockdownDuration ticks
+  | { kind: "downed"; elapsed: number; finish: number }; // knocked down for rules.knockdownDuration ticks; `finish` = remaining okizeme finish-window ticks (C8, counts down to 0 ⇒ wake-up i-frames)
 
 type Fighter = {
   x: number;
@@ -335,11 +340,22 @@ const occupies = (posture: Posture, band: Band): boolean =>
 // reach, vacated band, already resolved, or a whiff). A `hit` adds points to the
 // attacker; a `parry` deflects — extra recovery on the attacker AND a counter window on
 // the defender; a `block` scores nothing but, like a hit, opens the attacker's on-contact
-// cancel window (C6 — block is a first-class connect alongside hit, §11.3).
+// cancel window (C6 — block is a first-class connect alongside hit, §11.3). A `finish` is the
+// okizeme strike on a DOWNED defender during its finish window (C8): it scores and closes the
+// window (its cross-fighter effect is zeroing the defender's finish counter). On a `hit`,
+// `finish` carries the finish window to grant IF it knocks down (like `cancel` carries the
+// cancel window) — read only when `knockdown` is true.
 type StrikeOutcome =
-  | { result: "hit"; points: number; cancel: number; knockdown: boolean }
+  | {
+      result: "hit";
+      points: number;
+      cancel: number;
+      knockdown: boolean;
+      finish: number;
+    }
   | { result: "parry"; extra: number; counter: number }
-  | { result: "block"; cancel: number };
+  | { result: "block"; cancel: number }
+  | { result: "finish"; points: number };
 
 // Classify the strike att→def from the frozen snapshot. Gate order is §11.3: active →
 // reach → occupancy → guard, then within guard: parry (fresh) vs block (stale). The
@@ -362,7 +378,16 @@ const computeStrike = (
 
   if (!inActiveWindow) return null;
   if (Math.abs(def.x - att.x) > spec.reach) return null;
-  if (def.state.kind === "downed") return null; // a downed fighter vacates all bands ⇒ untargetable
+
+  if (def.state.kind === "downed") {
+    // Okizeme (C8): a downed fighter is targetable ONLY during its finish window, and then by
+    // active + reach alone — band, guard, and occupancy are ignored (the target is prone). Once
+    // the window closes (finish == 0) it is in wake-up i-frames ⇒ untargetable (the C7 behavior).
+    return def.state.finish > 0
+      ? { result: "finish", points: spec.score }
+      : null;
+  }
+
   if (!occupies(defPosture, st.band)) return null; // vacated band ⇒ whiff (over/under)
 
   if (guardBand === st.band) {
@@ -388,6 +413,7 @@ const computeStrike = (
     points: spec.score + bonus,
     cancel: rules.cancelWindow ?? 0,
     knockdown: spec.knockdown ?? false,
+    finish: rules.finishWindow ?? 0, // the finish window to grant if this hit knocks down (C8)
   };
 };
 
@@ -409,10 +435,18 @@ const applyStrike = (
   if (outcome.result === "hit") {
     att.points += outcome.points;
     att.cancelRemaining = outcome.cancel; // a connect opens the cancel window on the attacker
-    // A knockdown move (a sweep) downs the defender instead of leaving it standing (C8). The
-    // defender is untargetable while down (computeStrike returns null), so a HIT is always
-    // against a standing defender — no re-down guard needed yet (the finish window is C8 slice 2).
-    if (outcome.knockdown) def.state = { kind: "downed", elapsed: 0 };
+    // A knockdown move (a sweep) downs the defender instead of leaving it standing (C8), opening
+    // its okizeme finish window (`finish` ticks). A standing defender is the only HIT target —
+    // a downed one is handled by the `finish` branch — so no re-down guard is needed here.
+    if (outcome.knockdown)
+      def.state = { kind: "downed", elapsed: 0, finish: outcome.finish };
+  } else if (outcome.result === "finish") {
+    // Okizeme finish (C8): score and CLOSE the window (finish → 0) so a knockdown is finishable
+    // exactly once. It does NOT re-down or extend the knockdown — elapsed and knockdownDuration
+    // are untouched, so the defender wakes on the same tick it would have anyway.
+    att.points += outcome.points;
+    if (def.state.kind === "downed")
+      def.state = { kind: "downed", elapsed: def.state.elapsed, finish: 0 };
   } else if (outcome.result === "block") {
     // A block scores nothing and only opens the cancel window; cancel 0 (unconfigured) ⇒ a no-op.
     att.cancelRemaining = outcome.cancel;
@@ -423,7 +457,8 @@ const applyStrike = (
   // Attacker move-state flags apply only while `att` is still attacking — a mutual knockdown can
   // have downed it this very tick, leaving no move to flag. A BLOCK never marks the strike
   // resolved (preserving the block-then-guard-drop edge); a HIT or PARRY resolves it (no re-process
-  // while still active), and a PARRY also adds the deflect's extra recovery.
+  // while still active), and a PARRY also adds the deflect's extra recovery. A FINISH likewise
+  // leaves `scored` untouched — its exactly-once is enforced by the defender's finish → 0, not here.
   const st = att.state;
   if (st.kind !== "attacking") return;
   if (outcome.result === "hit" || outcome.result === "parry") st.scored = true;
@@ -433,8 +468,9 @@ const applyStrike = (
 // The effect of one throw att→def, computed PURELY from the frozen pre-apply snapshot
 // (§11 compute-then-apply). `null` ⇒ no grab this tick (not throwing, already grabbed,
 // outside the grab-active window, out of reach, or the defender is not grabbable). A
-// grab scores on the attacker AND knocks the defender down (a cross-fighter effect).
-type ThrowOutcome = { score: number };
+// grab scores on the attacker AND knocks the defender down (a cross-fighter effect). `finish`
+// carries the okizeme finish window to grant the knockdown (C8), like the hit outcome's `finish`.
+type ThrowOutcome = { score: number; finish: number };
 
 // Classify a throw att→def from the frozen snapshot. A throw beats any guard (it is not
 // height-banded), so there is no guard/band gate — only: grab-active → reach → the
@@ -463,7 +499,7 @@ const computeThrow = (
   // cancelled when both throws are live (a clash) — none of which is a grabbability concern here.
   if (def.state.kind === "airborne" || def.state.kind === "downed") return null;
 
-  return { score: spec.score };
+  return { score: spec.score, finish: rules.finishWindow ?? 0 };
 };
 
 // Apply one throw outcome. A grab scores on the attacker and lands its CROSS-FIGHTER effect
@@ -481,7 +517,7 @@ const applyThrow = (
   if (st.kind !== "throwing") return; // a throw outcome only applies to the throwing fighter
 
   att.points += outcome.score;
-  def.state = { kind: "downed", elapsed: 0 };
+  def.state = { kind: "downed", elapsed: 0, finish: outcome.finish }; // opens the okizeme finish window (C8)
 };
 
 // §11.4 precedence — a throw is DEFEATED this tick by either leg of the triangle:
@@ -548,10 +584,16 @@ const advance = (f: Fighter, rules: Rules): void => {
   }
 
   if (st.kind === "downed") {
-    // Stay down for knockdownDuration ticks, then wake to neutral.
+    // Stay down for knockdownDuration ticks, then wake to neutral. The okizeme finish window
+    // counts down each tick AFTER the landing tick (elapsed 0) — so a finishWindow of F grants
+    // exactly F finishable ticks (and F = 1 grants one, not zero), flooring at 0 (the i-frame tail).
     const next = st.elapsed + 1;
+
     if (next >= (rules.knockdownDuration ?? 0)) f.state = { kind: "neutral" };
-    else st.elapsed = next;
+    else {
+      if (st.elapsed > 0) st.finish = Math.max(0, st.finish - 1);
+      st.elapsed = next;
+    }
   }
 };
 

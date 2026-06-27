@@ -2823,3 +2823,217 @@ describe("runFight — sweeps (a low-band strike that knocks down on hit, no sco
     expect(outcomes(sweepOnce)).toEqual(outcomes(IDLE));
   });
 });
+
+describe("runFight — okizeme finish window (a knockdown is finishable exactly once, then i-frames)", () => {
+  // A fast knockdown game so the lone non-downed fighter can recover and FINISH within the
+  // window. sweep (startup1 active1 recovery1 ⇒ total3): knocks down at tick1 for a sweep started
+  // tick0, sweeper neutral at tick3. strike (startup1 active1 recovery1, score1): the finishing
+  // poke — neutral fighter strikes at tick T ⇒ active at T+1. Both reach 250000 (= startGap).
+  const finishRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within reach (250000)
+      knockdownDuration: 8,
+      moves: {
+        strike: { startup: 1, active: 1, recovery: 1, score: 1, reach: 250000 },
+        sweep: {
+          startup: 1,
+          active: 1,
+          recovery: 1,
+          score: 0,
+          reach: 250000,
+          knockdown: true,
+        },
+      },
+      ...o,
+    });
+
+  const atTick = (n: number): BoolExpr => ({
+    op: "eq",
+    args: [
+      { op: "field", path: "clock.tick" },
+      { op: "const", value: n },
+    ],
+  });
+
+  const whenCanAct: BoolExpr = {
+    op: "eq",
+    args: [
+      { op: "field", path: "self.canAct" },
+      { op: "const", value: 1 },
+    ],
+  };
+
+  // Sweeps at tick 0 (knockdown at tick 1) then idles — leaves the downed foe untouched.
+  const sweepOnly = bot([{ when: atTick(0), do: { type: "sweep" } }], {
+    type: "idle",
+  });
+
+  // Sweeps at tick 0 (knockdown at tick 1), then strikes once at `strikeTick` — its active
+  // frame lands at `strikeTick + 1`. Stationary otherwise, so the downed foe stays in reach.
+  const sweepThenStrikeAt = (strikeTick: number, band: Band): BotDoc =>
+    bot(
+      [
+        { when: atTick(0), do: { type: "sweep" } },
+        {
+          when: atTick(strikeTick),
+          do: { type: "attack", move: "strike", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  it("a finish scores during the window — band, guard, and occupancy ignored (the target is prone)", () => {
+    // Sweep downs B at tick 1; A strikes HIGH at tick 3 ⇒ active at tick 4 (finish countdown
+    // 1, still open). A downed fighter vacates every band, so pre-finish ANY band whiffs — the
+    // finish overrides band/occupancy/guard and scores the strike's score.
+    const scoreA = (o: Partial<Rules>): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules(o),
+          botA: sweepThenStrikeAt(3, "high"),
+          botB: IDLE,
+          maxTicks: 8,
+        }),
+      ).scores.a;
+
+    expect(scoreA({ finishWindow: 3 })).toBe(1); // finish lands in-window ⇒ +1 (band ignored)
+    expect(scoreA({})).toBe(0); // no window ⇒ downed is untargetable ⇒ high strike whiffs
+  });
+
+  it("a knockdown is finishable exactly once — a second finish in the same knockdown scores nothing", () => {
+    // Long window (8) so BOTH the tick-4 and tick-7 strikes fall inside it. The first finish
+    // (tick 4) zeroes the window; the second (tick 7) finds it closed despite the nominal window
+    // still being open — proving the close is the finish itself, not the clock.
+    const result = runFight(
+      getMockConfig({
+        rules: finishRules({ finishWindow: 8, knockdownDuration: 14 }),
+        botA: bot(
+          [
+            { when: atTick(0), do: { type: "sweep" } },
+            {
+              when: atTick(3),
+              do: { type: "attack", move: "strike", band: "mid" },
+            },
+            {
+              when: atTick(6),
+              do: { type: "attack", move: "strike", band: "mid" },
+            },
+          ],
+          { type: "idle" },
+        ),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // exactly one finish counts, not two
+  });
+
+  it("the finish window is exactly the first F ticks — a strike one tick too late hits only i-frames", () => {
+    // Fixed finisher: strikes at tick 4 ⇒ active at tick 5 (finish countdown F-3 at that resolve).
+    // F=4 ⇒ still open (1) ⇒ lands; F=3 ⇒ closed (0) ⇒ whiff. Pins the window length + off-by-one.
+    const scoreWithWindow = (finishWindow: number): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ finishWindow, knockdownDuration: 10 }),
+          botA: sweepThenStrikeAt(4, "mid"),
+          botB: IDLE,
+          maxTicks: 10,
+        }),
+      ).scores.a;
+
+    expect(scoreWithWindow(4)).toBe(1); // window still open at the active frame ⇒ finish
+    expect(scoreWithWindow(3)).toBe(0); // one tick short ⇒ i-frame tail ⇒ whiff
+  });
+
+  it("a finish neither re-downs nor extends the knockdown — the fighter wakes on the same tick either way", () => {
+    // B advances when free; swept at tick 1 (knockdownDuration 8 ⇒ frozen ticks 2..8, moves tick 9).
+    // A finish landing (tick 4) must not move that wake tick or re-freeze B.
+    const wakeProbe = (botA: BotDoc) =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ finishWindow: 4, knockdownDuration: 8 }),
+          botA,
+          botB: AGGRESSOR,
+          maxTicks: 11,
+        }),
+      );
+
+    const withFinish = wakeProbe(sweepThenStrikeAt(3, "mid")); // strike active tick 4 ⇒ finishes
+    const withoutFinish = wakeProbe(sweepOnly);
+
+    expect(withFinish.scores.a).toBe(1); // the finish landed
+    expect(withoutFinish.scores.a).toBe(0); // no finish attempted
+
+    for (const r of [withFinish, withoutFinish]) {
+      expect(r.events[8].b.x).toBe(r.events[2].b.x); // frozen through the FULL knockdown (tick 8)
+      expect(r.events[9].b.x).not.toBe(r.events[8].b.x); // wakes to neutral and moves at tick 9
+    }
+  });
+
+  it("applies to a throw knockdown too (one uniform finishable lifecycle)", () => {
+    // Fast throw (startup1 active1 recovery1): grabs at tick 1 (B down, A +3), thrower neutral at
+    // tick 3, strikes HIGH at tick 3 ⇒ active tick 4 ⇒ finish (+1) inside a window of 3.
+    const fastThrow = {
+      startup: 1,
+      active: 1,
+      recovery: 1,
+      reach: 250000,
+      score: 3,
+    };
+
+    const throwThenStrikeAt3High = bot(
+      [
+        { when: atTick(0), do: { type: "throw" } },
+        {
+          when: atTick(3),
+          do: { type: "attack", move: "strike", band: "high" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const scoreA = (o: Partial<Rules>): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ throw: fastThrow, ...o }),
+          botA: throwThenStrikeAt3High,
+          botB: IDLE,
+          maxTicks: 8,
+        }),
+      ).scores.a;
+
+    expect(scoreA({ finishWindow: 3 })).toBe(4); // throw 3 + finish 1
+    expect(scoreA({})).toBe(3); // no window ⇒ the follow-up strike whiffs ⇒ throw only
+  });
+
+  it("with finishWindow absent a knockdown stays untargetable for its whole duration (byte-identical to C7)", () => {
+    // A sweeps then strikes every free tick over a long knockdown. Absent the window EVERY strike
+    // whiffs (the downed foe is untargetable throughout, exactly C7); set it, exactly one lands.
+    const sweepThenStrikeWhenFree = bot(
+      [
+        { when: atTick(0), do: { type: "sweep" } },
+        {
+          when: whenCanAct,
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    // knockdownDuration 20 > maxTicks ⇒ B stays down the whole fight, so a strike landing the
+    // instant B woke can never masquerade as a finish.
+    const scoreA = (o: Partial<Rules>): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ knockdownDuration: 20, ...o }),
+          botA: sweepThenStrikeWhenFree,
+          botB: IDLE,
+          maxTicks: 12,
+        }),
+      ).scores.a;
+
+    expect(scoreA({})).toBe(0); // no finish anywhere ⇒ untargetable for the whole knockdown
+    expect(scoreA({ finishWindow: 3 })).toBe(1); // a window opens exactly one finish
+  });
+});
