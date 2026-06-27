@@ -64,7 +64,7 @@ the **defender** (knockdown) while a strike mutates the **attacker** (score).
       knockdown) and the strike scores; a strike landing during throw **startup** interrupts it.
       Resolution is swap-symmetric (A↔B assignment cannot change the outcome). _(Slice 2 ✓)_
 - [x] A timed `throw-break` escapes a grab: no score, no knockdown. _(Slice 3 ✓)_
-- [ ] Two throws that collide **clash**: neither scores, neither is downed.
+- [x] Two throws that collide **clash**: neither scores, neither is downed. _(Slice 4 ✓)_
 - [ ] The opponent's throw is perceivable as a delayed tell on the `L_act` layer so a bot can
       time a break (reactable only when `S ≥ L_act + 1`, consistent with the perception keystone).
 - [ ] With all C7 `Rules` fields absent, fights are **byte-identical** to C6.
@@ -227,8 +227,17 @@ through its recovery** (punishable, same ruling as a stuffed throw — slice 2),
 
 ---
 
-### Slice 4: Throw ∥ throw → clash, both whiff
+### Slice 4: Throw ∥ throw → clash, both whiff ✅ SHIPPED
 
+**Status**: Done — `src/sim.ts`: (1) grabbability widened to include `throwing` defenders — the
+predicate flipped to a positive ungrabbable set `kind === "airborne" || kind === "downed"` (so a
+grab can land on a committed thrower), and (2) a `clash` branch added to the resolver — when **both**
+throws are live (`aThrow !== null && bThrow !== null`, i.e. both grab-active + in reach) both are
+voided ⇒ neither scores nor is downed. A **lone** live grab is not a clash: it lands on the
+(grounded, possibly throwing) opponent. No new actions/Rules. 920 tests; changed-line mutation
+**100% (28/28)** — no survivors. `dsl.ts` untouched. The two changes force each other: widening
+alone double-grabs ({3,3}); the clash branch alone can't grab a thrower. Byte-identical to C6 when
+nobody throws.
 **Branch**: `feat/c7-throw-clash`
 **Value**: Resolves the throw-vs-throw paradox — one of only **two** swap-symmetric outcomes in
 §11.4 (the other is strike∥strike trade). Keeps the tick order-independent.

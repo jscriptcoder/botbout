@@ -446,12 +446,12 @@ const computeThrow = (
 
   if (!inGrabWindow) return null;
   if (Math.abs(def.x - att.x) > spec.reach) return null;
-  // Grabbable iff GROUNDED: open / guarding / crouching (neutral) or mid-strike (attacking).
-  // An airborne (jumper), downed (no pile-on), or throwing (clash → later slice) defender cannot
-  // be grabbed. An active in-range strike beats the grab — that is the §11.4 precedence resolved
-  // in runFight (a grab computed here is voided there), NOT by treating a striker as ungrabbable.
-  if (def.state.kind !== "neutral" && def.state.kind !== "attacking")
-    return null;
+  // Grabbable iff GROUNDED and not already down: open / guarding / crouching (neutral),
+  // mid-strike (attacking), or mid-throw (throwing). An airborne (jumper) or downed (no
+  // pile-on) defender cannot be grabbed. The grab can still be DEFEATED in runFight's §11.4
+  // resolver — beaten by an opposing active strike, escaped by a throw-break, or mutually
+  // cancelled when both throws are live (a clash) — none of which is a grabbability concern here.
+  if (def.state.kind === "airborne" || def.state.kind === "downed") return null;
 
   return { score: spec.score };
 };
@@ -688,14 +688,15 @@ export function runFight(cfg: FightConfig): FightResult {
     // (throw-break > throw). All decisions read the frozen snapshot before any apply ⇒ swap-symmetric.
     const aThrow = computeThrow(a, b, rules);
     const bThrow = computeThrow(b, a, rules);
-
-    const aThrowFinal = stuffIfDefeated(a, bOutcome, bAction, aThrow !== null)
-      ? null
-      : aThrow;
-
-    const bThrowFinal = stuffIfDefeated(b, aOutcome, aAction, bThrow !== null)
-      ? null
-      : bThrow;
+    const aDefeated = stuffIfDefeated(a, bOutcome, bAction, aThrow !== null);
+    const bDefeated = stuffIfDefeated(b, aOutcome, aAction, bThrow !== null);
+    // Throw CLASH: two live grabs (both grab-active + in reach of each other) mutually whiff —
+    // neither scores nor downs. One of only two swap-symmetric outcomes in §11.4 (the other is
+    // the strike∥strike trade). A lone live grab is NOT a clash — it lands on the (grounded,
+    // possibly throwing) opponent.
+    const clash = aThrow !== null && bThrow !== null;
+    const aThrowFinal = aDefeated || clash ? null : aThrow;
+    const bThrowFinal = bDefeated || clash ? null : bThrow;
 
     applyStrike(a, b, aOutcome);
     applyStrike(b, a, bOutcome);

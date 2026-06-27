@@ -2458,3 +2458,104 @@ describe("runFight — throw-break (the §11.4 third leg: throw-break > throw)",
     for (const e of result.events) expect(e.a.x).toBe(aStartX(rules)); // never moved / committed
   });
 });
+
+describe("runFight — throw clash (the §11.4 symmetric outcome: throw ∥ throw)", () => {
+  // Throws on exactly tick `t` then idles.
+  const throwAtTick = (t: number): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: t },
+            ],
+          },
+          do: { type: "throw" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  const THROWER = bot([], { type: "throw" }); // throws every neutral tick
+
+  // throw: startup 2, active 1 ⇒ grab-active at tick 2 for a throw started at tick 0.
+  const throwRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within grab reach (250000)
+      knockdownDuration: 6,
+      throw: { startup: 2, active: 1, recovery: 3, reach: 250000, score: 3 },
+      ...o,
+    });
+
+  it("two grab-active throws in range clash: neither scores, neither is downed", () => {
+    // Both commit a throw at tick 0 ⇒ both grab-active at tick 2 ⇒ mutual clash. Each steps the
+    // instant it recovers (tick 6); a downed fighter could not, so the step proves neither was
+    // grabbed (no one-sided grab slipped through).
+    const throwThenStep = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "throw" },
+        },
+      ],
+      { type: "move", dir: 1 },
+    );
+
+    const rules = throwRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: throwThenStep,
+        botB: throwThenStep,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 0, b: 0 }); // mutual whiff ⇒ neither scores
+    expect(result.events[6].a.x).not.toBe(aStartX(rules)); // free at tick 6 ⇒ A not downed
+    expect(result.events[6].b.x).not.toBe(bStartX(rules)); // free at tick 6 ⇒ B not downed
+  });
+
+  it("only one grab live ⇒ it lands on the throwing opponent — no clash (swap-symmetric)", () => {
+    // The thrower at tick 0 is grab-active at tick 2; the other only STARTS its throw at tick 2
+    // (grab not yet live). Just one live grab ⇒ no clash ⇒ the live grab lands on the committed
+    // (throwing) opponent and downs it. Asserted from both slots.
+    const scores = (earlySlot: "a" | "b"): { a: number; b: number } =>
+      runFight(
+        getMockConfig({
+          rules: throwRules(),
+          botA: earlySlot === "a" ? throwAtTick(0) : throwAtTick(2),
+          botB: earlySlot === "b" ? throwAtTick(0) : throwAtTick(2),
+          maxTicks: 6,
+        }),
+      ).scores;
+
+    expect(scores("a")).toEqual({ a: 3, b: 0 }); // A's earlier grab lands on the winding-up B
+    expect(scores("b")).toEqual({ a: 0, b: 3 }); // mirror — the early thrower wins from either slot
+  });
+
+  it("a throw cannot re-grab a downed opponent (no pile-on via throw either)", () => {
+    // A grabs B at tick 2 (knockdown 10), re-arms at tick 6, and its second grab is active at tick
+    // 8 — while B is still down. A downed fighter vacates all bands to throws too, so the re-grab
+    // whiffs: A keeps just the first 3.
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({ knockdownDuration: 10 }),
+        botA: THROWER,
+        botB: IDLE,
+        maxTicks: 9,
+      }),
+    );
+
+    expect(result.events[8].a.points).toBe(3); // second grab (tick 8) whiffs the still-downed B
+  });
+});
