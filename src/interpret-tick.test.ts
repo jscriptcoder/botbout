@@ -46,6 +46,7 @@ const getMockState = (o: StateOverrides = {}): State => ({
     attacking: false,
     attackBand: 0,
     posture: 0,
+    throwing: false,
     vx: 0,
     predictedDistance: 100,
     ...o.opponent,

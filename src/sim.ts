@@ -36,8 +36,10 @@
 // voided and the throw marked resolved (it cannot grab on a later frame), but the thrower
 // stays committed through its recovery (punishable). A defender's THROW-BREAK on a grab-active
 // tick defeats the grab the same way (throw-break > throw); a break is a per-tick action (no
-// commitment) and NOT a guard, so a strike still hits it. Still pending: perceiving the counter
-// window (self.counterWindow) and the incoming throw (opponent.throwing); throw clash.
+// commitment) and NOT a guard, so a strike still hits it. Two live grabs CLASH (both grab-active
+// in reach ⇒ both whiff, the §11.4 symmetric outcome). The incoming grab is PERCEIVED as a delayed
+// boolean tell — opponent.throwing on the lAct action layer (like attacking/attackBand/posture) —
+// so throw-break is a reaction skill-gradient: escapable iff startup ≥ lAct + 1.
 // ============================================================================
 import type {
   State,
@@ -131,6 +133,7 @@ type Frame = {
   attacking: boolean;
   attackBand: number;
   posture: number;
+  throwing: boolean;
   vx: number;
 };
 
@@ -141,6 +144,7 @@ const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   attacking: f.state.kind === "attacking",
   attackBand: f.state.kind === "attacking" ? BAND_CODE[f.state.band] : 0,
   posture: POSTURE_CODE[f.posture],
+  throwing: f.state.kind === "throwing",
   vx: prev ? f.x - prev.x : 0,
 });
 
@@ -184,6 +188,7 @@ const perceiveOpponent = (
     attacking: oppAct.attacking,
     attackBand: oppAct.attackBand,
     posture: oppAct.posture,
+    throwing: oppAct.throwing,
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
   };

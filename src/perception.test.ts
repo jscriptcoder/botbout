@@ -787,3 +787,205 @@ describe("perception latency — delayed opponent posture (L_act)", () => {
     expect(validate(blockOnPosture(1)).ok).toBe(true);
   });
 });
+
+// ─── slice C7.5: perceived incoming THROW, delayed by L_act ────────────────────
+// The opponent's throw rides the SAME coherent delayed layer as the `attacking`
+// tell (invariant #4), exposed as a bare boolean `opponent.throwing` (1 while the
+// perceived opponent is committed to a grab, 0 otherwise). This makes `throw-break`
+// a REACTION skill-gradient — a break is in time only when the grab is slow enough
+// to perceive (startup ≥ L_act + 1), the keystone inequality applied to throws.
+describe("perception latency — delayed incoming throw (L_act)", () => {
+  // A long-committed grab so the `throwing` tell stays asserted across the probe
+  // window; out of reach in the read-only tests so the grab itself never lands.
+  const THROW_FRAMES = {
+    startup: 2,
+    active: 1,
+    recovery: 20,
+    reach: 250000,
+    score: 3,
+  };
+
+  // B starts a grab the instant it is free to act, then stays committed — so the
+  // perceived `throwing` flag is continuously true from the tick after it commits.
+  const THROWER = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "throw" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // A guards the instant it PERCEIVES the opponent throwing, so firstBlockTick is a
+  // clean read of *when A perceived* the grab start.
+  const BLOCK_ON_THROWING = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "opponent.throwing" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // Out of reach (startGap 300000 > reach 250000) ⇒ a pure perception read, no grab.
+  const throwDelay = (perception: {
+    lPos?: number;
+    lAct?: number;
+  }): FightConfig =>
+    getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        throw: THROW_FRAMES,
+        knockdownDuration: 5,
+        perception,
+      }),
+      botA: BLOCK_ON_THROWING,
+      botB: THROWER,
+      maxTicks: 12,
+    });
+
+  it("delays the perception of a throw by exactly L_act ticks (plus the structural tick)", () => {
+    // L_act = 0: the grab is perceived at tick 1 — the structural observe-after-
+    // commit tick (history[0] is the pre-throw baseline).
+    expect(firstBlockTick(runFight(throwDelay({ lAct: 0 })).events)).toBe(1);
+    expect(firstBlockTick(runFight(throwDelay({ lAct: 1 })).events)).toBe(2);
+    expect(firstBlockTick(runFight(throwDelay({ lAct: 2 })).events)).toBe(3);
+  });
+
+  it("rides the action (L_act) layer, not the positional (L_pos) layer", () => {
+    // Only the positional layer delayed (L_pos = 5, L_act = 0): the throw read stays
+    // live ⇒ tick 1, proving opponent.throwing follows the action layer.
+    expect(
+      firstBlockTick(runFight(throwDelay({ lPos: 5, lAct: 0 })).events),
+    ).toBe(1);
+  });
+
+  // ── the headline: throw-break becomes a reaction skill-gradient ──
+  // B throws exactly once (a single grab-active window); A breaks the instant it
+  // perceives the throw. In reach (200000 ≤ 250000) so the grab can land OR be broken.
+  const THROW_ONCE: BotDoc = {
+    version: 1,
+    name: "thr1",
+    memory: { fired: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "mem", cell: "fired" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fired", to: { op: "const", value: 1 } }],
+        do: { type: "throw" },
+      },
+    ],
+    default: { type: "idle" },
+  };
+
+  // Returns throw-break the instant it perceives the opponent throwing.
+  const REACTIVE_BREAKER = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "opponent.throwing" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "throw-break" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  const breakInequality = (lAct: number, startup: number): FightConfig =>
+    getMockConfig({
+      botA: REACTIVE_BREAKER,
+      botB: THROW_ONCE,
+      rules: getMockRules({
+        perception: { lPos: 0, lAct },
+        throw: { startup, active: 1, recovery: 6, reach: 250000, score: 3 },
+        knockdownDuration: 5,
+      }),
+      maxTicks: 30,
+    });
+
+  it("lets a reaction-breaker escape a throw only when startup ≥ L_act + 1", () => {
+    const L = 6;
+    // The throw tell appears one tick after commit, so the break is up by the grab
+    // frame iff startup exceeds L_act by at least 1 — the keystone inequality for throws.
+    expect(runFight(breakInequality(L, L + 1)).scores.b).toBe(0); // broken
+    expect(runFight(breakInequality(L, L)).scores.b).toBe(3); // grabs (too fast)
+  });
+
+  it("perceives the throw live (structural one-tick delay) when perception is absent, replaying byte-identically", () => {
+    const cfg = getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        throw: THROW_FRAMES,
+        knockdownDuration: 5,
+      }), // no `perception` field at all
+      botA: BLOCK_ON_THROWING,
+      botB: THROWER,
+      maxTicks: 12,
+    });
+
+    const ev = runFight(cfg).events;
+    // Live ⇒ only the structural one-tick observe-after-commit delay remains.
+    expect(ev[0].a.action).toEqual({ type: "idle" }); // baseline 0 before the tell
+    expect(ev[1].a.action).toEqual({ type: "block", band: "mid" });
+    // The added field leaves replay byte-identical.
+    expect(runFight(cfg).events).toEqual(ev);
+  });
+
+  it("exposes a non-throwing opponent as the literal 0 a bot can branch on", () => {
+    // A non-throwing opponent must read as throwing === 0 (not undefined): a bot can
+    // branch on "no incoming grab". B never throws, so A advances every tick.
+    const onNotThrowing = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "opponent.throwing" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "move", dir: 1 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: onNotThrowing,
+        botB: bot([], { type: "idle" }), // never throws ⇒ throwing stays 0
+        rules: getMockRules({ startGap: 300000 }),
+        maxTicks: 3,
+      }),
+    );
+
+    expect(result.events[0].a.action).toEqual({ type: "move", dir: 1 });
+  });
+
+  it("accepts a bot that reads opponent.throwing (additive to the allowlist)", () => {
+    expect(validate(REACTIVE_BREAKER).ok).toBe(true);
+  });
+});
