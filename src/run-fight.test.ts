@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig } from "./sim.js";
-import type { BotDoc, BoolExpr } from "./dsl.js";
+import type { BotDoc, BoolExpr, FieldPath } from "./dsl.js";
 import type { Rules, Action, Band } from "./types.js";
 
 // ─── factories ───────────────────────────────────────────────────────────────
@@ -3035,5 +3035,199 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
 
     expect(scoreA({})).toBe(0); // no finish anywhere ⇒ untargetable for the whole knockdown
     expect(scoreA({ finishWindow: 3 })).toBe(1); // a window opens exactly one finish
+  });
+});
+
+describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
+  // Same fast knockdown game as the okizeme block: sweep downs at tick 1 (sweeper neutral at
+  // tick 3), strike is the finishing poke. `self.finishWindow` is the LIVE opponent's downed
+  // finish countdown — a bot reads it to hit-confirm the guaranteed finish.
+  const SWEEP = {
+    startup: 1,
+    active: 1,
+    recovery: 1,
+    score: 0,
+    reach: 250000,
+    knockdown: true,
+  };
+
+  const STRIKE = {
+    startup: 1,
+    active: 1,
+    recovery: 1,
+    score: 1,
+    reach: 250000,
+  };
+
+  const finishRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within reach (250000)
+      knockdownDuration: 10,
+      finishWindow: 5,
+      moves: { strike: STRIKE, sweep: SWEEP },
+      ...o,
+    });
+
+  const gtField = (path: FieldPath, n: number): BoolExpr => ({
+    op: "gt",
+    args: [
+      { op: "field", path },
+      { op: "const", value: n },
+    ],
+  });
+
+  const eqField = (path: FieldPath, n: number): BoolExpr => ({
+    op: "eq",
+    args: [
+      { op: "field", path },
+      { op: "const", value: n },
+    ],
+  });
+
+  const STRIKE_WHEN_FINISHABLE: BotDoc["rules"][number] = {
+    when: gtField("self.finishWindow", 0),
+    do: { type: "attack", move: "strike", band: "mid" },
+  };
+
+  // Sweeps the opponent down at tick 0, then strikes ONLY while it can actually finish
+  // (self.finishWindow > 0) — a hit-confirmed finish.
+  const confirmBot = bot(
+    [
+      { when: eqField("clock.tick", 0), do: { type: "sweep" } },
+      STRIKE_WHEN_FINISHABLE,
+    ],
+    { type: "idle" },
+  );
+
+  it("drives a hit-confirmed finish — a bot strikes only while self.finishWindow > 0", () => {
+    // The confirm-bot finishes the knockdown it created. With the field stuck at 0 it would never
+    // strike, so the score IS the proof the live window is readable.
+    const result = runFight(
+      getMockConfig({
+        rules: finishRules(),
+        botA: confirmBot,
+        botB: IDLE,
+        maxTicks: 10,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // exactly the one guaranteed finish
+  });
+
+  it("reads exactly 0 (a number, not undefined) when the opponent is not downed", () => {
+    // The opponent is never downed, so self.finishWindow must be exactly 0. Three bots pin that:
+    //  - confirmNoSweep (> 0) never strikes (kills a constant > 0 reading),
+    //  - alwaysStrike proves the standing foe is in range and hittable (decoupled sanity),
+    //  - pokeWhenNoWindow (== 0) DOES strike ⇒ the value equals 0, not `undefined`/NaN (which
+    //    would make `== 0` false — kills reading `.finish` off a non-downed state).
+    const confirmNoSweep = bot([STRIKE_WHEN_FINISHABLE], { type: "idle" });
+
+    const alwaysStrike = bot(
+      [
+        {
+          when: eqField("self.canAct", 1),
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const pokeWhenNoWindow = bot(
+      [
+        {
+          when: eqField("self.finishWindow", 0),
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const scoreOf = (botA: BotDoc): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules(),
+          botA,
+          botB: IDLE,
+          maxTicks: 10,
+        }),
+      ).scores.a;
+
+    expect(scoreOf(confirmNoSweep)).toBe(0); // window never opens ⇒ holds fire
+    expect(scoreOf(alwaysStrike)).toBeGreaterThan(0); // the standing foe IS hittable
+    expect(scoreOf(pokeWhenNoWindow)).toBeGreaterThan(0); // finishWindow == 0 holds ⇒ value is 0
+  });
+
+  it("equals the live downed.finish — a bot keyed to an interior value finishes on that exact tick", () => {
+    // A startup-0 strike makes the decision tick the active tick, so `finishWindow == 2` finishes
+    // iff the live counter is actually 2 at that tick — pinning the value (not a 0/1 boolean or a
+    // stuck constant) on top of the okizeme block's window-length tests.
+    const valueBot = bot(
+      [
+        { when: eqField("clock.tick", 0), do: { type: "sweep" } },
+        {
+          when: eqField("self.finishWindow", 2),
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        rules: finishRules({
+          finishWindow: 4,
+          moves: {
+            strike: {
+              startup: 0,
+              active: 1,
+              recovery: 1,
+              score: 1,
+              reach: 250000,
+            },
+            sweep: SWEEP,
+          },
+        }),
+        botA: valueBot,
+        botB: IDLE,
+        maxTicks: 10,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // the counter really reaches 2 at that tick ⇒ finish lands
+  });
+
+  it("is live — perception latency never delays self.finishWindow", () => {
+    // self.finishWindow is self-proprioception (read from the LIVE opponent, not the delayed
+    // snapshot), so the confirm-bot finishes identically under heavy action latency. A delayed
+    // reading would make it strike late and whiff.
+    const scoreUnder = (lAct: number): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ finishWindow: 4, perception: { lAct } }),
+          botA: confirmBot,
+          botB: IDLE,
+          maxTicks: 10,
+        }),
+      ).scores.a;
+
+    expect(scoreUnder(0)).toBe(1);
+    expect(scoreUnder(6)).toBe(1); // identical despite 6-tick action latency ⇒ live
+  });
+
+  it("reads 0 in the i-frame tail — the confirm-bot stops once the window closes", () => {
+    // A short window (3): the confirm-bot lands its one finish, then self.finishWindow reads 0 for
+    // the rest of the knockdown, so when it is next free (tick 6) it idles instead of poking the
+    // invulnerable, prone foe.
+    const result = runFight(
+      getMockConfig({
+        rules: finishRules({ finishWindow: 3, knockdownDuration: 12 }),
+        botA: confirmBot,
+        botB: IDLE,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1); // exactly one finish
+    expect(result.events[6].a.action.type).toBe("idle"); // window closed ⇒ holds fire in i-frames
   });
 });

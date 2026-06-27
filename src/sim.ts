@@ -199,10 +199,13 @@ const perceiveOpponent = (
 };
 
 // Build one fighter's view of tick T: self is live; the opponent is its already-
-// perceived (delayed) snapshot.
+// perceived (delayed) snapshot. `oppLive` is the opponent's TRUE pre-tick state — used only
+// for `self.finishWindow`, which is live self-proprioception (the design's deliberate
+// asymmetry with the delayed `opponent.knockdown` tell).
 const viewFor = (
   self: Fighter,
   opponent: OpponentState,
+  oppLive: Fighter,
   rules: Rules,
   tick: number,
   maxTicks: number,
@@ -215,6 +218,13 @@ const viewFor = (
   const phaseRemaining =
     st.kind === "attacking" ? totalFrames(st.spec) - st.elapsed : 0;
 
+  // The okizeme finish window self can act on RIGHT NOW: the live opponent's remaining
+  // finish-window ticks while it is downed-finishable, else 0 (not downed, or in i-frames).
+  // Read LIVE (zero latency), like the counter/cancel windows — self knows its guaranteed
+  // finish precisely; whether the foe is down is the separately-delayed perception (C8 slice 4).
+  const finishWindow =
+    oppLive.state.kind === "downed" ? oppLive.state.finish : 0;
+
   return {
     self: {
       x: self.x,
@@ -224,6 +234,7 @@ const viewFor = (
       phaseRemaining,
       counterWindow: self.counterRemaining, // live — self is always perceived live
       cancelWindow: self.cancelRemaining, // live — the attacker's open cancel window
+      finishWindow, // live — the okizeme finish window on the foe's knockdown (C8)
     },
     opponent,
     ring: { width: rules.ring.width },
@@ -678,13 +689,13 @@ export function runFight(cfg: FightConfig): FightResult {
     // 2. Both fighters decide against one immutable pre-tick snapshot.
     const aAction = runTick(
       botA,
-      viewFor(a, aOpp, rules, tick, maxTicks),
+      viewFor(a, aOpp, b, rules, tick, maxTicks),
       a.mem,
     );
 
     const bAction = runTick(
       botB,
-      viewFor(b, bOpp, rules, tick, maxTicks),
+      viewFor(b, bOpp, a, rules, tick, maxTicks),
       b.mem,
     );
 

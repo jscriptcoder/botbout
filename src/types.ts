@@ -33,6 +33,7 @@ export type SelfState = {
   phaseRemaining: number;
   counterWindow: number; // post-parry counter-window ticks left (live; 0 = closed)
   cancelWindow: number; // on-contact cancel-window ticks left after a connect (live; 0 = closed)
+  finishWindow: number; // okizeme finish-window ticks left on the LIVE opponent's knockdown (C8; live, 0 = can't finish — not downed, or in i-frames)
 };
 
 export type OpponentState = {

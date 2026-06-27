@@ -24,10 +24,10 @@ Add the ground game on top of C7's throw triangle: a `sweep` that knocks down (l
 
 - [x] A bot can author `{type:"sweep"}`; it validates and resolves as a low-band strike that knocks down on hit (score 0). _(Slice 1 — PR #35)_
 - [x] A sweep is blocked/parried by a matching low guard (no knockdown), whiffs a jumper, hits a croucher, trades with strikes, and stuffs throws. _(Slice 1 — PR #35)_
-- [ ] With `finishWindow` configured, any knockdown (throw or sweep) is finishable by exactly one opposing strike during the first `F` ticks; afterwards the downed fighter is untargetable (i-frames) until it wakes.
-- [ ] A finish never re-downs or extends the knockdown; the fighter wakes to a normal neutral.
+- [x] With `finishWindow` configured, any knockdown (throw or sweep) is finishable by exactly one opposing strike during the first `F` ticks; afterwards the downed fighter is untargetable (i-frames) until it wakes. _(Slice 2 — PR #36)_
+- [x] A finish never re-downs or extends the knockdown; the fighter wakes to a normal neutral. _(Slice 2 — PR #36)_
 - [ ] `self.finishWindow` and `opponent.knockdown` are readable in the DSL and drive a hit-confirmed finish.
-- [ ] With `finishWindow` absent **and** no `moves.sweep` spec, the engine is **byte-identical to C7** (regression-locked by a replay test).
+- [x] With `finishWindow` absent **and** no `moves.sweep` spec, the engine is **byte-identical to C7** (regression-locked by a replay test). _(Slice 1 + Slice 2)_
 
 ## Slices
 
@@ -52,7 +52,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
   **REFACTOR**: assess only if it adds value (e.g. whether the HIT branch reads cleanly with the knockdown side effect).
   **Done when**: all ACs met, mutation report reviewed, `docs/BOT-DSL.md` documents `{type:"sweep"}`, human approves commit.
 
-### Slice 2: A knockdown is finishable exactly once, then i-frames until wake
+### Slice 2: A knockdown is finishable exactly once, then i-frames until wake — ✅ DONE (PR #36)
 
 **Value**: Okizeme — after any knockdown (throw or sweep), the attacker gets one guaranteed finish opportunity; then the grounded fighter is invulnerable until it wakes. No ground loops.
 **Path**: `applyStrike`/`applyThrow` knockdown now sets `downed{ elapsed:0, finish: rules.finishWindow ?? 0 }` → `computeStrike` against a downed defender returns a **finish HIT** iff `finish > 0` (gated by active + reach only; band/guard/occupancy ignored) else `null` (i-frames, the existing C7 untargetable path) → `applyStrike` finish-HIT scores the finisher and sets the target's `finish = 0` → `advance` decrements `downed.finish` each tick. Observable via `runFight`: an opposing strike during the first `F` ticks of a knockdown scores once; a second one in the same knockdown scores nothing; the clock and wake time are unchanged.

@@ -438,6 +438,7 @@ describe("validate — bot intake gate", () => {
       "self.phaseRemaining",
       "self.counterWindow",
       "self.cancelWindow",
+      "self.finishWindow",
       "opponent.x",
       "opponent.facing",
       "opponent.distance",

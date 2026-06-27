@@ -97,10 +97,14 @@ dodging | airborne | knockdown | wakeup`.
 
 **`self` (live, perfect proprioception):**
 `points`, `stamina`, `x`, `y`, `vx`, `vy`, `facing`, `phaseRemaining`,
-`canAct` (1/0), `canCancel` (1/0), `cancelWindowRemaining`, `comboHits`
-(landed this exchange), `wakeupRemaining`, `edgeDistance` (to nearer ring edge).
-Categorical self-state read via predicates: `phase`, `move_is`, `posture_is`,
-`band_is` (own current attack's band).
+`canAct` (1/0), `canCancel` (1/0), `cancelWindowRemaining`, `finishWindow`,
+`comboHits` (landed this exchange), `wakeupRemaining`, `edgeDistance` (to nearer
+ring edge). `finishWindow` is the **okizeme** finish-window ticks you may still
+land a guaranteed finish in on the **opponent's** knockdown — read **live** (zero
+latency, like your other windows): `> 0` ⇒ a downed foe is finishable right now,
+`0` ⇒ not down, or in wake-up i-frames. (Whether the foe is down is the separately
+_delayed_ `opponent.knockdown` tell.) Categorical self-state read via predicates:
+`phase`, `move_is`, `posture_is`, `band_is` (own current attack's band).
 
 **`opponent` (coherent delayed snapshot):**
 

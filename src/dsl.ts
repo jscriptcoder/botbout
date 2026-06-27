@@ -28,6 +28,7 @@ export type FieldPath =
   | "self.phaseRemaining"
   | "self.counterWindow"
   | "self.cancelWindow"
+  | "self.finishWindow"
   | "opponent.x"
   | "opponent.y"
   | "opponent.facing"
@@ -90,6 +91,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "self.phaseRemaining": (s) => s.self.phaseRemaining,
   "self.counterWindow": (s) => s.self.counterWindow,
   "self.cancelWindow": (s) => s.self.cancelWindow,
+  "self.finishWindow": (s) => s.self.finishWindow,
   "opponent.x": (s) => s.opponent.x,
   "opponent.y": (s) => s.opponent.y,
   "opponent.facing": (s) => s.opponent.facing,

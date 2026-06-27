@@ -36,6 +36,7 @@ const getMockState = (o: StateOverrides = {}): State => ({
     phaseRemaining: 0,
     counterWindow: 0,
     cancelWindow: 0,
+    finishWindow: 0,
     ...o.self,
   },
   opponent: {
