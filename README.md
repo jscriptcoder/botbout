@@ -75,10 +75,22 @@ dropped Project Pixel Fist (render layer) when those slices land.
   **counter window** whose strike scores a `counterBonus`, perceivable live as
   `self.counterWindow`. First consumer of the **§11 compute-then-apply union**
   (`computeStrike` + `applyStrike`) — the counter is the first cross-fighter effect.
+- **C6 on-contact cancel combos** (PRs #26–#28): a connecting strike — **hit or block,
+  never whiff/parry** — opens a `cancelWindow`; a `cancelInto`-routed follow-up interrupts
+  the recovery; the live window is perceivable as `self.cancelWindow` for hit-confirm.
+- **C7 throw triangle + knockdown** (PRs #29–#33): a committed `throw` grabs a grounded foe
+  — beating any guard/parry (unbanded) — scoring + knocking **down**; the `strike > throw >
+guard` precedence resolves in the union (strike **stuffs**, `throw-break` escapes, two
+  grabs **clash**); the incoming grab is the `L_act`-delayed `opponent.throwing` tell. The
+  union's genuine **test-forcing** consumer (same-tick cross-fighter mutual dependencies).
+- **C8 sweeps + limited okizeme** (PRs #35–#38): a `sweep` is a low-band knockdown strike
+  (precedence emergent — "a sweep is a strike"); one uniform knockdown lifecycle gives a
+  guaranteed **finish window** (exactly once) before wake-up **i-frames**; the okizeme read
+  is the live `self.finishWindow` + the `L_act`-delayed `opponent.knockdown`.
 
-**206 tests; `sim.ts` mutation ~97%, `dsl.ts` interpreter 100%. Next:** C6 cancel
-combos, then throws. See `docs/stories/first-slice-split.md` for the roadmap and
-`.claude/CLAUDE.md` Status for the live detail.
+**287 tests; `sim.ts` mutation ~95%, `dsl.ts` interpreter 100%. Next:** capability not yet
+resolved (candidates: match structure, a real frame table, air-actions). See
+`.claude/CLAUDE.md` Status for the live roadmap and detail.
 
 See `.claude/CLAUDE.md` for the invariants and current direction, `docs/DESIGN.md`
 for the design rationale.
