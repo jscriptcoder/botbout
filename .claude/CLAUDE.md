@@ -29,7 +29,7 @@ generating code; flag any change that would.
    cross-platform replay. Trig/FK and ragdoll are **render-layer only** (the
    non-authoritative side of the seam).
 2. **Security / TCB.** Untrusted bots are **data, never code.** Never run
-   LLM-authored JS. The trusted computing base is `src/dsl.ts`
+   LLM-authored JS. The trusted computing base is `src/engine/dsl.ts`
    (validator + interpreter). Never add a DSL op that can touch the host,
    network, filesystem, time, or randomness. The allowlists in that file ARE the
    security boundary. Validate before run; reject with structured errors.
@@ -50,8 +50,13 @@ generating code; flag any change that would.
   import the engine directly from `src/` (shared `validate`/`runFight` + contract
   types end-to-end — no cross-language drift). Viewer: Vite + Pixi + SolidJS.
   Deploys on Vercel.
-- `src/types.ts` is the **single source of truth** for the state / action /
+- `src/engine/types.ts` is the **single source of truth** for the state / action /
   `Rules` contract — don't redeclare it elsewhere.
+- **Source layout:** the deterministic engine + its TCB live under
+  `src/engine/` (`types.ts`, `dsl.ts`, `sim.ts`, `prng.ts` + co-located
+  `*.test.ts`); the headless **fight runner** (`npm run fight`) lives under
+  `src/cli/` and imports the engine from `../engine/`; example bot documents
+  live in top-level `bots/`.
 - Repo layout: see `README.md`. Component & platform decisions: `docs/DESIGN.md`.
 
 ## Status
@@ -59,8 +64,8 @@ generating code; flag any change that would.
 - DONE (design): the deep-karate combat tree + bot API resolved →
   `docs/DESIGN.md`, `docs/BOT-DSL.md`.
 - DONE (walking skeleton — PRs #1–#5, all 6 ACs): the headless deterministic core.
-  `src/dsl.ts` (validator + interpreter — the TCB), `src/types.ts`
-  (`State`/`Action`/`Rules` contract), `src/sim.ts` (fixed-timestep `runFight`
+  `src/engine/dsl.ts` (validator + interpreter — the TCB), `src/engine/types.ts`
+  (`State`/`Action`/`Rules` contract), `src/engine/sim.ts` (fixed-timestep `runFight`
   loop). It validates a JSON bot, runs two bots for N ticks, replays
   **byte-identically**, and resolves 1D approach + one *mid* strike that can score,
   be **blocked** (guard negates; a committed fighter can't guard), or **trade**
@@ -72,7 +77,7 @@ generating code; flag any change that would.
   buffer — positional fields by `L_pos`, the `opponent.attacking` tell by `L_act`
   (invariant #4) — with dead-reckoned `opponent.predictedDistance` (+ `opponent.vx`)
   and **seeded, clamped per-tick jitter** on the latencies (mulberry32 in
-  `src/prng.ts`, the sim's first PRNG consumer — integer `uint32` only, replay-stable).
+  `src/engine/prng.ts`, the sim's first PRNG consumer — integer `uint32` only, replay-stable).
   This derives the master inequality **reaction-block iff `S ≥ L_act + 1`** (the `+1`
   is the structural observe-after-commit tick; explicit block startup `B` still
   deferred). 149 tests; `prng.ts` mutation 100%, `sim.ts` ~95%. `perception` is
@@ -153,7 +158,7 @@ generating code; flag any change that would.
   live since C5) resolves order-independently. (The "926 tests" once recorded here was a
   `.stryker-tmp` pollution artifact — the real suite is **287** after C8.) `sim.ts` mutation ~95%,
   `dsl.ts` interpreter
-  100%. The `throw`/`throw-break` actions are allowlisted in `src/dsl.ts`; `Rules.throw` (a
+  100%. The `throw`/`throw-break` actions are allowlisted in `src/engine/dsl.ts`; `Rules.throw` (a
   `ThrowSpec`) + `knockdownDuration` are optional ⇒ a `throw` is inert when unconfigured ⇒
   **byte-identical** to C6. Deferred to **C8**: sweeps, the one guaranteed **finish window** (okizeme),
   wake-up i-frames, and `opponent.knockdown`.

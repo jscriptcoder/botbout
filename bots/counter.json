@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "counter",
+  "rules": [
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "opponent.attackBand" },
+          { "op": "const", "value": 3 }
+        ]
+      },
+      "do": { "type": "block", "band": "high" }
+    },
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "opponent.attackBand" },
+          { "op": "const", "value": 2 }
+        ]
+      },
+      "do": { "type": "block", "band": "mid" }
+    },
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "opponent.attackBand" },
+          { "op": "const", "value": 1 }
+        ]
+      },
+      "do": { "type": "block", "band": "low" }
+    }
+  ],
+  "default": { "type": "move", "dir": 1 }
+}

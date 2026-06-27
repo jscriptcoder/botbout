@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "turtle",
+  "rules": [],
+  "default": { "type": "block", "band": "mid" }
+}

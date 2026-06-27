@@ -33,6 +33,9 @@ npm run build      # tsc → dist/
 npm run typecheck  # tsc --noEmit
 npm run format     # prettier --write . (format:check to verify only)
 npm run lint       # eslint . (lint:fix to auto-fix; adds block spacing)
+
+# run a headless demo fight (prints the tick log + winner):
+npm run fight -- bots/aggressor.json bots/turtle.json
 ```
 
 ## Layout
@@ -41,14 +44,18 @@ All code lives under a single top-level `src/` (no monorepo nesting). `✅` exis
 today; the rest is the structure the TDD build grows into:
 
 ```
-src/               TypeScript deterministic core (pure, no I/O)
-  types.ts        ✅ state schema + action grammar + Rules (single source of truth)
-  dsl.ts          ✅ bot AST, validator, interpreter  ← the trusted computing base
-  sim.ts          ✅ deterministic fight loop (x + vertical y; grows to full 2D)
-  *.test.ts       ✅ vitest behaviour suites (validate / interpret / fight)
-  rules.ts           the deep karate frame table (numbers live in test mocks for now)
+src/               TypeScript source (pure engine + CLI tooling)
+  engine/          ✅ deterministic core (pure, no I/O)
+    types.ts      ✅ state schema + action grammar + Rules (single source of truth)
+    dsl.ts        ✅ bot AST, validator, interpreter  ← the trusted computing base
+    sim.ts        ✅ deterministic fight loop (x + vertical y; grows to full 2D)
+    prng.ts       ✅ seeded mulberry32 PRNG (perception jitter; the sim's only RNG)
+    *.test.ts     ✅ vitest behaviour suites (validate / interpret / fight / perception)
+  cli/             ✅ headless fight runner — npm run fight (loads + validates bots, prints the tick log)
+    demo-rules.ts ✅ provisional demo frame table (NOT canonical — real one is a future slice)
+bots/              ✅ example bot documents (aggressor / turtle / counter)
 docs/              DESIGN.md (combat + platform) + BOT-DSL.md (bot API)
-(planned) api/     Vercel serverless functions (import the engine from src/)
+(planned) api/     Vercel serverless functions (import the engine from src/engine/)
 (planned) viewer   Vite + Pixi + SolidJS replay/fight viewer
 ```
 
