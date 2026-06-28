@@ -3411,3 +3411,118 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
     expect(result.events[4].a.points).toBe(1); // the strike still scores ⇒ resolution unchanged
   });
 });
+
+describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const THROWER = bot([], { type: "throw" });
+  const SWEEPER = bot([], { type: "sweep" });
+
+  it("commits the last affordable strike to exactly 0, but degrades a strike one short to idle (B1)", () => {
+    const mk = (max: number) =>
+      getMockRules({
+        startGap: 200000, // within reach (250000) ⇒ a committed strike connects
+        stamina: { max },
+        moves: {
+          strike: {
+            startup: 4,
+            active: 2,
+            recovery: 6,
+            score: 1,
+            reach: 250000,
+            staminaCost: 30,
+          },
+        },
+      });
+
+    // stamina == cost (affordable iff stamina ≥ cost): the move commits and empties to exactly 0 ...
+    const affordable = runFight(
+      getMockConfig({ rules: mk(30), botA: STRIKER, botB: IDLE, maxTicks: 12 }),
+    );
+
+    expect(affordable.events[0].a.stamina).toBe(0); // spent to exactly 0
+    expect(affordable.scores.a).toBe(1); // ... and it connected (it really started)
+
+    // stamina == cost − 1: one short ⇒ degrades to idle — no spend, no startup, no score.
+    const short = runFight(
+      getMockConfig({ rules: mk(29), botA: STRIKER, botB: IDLE, maxTicks: 12 }),
+    );
+
+    expect(short.events[0].a.stamina).toBe(29); // unchanged — no spend ...
+    expect(short.scores.a).toBe(0); // ... and the strike never started
+  });
+
+  it("degrades an unaffordable throw to idle (no grab, no spend)", () => {
+    const rules = getMockRules({
+      startGap: 100000, // within throw reach (120000) ⇒ an affordable grab would score 3
+      stamina: { max: 29 },
+      throw: {
+        startup: 2,
+        active: 2,
+        recovery: 4,
+        reach: 120000,
+        score: 3,
+        staminaCost: 30,
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: THROWER, botB: IDLE, maxTicks: 6 }),
+    );
+
+    expect(result.events[0].a.stamina).toBe(29); // no spend
+    expect(result.scores.a).toBe(0); // no grab — it idled instead of committing
+  });
+
+  it("degrades an unaffordable sweep to idle (no commit, no spend)", () => {
+    const rules = getMockRules({
+      startGap: 150000, // within sweep reach (180000)
+      stamina: { max: 19 },
+      moves: {
+        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        sweep: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 0,
+          reach: 180000,
+          knockdown: true,
+          staminaCost: 20,
+        },
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: SWEEPER, botB: IDLE, maxTicks: 6 }),
+    );
+
+    // A committed sweep spends 20; an unchanged meter proves it never committed (⇒ idled).
+    for (const e of result.events) expect(e.a.stamina).toBe(19);
+  });
+
+  it("stops committing once a spam-attacker drops below cost — stamina floors flat and never negative", () => {
+    const rules = getMockRules({
+      startGap: 200000, // in reach ⇒ each committed strike scores
+      stamina: { max: 100 },
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 30,
+        },
+      },
+    });
+
+    // Commits at ticks 0/12/24 (100→70→40→10), then 10 < 30 ⇒ every later attack idles.
+    const result = runFight(
+      getMockConfig({ rules, botA: STRIKER, botB: IDLE, maxTicks: 48 }),
+    );
+
+    expect(result.scores.a).toBe(3); // exactly three strikes landed before it ran dry
+    expect(result.events[47].a.stamina).toBe(10); // settled flat at its last affordable remainder
+    for (const e of result.events)
+      expect(e.a.stamina).toBeGreaterThanOrEqual(0); // the [0] lower bound
+  });
+});

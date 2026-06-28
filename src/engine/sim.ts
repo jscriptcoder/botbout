@@ -275,6 +275,18 @@ const spend = (
   if (rules.stamina !== undefined) f.stamina -= spec.staminaCost ?? 0;
 };
 
+// Whether a fighter can afford to commit a costed move (C10 affordability gate). With no
+// meter configured there is no gate — always affordable ⇒ byte-identical. Otherwise a move
+// is affordable IFF `stamina ≥ cost`: the last affordable move empties to exactly 0; one
+// short is rejected, so the action degrades to idle (no spend, no startup). The `≥` is also
+// what keeps stamina from ever going negative — the [0] lower bound Slice 1 deferred to here.
+const affordable = (
+  f: Fighter,
+  spec: { staminaCost?: number },
+  rules: Rules,
+): boolean =>
+  rules.stamina === undefined || f.stamina >= (spec.staminaCost ?? 0);
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
@@ -295,13 +307,20 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     return;
   }
 
-  if (action.type === "attack") {
+  if (
+    action.type === "attack" &&
+    affordable(f, rules.moves[action.move], rules)
+  ) {
     f.state = startAttack(rules.moves[action.move], action.band);
     spend(f, rules.moves[action.move], rules); // C10: a costed move drains stamina on commit
-  } else if (action.type === "sweep" && rules.moves.sweep !== undefined) {
+  } else if (
+    action.type === "sweep" &&
+    rules.moves.sweep !== undefined &&
+    affordable(f, rules.moves.sweep, rules)
+  ) {
     // Sweep (C8): a low-band knockdown strike. Commit to an attacking move at band `low`
     // reading the optional `moves.sweep` spec. Without the spec the action is inert (no state
-    // change) ⇒ byte-identical to the pre-sweep engine.
+    // change) ⇒ byte-identical to the pre-sweep engine. An unaffordable sweep degrades to idle.
     f.state = startAttack(rules.moves.sweep, "low");
     spend(f, rules.moves.sweep, rules);
   } else if (action.type === "move") {
@@ -315,9 +334,14 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     // in `advance`; `dir` is reserved (vertical-only for now). Absent impulse ⇒ 0
     // ⇒ an inert jump that lands the same tick (forward-compatible with no-y rules).
     f.state = { kind: "airborne", vy: rules.jumpImpulse ?? 0 };
-  } else if (action.type === "throw" && rules.throw !== undefined) {
+  } else if (
+    action.type === "throw" &&
+    rules.throw !== undefined &&
+    affordable(f, rules.throw, rules)
+  ) {
     // Commit to a grab (startup → grab-active → recovery). Without a throw frame table
-    // the action is inert (no state change) ⇒ byte-identical to the pre-throw engine.
+    // the action is inert (no state change) ⇒ byte-identical to the pre-throw engine. An
+    // unaffordable grab degrades to idle.
     f.state = { kind: "throwing", elapsed: 0, stuffed: false };
     spend(f, rules.throw, rules);
   }
