@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig, type FightEvent } from "./sim.js";
 import type { BotDoc, BoolExpr } from "./dsl.js";
-import type { Rules, Band, Action, MoveSpec } from "./types.js";
+import type { Rules, Band, Action, MoveSpec, ThrowSpec } from "./types.js";
 import { CANONICAL_RULES } from "./rules.js";
 
 // ─── bot fixtures (mirroring the engine-test helpers — fixtures, not shared knowledge) ──
@@ -150,6 +150,13 @@ const attackTicks = (events: FightEvent[], side: "a" | "b"): number[] =>
 const strike = (): MoveSpec => CANONICAL_RULES.moves.strike;
 const lAct = (): number => CANONICAL_RULES.perception?.lAct ?? 0;
 
+const throwSpec = (): ThrowSpec => {
+  const t = CANONICAL_RULES.throw;
+  if (!t) throw new Error("CANONICAL_RULES.throw is not configured");
+
+  return t;
+};
+
 const fight = (o: Partial<FightConfig> = {}): FightConfig => ({
   rules: CANONICAL_RULES,
   botA: IDLE,
@@ -175,6 +182,18 @@ const withStartup = (startup: number): Rules =>
       ...CANONICAL_RULES.moves,
       strike: { ...strike(), startup },
     },
+  });
+
+// Positioned inside GRAB range (closer than strike range) and de-jittered — the throw
+// reach (120000) is shorter than the strike's, so the deterministic() gap (200000) is
+// out of grab range; grab tests need the pair closer.
+const grappleFight = (o: Partial<FightConfig> = {}): FightConfig =>
+  fight({ rules: deterministic({ startGap: 100000 }), ...o });
+
+const withThrowStartup = (startup: number): Rules =>
+  deterministic({
+    startGap: 100000, // within grab reach ⇒ a grab can connect or be broken
+    throw: { ...throwSpec(), startup },
   });
 
 describe("CANONICAL_RULES — structural shape", () => {
@@ -431,5 +450,152 @@ describe("CANONICAL_RULES — defensive structural shape", () => {
   it("ships a cancel window and a self-rekka route", () => {
     expect(CANONICAL_RULES.cancelWindow ?? 0).toBeGreaterThan(0);
     expect(strike().cancelInto).toContain("strike");
+  });
+});
+
+// ─── Slice 4: the throw triangle (throw > guard, strike > throw, read-breakable) ──
+
+// Throws once at tick 0, then idles — a single grab-active window to observe.
+const throwOnce: BotDoc = bot([{ when: clk("eq", 0), do: { type: "throw" } }], {
+  type: "idle",
+});
+
+// Returns throw-break the instant it PERCEIVES the opponent committing to a grab
+// (a pure read of the L_act-delayed opponent.throwing tell).
+const REACTIVE_BREAKER: BotDoc = bot(
+  [
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "field", path: "opponent.throwing" },
+          { op: "const", value: 1 },
+        ],
+      },
+      do: { type: "throw-break" },
+    },
+  ],
+  { type: "idle" },
+);
+
+// Advances toward the opponent whenever free — its x stalls while it is downed.
+const ADVANCER: BotDoc = bot([], { type: "move", dir: 1 });
+
+// Throws at tick 0, then holds a mid guard — so if its throw does NOT commit it, it
+// blocks an incoming mid strike (the contrast that proves a whiffed grab is committed).
+const throwThenGuard: BotDoc = bot(
+  [
+    { when: clk("eq", 0), do: { type: "throw" } },
+    { when: clk("gte", 1), do: { type: "block", band: "mid" } },
+  ],
+  { type: "idle" },
+);
+
+describe("CANONICAL_RULES — throw structural shape", () => {
+  it("scores a clean throw as a WKF ippon (3)", () => {
+    expect(throwSpec().score).toBe(3);
+  });
+
+  it("puts the throw-break on the reaction knife-edge (startup = lAct + 1)", () => {
+    expect(throwSpec().startup).toBe(lAct() + 1);
+  });
+
+  it("makes a whiffed throw punishable (recovery ≥ lAct + strike startup)", () => {
+    expect(throwSpec().recovery).toBeGreaterThanOrEqual(
+      lAct() + strike().startup,
+    );
+  });
+
+  it("is shorter-range than the strike (a grab must be close)", () => {
+    expect(throwSpec().reach).toBeLessThan(strike().reach);
+  });
+
+  it("knocks the defender down for a real duration", () => {
+    expect(CANONICAL_RULES.knockdownDuration ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe("CANONICAL_RULES — a throw beats a guard (throw > guard)", () => {
+  it("grabs a guarding defender for an ippon — the unbanded grab ignores the block", () => {
+    const result = runFight(
+      grappleFight({
+        botA: throwOnce,
+        botB: bot([], { type: "block", band: "mid" }),
+        maxTicks: 20,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3);
+  });
+});
+
+describe("CANONICAL_RULES — a throw knocks the defender down", () => {
+  it("freezes a thrown advancer for the knockdown, then it moves again", () => {
+    const grab = throwSpec().startup; // grab-active opens at elapsed = startup
+    const wake = grab + (CANONICAL_RULES.knockdownDuration ?? 0); // neutral again here
+
+    const result = runFight(
+      grappleFight({ botA: throwOnce, botB: ADVANCER, maxTicks: wake + 5 }),
+    );
+
+    expect(result.events[wake - 1].b.x).toBe(result.events[grab + 1].b.x); // frozen while downed
+    expect(result.events[wake].b.x).not.toBe(result.events[wake - 1].b.x); // moves again on wake
+  });
+});
+
+describe("CANONICAL_RULES — a strike stuffs a colliding throw (strike > throw)", () => {
+  it("an active strike voids a colliding throw that otherwise scores uncontested", () => {
+    // Baseline: the grab alone downs the idle defender for 3 — it works in this position.
+    const uncontested = runFight(
+      grappleFight({ botA: throwOnce, botB: IDLE, maxTicks: 20 }),
+    ).scores.a;
+
+    // Contested: a strike whose active window (7–9) overlaps the grab-active window (7–8)
+    // stuffs it — strike > throw, so the strike scores and the same grab is voided.
+    const contested = runFight(
+      grappleFight({ botA: throwOnce, botB: strikeOnce("mid"), maxTicks: 20 }),
+    );
+
+    expect(uncontested).toBe(3); // the throw scores uncontested
+    expect(contested.scores.b).toBe(1); // the colliding strike landed
+    expect(contested.scores.a).toBe(0); // and voided the throw — no ippon
+  });
+});
+
+describe("CANONICAL_RULES — the throw-break read-game (escapable iff startup ≥ lAct+1)", () => {
+  // REACTIVE_BREAKER breaks the instant it perceives the grab; throwOnce commits one grab.
+  // scores.b is the thrower's score: 0 ⇒ the grab was broken, 3 ⇒ it landed.
+  const reactableBreak = (startup: number): number =>
+    runFight(
+      fight({
+        rules: withThrowStartup(startup),
+        botA: REACTIVE_BREAKER,
+        botB: throwOnce,
+        maxTicks: 30,
+      }),
+    ).scores.b;
+
+  it("a reaction break escapes the canonical throw, but not one a tick faster", () => {
+    expect(reactableBreak(throwSpec().startup)).toBe(0); // startup = lAct+1 ⇒ break is up ⇒ escaped
+    expect(reactableBreak(lAct())).toBe(3); // startup = lAct ⇒ tell arrives too late ⇒ grabbed
+  });
+});
+
+describe("CANONICAL_RULES — a whiffed throw is punishable", () => {
+  it("a grab out of range whiffs, and its recovery stops the thrower defending the punish", () => {
+    // deterministic() positions the pair at 200000: outside grab reach (120000) but inside
+    // strike reach (240000), so the throw whiffs. The thrower would block the mid punish if
+    // free — committing to the grab's recovery is exactly what leaves it open (b:1, not 0).
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: throwThenGuard, // grab whiffs out of range; then it tries to guard
+        botB: strikeAtTicks([throwSpec().startup + throwSpec().active], "mid"),
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // the throw whiffed
+    expect(result.scores.b).toBe(1); // committed in recovery, it couldn't block ⇒ punished
   });
 });

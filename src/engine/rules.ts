@@ -55,6 +55,21 @@ export const CANONICAL_RULES: Rules = {
   counterWindow: 10,
   counterBonus: 1,
   cancelWindow: 6,
+  // The throw triangle (C7) — the anti-turtle option, on the same startup-7 timing:
+  //   • startup 7 = lAct (6) + 1 ⇒ the grab tell is reactable: a read throw-break escapes
+  //     it, but only just (symmetric with the strike's read game). One tick faster ⇒ unbreakable.
+  //   • active 2 — a 2-tick grab window (forgiving enough to catch a step-in); the FIRST
+  //     active frame still governs the break edge, so it does not soften the read.
+  //   • recovery 14 ≥ lAct (6) + strike.startup (7) ⇒ a whiffed (or stuffed) grab is
+  //     punishable — one tick past the strike's exact-13 edge, as a whiffed grab is the
+  //     bigger commitment.
+  //   • reach 120000 < strike.reach (240000) ⇒ a grab is close-range (the reach hierarchy
+  //     throw < sweep < strike; the sweep fills the gap in a later slice).
+  //   • score 3 — a clean throw is the WKF ippon.
+  // knockdownDuration 30: a ~half-second knockdown; the okizeme finish / i-frame split is
+  // carved out of it in a later slice.
+  throw: { startup: 7, active: 2, recovery: 14, reach: 120000, score: 3 },
+  knockdownDuration: 30,
   // The perception keystone (C2): position lags 1 tick, the action tell lags 6, with
   // ±1 seeded jitter. lAct 6 with strike.startup 7 puts the read on the knife-edge
   // (S ≥ lAct + 1 holds with equality), so jitter + sharp timing decide the exchange.
