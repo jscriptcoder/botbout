@@ -9,6 +9,7 @@ const frame = (o: Partial<FighterFrame> = {}): FighterFrame => ({
   y: 0,
   action: { type: "idle" },
   points: 0,
+  stamina: 0,
   ...o,
 });
 

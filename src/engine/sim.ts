@@ -66,6 +66,7 @@ export type FighterFrame = {
   y: number;
   action: Action;
   points: number;
+  stamina: number; // C10 meter at end of tick; 0 every frame when no meter is configured
 };
 export type FightEvent = { tick: number; a: FighterFrame; b: FighterFrame };
 
@@ -113,6 +114,7 @@ type Fighter = {
   guardAge: number; // consecutive ticks the current guard has been held (0 = open)
   counterRemaining: number; // post-parry counter-window ticks left (0 = closed)
   cancelRemaining: number; // on-contact cancel-window ticks left after a connect (0 = closed)
+  stamina: number; // C10 conditioning meter; init to rules.stamina.max (0 when unconfigured)
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
@@ -241,6 +243,7 @@ const viewFor = (
       counterWindow: self.counterRemaining, // live — self is always perceived live
       cancelWindow: self.cancelRemaining, // live — the attacker's open cancel window
       finishWindow, // live — the okizeme finish window on the foe's knockdown (C8)
+      stamina: self.stamina, // live — the conditioning meter is self-proprioception (C10)
     },
     opponent,
     ring: { width: rules.ring.width },
@@ -259,6 +262,18 @@ const startAttack = (spec: MoveSpec, band: Band): MoveState => ({
   scored: false,
   extra: 0,
 });
+
+// Drain a committed move's stamina cost (C10), on commit, whiff or not. Charged ONLY
+// when a meter is configured (`rules.stamina` present) — absent ⇒ no meter simulated ⇒
+// no charge (byte-identical). A move with no `staminaCost` is free (`?? 0`). No floor
+// here: Slice 2's affordability gate guarantees stamina never goes negative.
+const spend = (
+  f: Fighter,
+  spec: { staminaCost?: number },
+  rules: Rules,
+): void => {
+  if (rules.stamina !== undefined) f.stamina -= spec.staminaCost ?? 0;
+};
 
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
@@ -282,11 +297,13 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
 
   if (action.type === "attack") {
     f.state = startAttack(rules.moves[action.move], action.band);
+    spend(f, rules.moves[action.move], rules); // C10: a costed move drains stamina on commit
   } else if (action.type === "sweep" && rules.moves.sweep !== undefined) {
     // Sweep (C8): a low-band knockdown strike. Commit to an attacking move at band `low`
     // reading the optional `moves.sweep` spec. Without the spec the action is inert (no state
     // change) ⇒ byte-identical to the pre-sweep engine.
     f.state = startAttack(rules.moves.sweep, "low");
+    spend(f, rules.moves.sweep, rules);
   } else if (action.type === "move") {
     f.x = clamp(
       f.x + action.dir * f.facing * rules.walkSpeed,
@@ -302,6 +319,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     // Commit to a grab (startup → grab-active → recovery). Without a throw frame table
     // the action is inert (no state change) ⇒ byte-identical to the pre-throw engine.
     f.state = { kind: "throwing", elapsed: 0, stuffed: false };
+    spend(f, rules.throw, rules);
   }
   // idle / block / crouch (or throw with no frame table): no positional effect.
 };
@@ -631,6 +649,7 @@ export function runFight(cfg: FightConfig): FightResult {
     guardAge: 0,
     counterRemaining: 0,
     cancelRemaining: 0,
+    stamina: rules.stamina?.max ?? 0,
   };
 
   const b: Fighter = {
@@ -645,6 +664,7 @@ export function runFight(cfg: FightConfig): FightResult {
     guardAge: 0,
     counterRemaining: 0,
     cancelRemaining: 0,
+    stamina: rules.stamina?.max ?? 0,
   };
 
   const events: FightEvent[] = [];
@@ -784,8 +804,20 @@ export function runFight(cfg: FightConfig): FightResult {
     // 4. Record the integer event (the bot's RETURNED action, honoured or not).
     events.push({
       tick,
-      a: { x: a.x, y: a.y, action: aAction, points: a.points },
-      b: { x: b.x, y: b.y, action: bAction, points: b.points },
+      a: {
+        x: a.x,
+        y: a.y,
+        action: aAction,
+        points: a.points,
+        stamina: a.stamina,
+      },
+      b: {
+        x: b.x,
+        y: b.y,
+        action: bAction,
+        points: b.points,
+        stamina: b.stamina,
+      },
     });
   }
 

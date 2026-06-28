@@ -3250,3 +3250,164 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
     expect(result.events[6].a.action.type).toBe("idle"); // window closed ⇒ holds fire in i-frames
   });
 });
+
+describe("runFight — stamina meter (a costed move spends stamina on commit)", () => {
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const THROWER = bot([], { type: "throw" });
+  const SWEEPER = bot([], { type: "sweep" });
+
+  // Attacks while fresh, but idles once stamina drops below 80 — proving it reads the
+  // live self.stamina field and changes behaviour on it (not a hardcoded view).
+  const PACER = bot(
+    [
+      {
+        when: {
+          op: "lt",
+          args: [
+            { op: "field", path: "self.stamina" },
+            { op: "const", value: 80 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    { type: "attack", move: "strike", band: "mid" },
+  );
+
+  it("spends a strike's staminaCost on commit (even on a whiff), holds it through the move, then steps down on re-commit", () => {
+    const rules = getMockRules({
+      startGap: 300000, // beyond reach (250000) ⇒ the strike whiffs
+      stamina: { max: 100 },
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 30,
+        },
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: STRIKER, botB: IDLE, maxTicks: 13 }),
+    );
+
+    expect(result.scores.a).toBe(0); // the strike whiffed ...
+    expect(result.events[0].a.stamina).toBe(70); // ... but the commit still cost 30
+    expect(result.events[5].a.stamina).toBe(70); // unchanged mid-move (spend is on commit, not per-frame)
+    expect(result.events[12].a.stamina).toBe(40); // re-commit at tick 12 steps down again (real subtraction)
+  });
+
+  it("spends a throw's staminaCost on commit", () => {
+    const rules = getMockRules({
+      stamina: { max: 100 },
+      throw: {
+        startup: 2,
+        active: 2,
+        recovery: 4,
+        reach: 120000,
+        score: 3,
+        staminaCost: 40,
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: THROWER, botB: IDLE, maxTicks: 1 }),
+    );
+
+    expect(result.events[0].a.stamina).toBe(60);
+  });
+
+  it("spends a sweep's staminaCost on commit", () => {
+    const rules = getMockRules({
+      stamina: { max: 100 },
+      moves: {
+        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        sweep: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 0,
+          reach: 180000,
+          knockdown: true,
+          staminaCost: 20,
+        },
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: SWEEPER, botB: IDLE, maxTicks: 1 }),
+    );
+
+    expect(result.events[0].a.stamina).toBe(80);
+  });
+
+  it("spends nothing for a configured move that declares no staminaCost", () => {
+    const rules = getMockRules({
+      stamina: { max: 100 },
+      // strike carries NO staminaCost ⇒ a commit costs 0 (the meter is configured, this move is free)
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: STRIKER, botB: IDLE, maxTicks: 1 }),
+    );
+
+    expect(result.events[0].a.stamina).toBe(100);
+  });
+
+  it("lets a bot pace itself by reading the live self.stamina field", () => {
+    const rules = getMockRules({
+      startGap: 200000, // within reach ⇒ a clean strike scores
+      stamina: { max: 100 },
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 30,
+        },
+      },
+    });
+
+    // PACER strikes once at tick 0 (stamina 100), spending to 70; when next neutral
+    // (tick 12) it reads 70 < 80 and holds fire — so it scores exactly once.
+    const result = runFight(
+      getMockConfig({ rules, botA: PACER, botB: IDLE, maxTicks: 24 }),
+    );
+
+    expect(result.scores.a).toBe(1); // a single strike — it read itself low and stopped
+    expect(result.events[12].a.action.type).toBe("idle"); // neutral at 70 (<80) ⇒ holds fire
+  });
+
+  it("simulates no meter when Rules.stamina is absent — a declared staminaCost is never charged (byte-identical)", () => {
+    const rules = getMockRules({
+      startGap: 200000,
+      // NO `stamina` block ⇒ the meter is not simulated ...
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 30, // ... so even a declared cost is never charged
+        },
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({ rules, botA: STRIKER, botB: IDLE, maxTicks: 5 }),
+    );
+
+    for (const e of result.events) {
+      expect(e.a.stamina).toBe(0); // inert sentinel, never deducted
+      expect(e.b.stamina).toBe(0);
+    }
+
+    expect(result.events[4].a.points).toBe(1); // the strike still scores ⇒ resolution unchanged
+  });
+});

@@ -381,17 +381,42 @@ finishWindow == 0` ⇒ i-frames (reset); else the opponent is up.
 
 Each section: my recommendation, why, and the live alternative. Status: **OPEN**.
 
-### P1. Stamina economy — ✓ RESOLVED (light layer, soft penalties + block chip)
+### P1. Stamina economy — ✓ RESOLVED → concretized as **C10** (grill 2026-06-28)
 
-**Recommendation:** a _light_ layer. Every move costs stamina; stamina regens in
-neutral. **Gassing** (low stamina) ⇒ **reduced knockback + longer recovery + no
-specials/throws** (never "cannot act", never a win condition). **Blocking** costs
-a small stamina chip; **parry** costs more (risk). Primary anti-turtle is the
-**throw** (beats guard); stamina-on-block is a secondary, gentle anti-turtle.
-**Why:** matches the locked brief ("light conditioning, gassing = slower/weaker/
-punishable, never a win condition"); curbs spam; gives pacing without a second
-health bar. **Alternative:** hard gate (at 0 stamina, basics only) — more
-punishing, more swingy.
+**Light layer (locked).** Every offensive move (`attack`/`throw`/`sweep`) costs
+stamina, paid **on-commit** (a whiff still costs — the spam-curb); **guards chip on
+absorbed contact** (a block draws a small chip when it actually absorbs an active
+strike, a **parry draws more** — risk/reward); **movement and idle are free**
+(neutral spacing is the regen window). Stamina is an integer clamped to `[0, max]`,
+**starts full**, symmetric, and consumes **no PRNG** (deduct/regen are
+deterministic ⇒ replay-stable).
+
+- **Regen:** flat `+rate` every tick you are **uncommitted** (`canAct` and not
+  guarding — idle _or_ moving); **paused** during any move (startup/active/
+  recovery), while guarding, stunned, or knocked down.
+- **Gassing (stepped, binary):** one `gasThreshold`; at/below it `gassed = true` ⇒
+  a flat **`gasRecoveryPenalty`** is added to your moves' recovery (recovery-only;
+  the original brief's "reduced knockback" is **moot** — no knockback exists yet).
+  Never "cannot act," never a win condition.
+- **No-specials is emergent, not a flag:** the core inequality
+  **`specialCost > gasThreshold ≥ basicCost`** means a gassed fighter can't
+  _afford_ throw/sweep (affordability rejects them → `idle` + telemetry) while the
+  cheap basic stays available. One inequality, provable by a `runFight` test.
+- **Anti-turtle ordering:** the **throw** stays the PRIMARY anti-turtle (beats
+  guard); the contact-chip is the gentle SECONDARY (the attacker drives the stamina
+  war by investing strikes — an un-attacked held guard bleeds nothing).
+- **Perception:** `self.stamina` + a derived **`self.gassed`** (1/0) are **live**
+  (proprioception); `opponent.stamina` + **`opponent.gassed`** ride the **`L_act`**
+  layer (status reflects accumulated action — invariant #4), shipped as a follow-up
+  slice after the self-side economy. `staminaCost` is a `rule`-readable `MoveStat`;
+  `gasThreshold` is **not** rule-readable (hence the `gassed` boolean).
+- **Cancel interaction:** a C6 cancel follow-up costs its own `staminaCost`
+  on-commit ⇒ rekka pressure is self-limiting (you gas out of an infinite chain).
+
+**Why:** matches the locked brief (light conditioning; gassing = slower /
+punishable, never a win condition); curbs spam; paces without a second health bar.
+**Alternatives (rejected):** hard gate (at 0 stamina, basics only) — more swingy;
+continuous-scaling gas — heavier integer/tuning surface, no clean threshold tell.
 
 ### P2. Movement & footwork / momentum — ✓ RESOLVED (direct velocity + gravity)
 
@@ -483,6 +508,28 @@ win). **Why:** single source of truth the DSL reads via `rule`/`field` ops and t
 sim resolves against. **Alternative:** keep score and impact in separate tables —
 more indirection.
 
+**✓ RESOLVED → the arsenal capability (C9; grill 2026-06-28).** The single abstract
+`strike` becomes a **flat `MoveId` union** of named techniques — `Rules.moves` is a
+record of `MoveSpec` keyed by id (sweep stays an optional concrete key); **no
+`family` in the engine** (families are a docs/telemetry grouping only). Each move
+declares its legal **`bands: Band[]`** (an out-of-band `attack` fails → `idle` +
+telemetry, a runtime check — band is often a dynamic expression); **score is
+band-dependent** (WKF: punch = 1 _yuko_ any band; body kick = 2 _waza-ari_; head
+kick = 3 _ippon_ — so aiming _jodan_ is worth more but is easier to block high /
+whiffs a croucher). **Cross-move cancel routes** reuse C6's `cancelInto: MoveId[]` +
+the no-feint "connect required" property unchanged (the specific combo edges are
+canonical-table content). **Target roster (the 4-strike WKF core):** `kizami-zuki`
+(jab — fast/short/cheap, high·mid, 1), `gyaku-zuki` (reverse punch —
+committed/mid-reach, high·mid, 1), `mae-geri` (front kick — mid-reach, mid, 2),
+`mawashi-geri` (roundhouse — long/slow/expensive, high·mid, 3 _jodan_ / 2 _chudan_)
+— plus the existing `sweep` + `throw`. The reach hierarchy extends jab < reverse
+punch < front kick < roundhouse (slotted around the locked `strike` reach), and each
+move's `staminaCost` (C10) spreads cheap jab → expensive roundhouse. **Planning
+slices this one move at a time, preserving green tests** (the abstract `strike` is
+retired into the named techniques additively). **Sequencing: C10 stamina ships
+BEFORE C9 arsenal** — but `staminaCost` on `MoveSpec`/`ThrowSpec` is
+forward-compatible with this roster, so nothing blocks stamina-first.
+
 ### P8. Platform / meta loop — ✓ RESOLVED
 
 - **Backend stack:** **all-TypeScript.** The API imports `@modelkombat/engine`
@@ -516,7 +563,9 @@ core footwork) rendered as the stick figure in Pixi. Resolved later via the
 - ✓ P1 Stamina · ✓ P2 Movement · ✓ P3 Physics · ✓ P4 Fixed-point — **resolved**
 - ✓ P5/P6 DSL synthesis — **resolved** → `docs/BOT-DSL.md`
 - ✓ P8 Platform/meta — **resolved** (all-TS · KotH+lineage · rich telemetry)
-- ◻ P7 Move schema — settled by default (revisit when authoring the frame table at build)
+- ✓ P7 Move schema — **resolved → C9 arsenal** (flat moveIds · per-move `bands[]` · band-dependent WKF score · 4-strike core)
+- ✓ P1 concretized → **C10 stamina** (on-commit costs · contact guard-chip · stepped gas · `L_act` opponent tell)
+- **NEXT build:** C10 stamina (first), then C9 arsenal — via `story-splitting` → `planning` → TDD
 - → P9 Scope — first vertical slice: hand off to `story-splitting` then `planning`
 - ✓ Combat design gap #1 (ordered resolution procedure) — **resolved** → **§11**
 

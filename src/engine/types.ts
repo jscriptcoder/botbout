@@ -34,6 +34,7 @@ export type SelfState = {
   counterWindow: number; // post-parry counter-window ticks left (live; 0 = closed)
   cancelWindow: number; // on-contact cancel-window ticks left after a connect (live; 0 = closed)
   finishWindow: number; // okizeme finish-window ticks left on the LIVE opponent's knockdown (C8; live, 0 = can't finish — not downed, or in i-frames)
+  stamina: number; // C10 conditioning meter (live self-proprioception); 0 when no meter is configured (the inactive sentinel)
 };
 
 export type OpponentState = {
@@ -80,6 +81,9 @@ export type MoveSpec = {
   // scoring (C8 — the §11.4 `onHit.knockdown` flag). A sweep sets this with `score: 0`.
   // Absent/false ⇒ a hit scores as usual (byte-identical to the pre-knockdown engine).
   knockdown?: boolean;
+  // Stamina drained ON COMMIT when this move is started (C10), whiff or not. Charged only
+  // when `Rules.stamina` is configured. Absent ⇒ 0 ⇒ this move is free (byte-identical).
+  staminaCost?: number;
 };
 
 // One throw/grapple's frame data (C7). A throw is NOT height-banded — it beats any
@@ -92,6 +96,9 @@ export type ThrowSpec = {
   recovery: number; // ticks after the grab window, still committed
   reach: number; // horizontal grab range in sub-units
   score: number; // WKF points awarded on a clean throw
+  // Stamina drained ON COMMIT when the grab is started (C10). Charged only when
+  // `Rules.stamina` is configured. Absent ⇒ 0 ⇒ a free throw (byte-identical).
+  staminaCost?: number;
 };
 
 export type Rules = {
@@ -158,4 +165,9 @@ export type Rules = {
   // `jitter` (amplitude j ≥ 0) wobbles each perceived latency by a seeded integer
   // in [−j, +j] per tick (clamped at 0); 0 ⇒ no jitter, no PRNG draws.
   perception?: { lPos?: number; lAct?: number; jitter?: number };
+  // Stamina economy (C10). Its PRESENCE is the simulate-switch: configured ⇒ each
+  // fighter carries an integer meter starting at `max`, and costed moves drain it on
+  // commit. Absent ⇒ no meter simulated ⇒ `self.stamina` reads the inert sentinel 0
+  // and no move is ever charged (byte-identical to the pre-stamina engine).
+  stamina?: { max: number };
 };
