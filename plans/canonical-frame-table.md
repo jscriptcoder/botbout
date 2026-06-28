@@ -33,7 +33,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 
 ---
 
-### Slice 1: A knockdown finish scores a configurable ippon value
+### Slice 1: A knockdown finish scores a configurable ippon value ✅ DONE (PR #44)
 
 **Branch**: `feat/finish-score`
 **Value**: The okizeme finish (sweep/throw setup) can be worth a fixed ippon (3) instead of the finishing move's base score — making the C8 ground game mechanically worthwhile (engine consumers + the canonical table in Slice 5).
@@ -53,7 +53,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 
 ---
 
-### Slice 2: Fights run the canonical strike read-game (walking skeleton)
+### Slice 2: Fights run the canonical strike read-game (walking skeleton) ✅ DONE (PR #45)
 
 **Branch**: `feat/canonical-strike-core`
 **Value**: A real, authoritative core table exists and is _proven_ to deliver the perception read-game — the foundation every later slice widens. (Actor: a fight using `CANONICAL_RULES`; observed via the behavioral suite through `runFight`.)
@@ -76,7 +76,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 
 ---
 
-### Slice 3: The canonical strike has real defensive answers (parry, counter, cancel, crouch)
+### Slice 3: The canonical strike has real defensive answers (parry, counter, cancel, crouch) ✅ DONE (PR #46)
 
 **Branch**: `feat/canonical-strike-defense`
 **Value**: The strike's C5/C6 depth is live and tuned — a read parry deflects into a rewarded counter, a confirmed hit rekkas, and a croucher ducks a high strike.
