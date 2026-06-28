@@ -761,3 +761,56 @@ describe("CANONICAL_RULES — a whiffed sweep is punishable", () => {
     expect(result.scores.b).toBe(1); // committed in recovery, it couldn't block ⇒ punished
   });
 });
+
+// ─── Slice 5b: the jump arc + airborne occupancy (anti-air) ───────────────────
+
+// Jumps (vertical only) at tick `j`, then advances whenever free — so once it lands it
+// moves again (a downed fighter cannot), distinguishing "whiffed the sweep" from "swept".
+const jumpAt = (j: number): BotDoc =>
+  bot([{ when: clk("eq", j), do: { type: "jump", dir: 0 } }], {
+    type: "move",
+    dir: 1,
+  });
+
+describe("CANONICAL_RULES — air physics structural shape", () => {
+  it("clears the low band at/below the launch height (vacates low the instant it leaves the ground)", () => {
+    expect(CANONICAL_RULES.lowClearance ?? Infinity).toBeLessThanOrEqual(
+      CANONICAL_RULES.jumpImpulse ?? 0,
+    );
+  });
+});
+
+describe("CANONICAL_RULES — a timed jump clears the sweep (anti-air occupancy)", () => {
+  // Sweep at tick 0 (active on ticks 7–8). The defender's x at two deep-in-knockdown ticks
+  // reveals whether the sweep landed (downed ⇒ frozen) or whiffed (free ⇒ the jumper lands and moves).
+  const downedBySweep = (defender: BotDoc): boolean => {
+    const result = runFight(
+      sweepFight({ botA: sweepOnce, botB: defender, maxTicks: 24 }),
+    );
+
+    return result.events[20].b.x === result.events[9].b.x;
+  };
+
+  it("whiffs an airborne jumper yet downs a grounded foe under the same rules", () => {
+    expect(downedBySweep(jumpAt(4))).toBe(false); // airborne over the active frames ⇒ passes under ⇒ not downed
+    expect(downedBySweep(ADVANCER)).toBe(true); // grounded ⇒ swept ⇒ frozen for the knockdown
+  });
+
+  it("clears across a launch window but must be timed (too-early lands before the active frames)", () => {
+    expect(downedBySweep(jumpAt(2))).toBe(false); // earliest launch still airborne on ticks 7–8 ⇒ clears
+    expect(downedBySweep(jumpAt(6))).toBe(false); // latest launch still airborne on ticks 7–8 ⇒ clears
+    expect(downedBySweep(jumpAt(0))).toBe(true); // arc completes by tick 6 ⇒ grounded on 7–8 ⇒ swept
+  });
+});
+
+describe("CANONICAL_RULES — the jump arc is a deterministic integer parabola", () => {
+  it("rises to a held apex and returns to exactly y=0", () => {
+    const result = runFight(
+      sweepFight({ botA: jumpAt(0), botB: IDLE, maxTicks: 10 }),
+    );
+
+    expect(result.events.slice(0, 7).map((e) => e.a.y)).toEqual([
+      12000, 20000, 24000, 24000, 20000, 12000, 0,
+    ]);
+  });
+});

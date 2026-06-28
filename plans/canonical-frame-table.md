@@ -95,7 +95,7 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 
 ---
 
-### Slice 4: The canonical throw beats guards and is read-breakable
+### Slice 4: The canonical throw beats guards and is read-breakable ✅ DONE (PR #47)
 
 **Branch**: `feat/canonical-throw`
 **Value**: The anti-turtle option is live on real numbers — throws beat any guard for 3, but a read throw-break (and a strike) defeat them, and a missed grab is punished.
@@ -115,24 +115,39 @@ Every slice follows RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR. No production code w
 
 ---
 
-### Slice 5: The canonical sweep knocks down and hit-confirm-cancels into an ippon finish
+### Slice 5a: The canonical sweep knocks down and hit-confirm-cancels into an ippon finish ✅ DONE (PR #48)
 
 **Branch**: `feat/canonical-sweep-okizeme`
 **Depends on**: Slice 1 (`finishScore`) + Slice 3 (`cancelWindow`).
-**Value**: The full ground/air game on real numbers — a low sweep knocks down, the okizeme finish (cancelled off the connect) scores 3, jumping clears the sweep, and the wake-up i-frames exist.
-**Path**: extend `CANONICAL_RULES` (+ `sweep{...,knockdown,cancelInto:[strike]}, finishWindow, finishScore:3, jumpImpulse, gravity, lowClearance`) + behavioral tests.
+**Value**: The grounded ground game on real numbers — a low sweep knocks down, the okizeme finish (cancelled off the connect) scores 3, and the wake-up i-frames exist.
+**Path**: extend `CANONICAL_RULES` (+ `sweep{...,knockdown,cancelInto:[strike]}, finishWindow, finishScore:3`) + behavioral tests.
+**Acceptance criteria** (met):
+
+- A low sweep **connects on a stander/croucher**, scoring **0** + knockdown; a `low` guard blocks/parries it.
+- The sweep knockdown opens the cancel window; a **hit-confirm cancel into strike** lands the okizeme **finish for 3** within `finishWindow` (10).
+- A **whiffed** sweep never cancels (no connect) and pays full recovery ⇒ punishable.
+- `knockdownDuration (30) > finishWindow (10)` ⇒ a finished/expired knockdown leaves a wake-up **i-frame** tail where the foe is untargetable.
+- Reach hierarchy so far: `throw.reach (120000) < sweep.reach (180000) < strike.reach (240000)`.
+  **Result**: 41 behavioral tests; `rules.ts` 100% mutation (12/12 new mutants killed). Full suite 350.
+
+---
+
+### Slice 5b: The canonical jump arc clears a sweep (anti-air occupancy)
+
+**Branch**: `feat/canonical-air`
+**Depends on**: Slice 5a (`sweep`).
+**Value**: The air game on real numbers — a jump launches a deterministic integer arc that vacates the `low` band, so a well-timed jump clears the sweep, while a sweep still downs a grounded foe.
+**Path**: extend `CANONICAL_RULES` (+ `jumpImpulse, gravity, lowClearance`) + behavioral tests.
 **Required implementation skills**: load `tdd`, `testing`, `mutation-testing`, `refactoring`.
 **Acceptance criteria** (confirm before code):
 
-- A low sweep **whiffs a jumper** (airborne vacates low) and **connects on a croucher/stander**, scoring **0** + knockdown.
-- The sweep knockdown opens the cancel window; a **hit-confirm cancel into strike** lands the okizeme **finish for 3** within a **tight `finishWindow` (~8)**.
-- A **whiffed** sweep never cancels (no connect) and pays full recovery ⇒ punishable.
-- `knockdownDuration > finishWindow` (a finished/expired knockdown leaves a wake-up **i-frame** tail where the foe is untargetable).
-- The **jump arc clears `lowClearance`** across a sweep's active window (jump-over is viable, not frame-perfect-impossible).
-- Reach hierarchy complete: `throw.reach < sweep.reach < strike.reach`.
-  **RED**: `runFight` tests: sweep-vs-jumper(whiff)/vs-croucher(knockdown,score 0); sweep→cancel→finish==3; sweep-whiff-punishable; downed-then-i-frame untargetable after finishWindow; jump-clears-sweep; reach-order asserts. Mutator watch: `finishWindow`/`knockdownDuration` boundary ticks; the arc-vs-`lowClearance` threshold.
-  **GREEN**: add the sweep/okizeme/vertical numbers to pass.
-  **MUTATE / KILL / REFACTOR**: as above; pin the i-frame boundary and the jump-clearance edge.
+- A low sweep **whiffs a jumper** (airborne vacates `low`) but **downs a grounded foe** (anti-air occupancy contrast in one suite).
+- The **jump arc clears the sweep across a RANGE of jump timings** (jump-over is viable, not frame-perfect-impossible).
+- The arc is a **deterministic integer arc** that returns to exactly `y = 0` (replay-stable fixed-point math).
+- Occupancy boundary: the `low` band is vacated **iff `y ≥ lowClearance`** (the airborne-vacate edge).
+  **RED**: `runFight` tests: sweep-vs-jumper(whiff) contrasted with sweep-vs-stander(knockdown); jump-clears-sweep across ≥2 launch timings; arc-returns-to-0 (apex + landing); the `y ≥ lowClearance` occupancy edge. Mutator watch: the arc-vs-`lowClearance` threshold (`≥`/`>`); the gravity/impulse arithmetic.
+  **GREEN**: add `jumpImpulse, gravity, lowClearance` to `CANONICAL_RULES` to pass.
+  **MUTATE / KILL / REFACTOR**: as above; pin the jump-clearance edge and the arc landing.
   **Done when**: ACs met, suite green, mutation report reviewed, approval.
 
 ---

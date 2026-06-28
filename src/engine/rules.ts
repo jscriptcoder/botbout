@@ -97,6 +97,19 @@ export const CANONICAL_RULES: Rules = {
   //   • knockdownDuration (30) > finishWindow (10) ⇒ the remaining ticks are wake-up i-frames.
   finishWindow: 10,
   finishScore: 3,
+  // The vertical axis (C4) — the anti-air leg of the sweep game. The arc is integrated as
+  // `y += vy; vy -= gravity`, so jumpImpulse 12000 / gravity 4000 yields the deterministic
+  // integer parabola 12000, 20000, 24000, 24000, 20000, 12000, 0 — a held apex at 24000 that
+  // returns to EXACTLY y=0 (impulse is a whole number of gravity steps ⇒ replay-stable).
+  //   • lowClearance 8000 < the launch height (12000) ⇒ the jumper vacates `low` the instant it
+  //     leaves the ground, giving a 6-tick low-vacate window (launch+1 .. launch+6).
+  //   • Against the sweep's 2-frame active window (ticks 7–8), that covers a 5-tick LAUNCH window
+  //     (jump on ticks 2–6): the jump-over is viable but must be TIMED — too early and the arc
+  //     lands before the sweep arrives, too late and it is still grounded on the first active frame.
+  //   So a sweep is a read: low-guard it on reaction, or jump it on a hard read.
+  jumpImpulse: 12000,
+  gravity: 4000,
+  lowClearance: 8000,
   // The perception keystone (C2): position lags 1 tick, the action tell lags 6, with
   // ±1 seeded jitter. lAct 6 with strike.startup 7 puts the read on the knife-edge
   // (S ≥ lAct + 1 holds with equality), so jitter + sharp timing decide the exchange.
