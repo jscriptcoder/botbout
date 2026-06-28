@@ -306,6 +306,14 @@ const regen = (f: Fighter, rules: Rules): void => {
   }
 };
 
+// Draw a guard's stamina chip from the DEFENDER on contact (C10 Story 2), floored at 0.
+// Both a block and a (larger) parry bleed via this one rule — a defender cannot decline
+// the hit, so unlike a costed commit (guarded by affordability) the chip needs the [0]
+// floor. `chip` carries the unconfigured-meter/absent-chip 0 ⇒ a no-op (byte-identical).
+const drawChip = (def: Fighter, chip: number): void => {
+  def.stamina = Math.max(0, def.stamina - chip);
+};
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
@@ -431,7 +439,7 @@ type StrikeOutcome =
       knockdown: boolean;
       finish: number;
     }
-  | { result: "parry"; extra: number; counter: number }
+  | { result: "parry"; extra: number; counter: number; chip: number }
   | { result: "block"; cancel: number; chip: number }
   | { result: "finish"; points: number };
 
@@ -480,6 +488,10 @@ const computeStrike = (
           result: "parry",
           extra: rules.parryRecovery ?? 0,
           counter: rules.counterWindow ?? 0,
+          // C10 Story 2: the LARGER guard chip a parry draws from the DEFENDER on the deflect.
+          // Unconfigured meter / absent chip ⇒ 0 ⇒ no draw (byte-identical). The deflect resolves
+          // the strike (`scored`), so this chips once — vs a block's per-contact-tick draw.
+          chip: rules.stamina?.parryChip ?? 0,
         }
       : {
           result: "block",
@@ -537,12 +549,10 @@ const applyStrike = (
   } else if (outcome.result === "block") {
     // A block scores nothing and only opens the cancel window; cancel 0 (unconfigured) ⇒ a no-op.
     att.cancelRemaining = outcome.cancel;
-    // C10 Story 2: the absorbing guard bleeds stamina on the DEFENDER (cross-fighter, like the
-    // parry's counter window). Clamped at 0 — a defender cannot decline the hit, so unlike a
-    // costed commit (guarded by affordability) the chip is the first consumer of the [0] floor.
-    def.stamina = Math.max(0, def.stamina - outcome.chip);
+    drawChip(def, outcome.chip); // C10 Story 2: the absorbing guard bleeds stamina on the DEFENDER
   } else {
     def.counterRemaining = outcome.counter; // parry: the counter window lands on the defender
+    drawChip(def, outcome.chip); // C10 Story 2: the deflect bleeds MORE than a block (parryChip > blockChip)
   }
 
   // Attacker move-state flags apply only while `att` is still attacking — a mutual knockdown can

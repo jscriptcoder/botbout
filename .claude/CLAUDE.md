@@ -216,10 +216,25 @@ generating code; flag any change that would.
   `opponent.stamina`/`gassed` on the `L_act` layer; plus `CANONICAL_RULES` stamina wiring (tuned once
   against gas + the C9 arsenal — inert in `npm run fight` until then). C9 (multi-move "real karate"
   arsenal) is the resolved sibling capability (`docs/DESIGN.md` §P7), sequenced after C10.
+- DONE (guard stamina chip — C10 Story 2, PRs #54–#55): the first **cross-fighter** stamina effect —
+  a defending fighter's guard bleeds stamina **on contact**. A matching-band guard that ABSORBS an
+  active strike (a **block**) draws `blockChip` from the **defender** on each contact tick (per-tick:
+  a block never resolves the strike — the C5/C6 block-then-guard-drop edge); a fresh guard that
+  DEFLECTS it (a **parry**) draws a strictly larger `parryChip` **once** (the deflect sets `scored`).
+  **No new resolution machinery** — both ride the §11 compute-then-apply union: `computeStrike` folds
+  the chip onto the `block`/`parry` `StrikeOutcome`, `applyStrike` draws it from `def` via a shared
+  `drawChip` helper. The chip is the **first consumer of the `[0]` floor** (`Math.max(0, …)`) — unlike
+  a costed commit (guarded by Story 1's affordability `≥`), a defender cannot decline the hit. Read
+  through the existing **`self.stamina`** field ⇒ **no new DSL allowlist entry** (the TCB is unchanged).
+  379 tests; `sim.ts` mutation ~98% (changed-line 100%), `dsl.ts` interpreter 100%.
+  `Rules.stamina.blockChip`/`parryChip` are optional ⇒ absent ⇒ no draw ⇒ **byte-identical** to the
+  Story 1 meter (and no `Rules.stamina` ⇒ byte-identical to pre-stamina). **Deferred — C10 Stories
+  3–4**: the stepped gas penalty + `self.gassed`, `opponent.stamina`/`gassed` on the `L_act` layer,
+  plus `CANONICAL_RULES` stamina wiring.
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT (active thread — C10 stamina): **Story 2** (guard contact-chip), **Story 3** (gas penalty +
-  `self.gassed`), **Story 4** (`opponent.stamina`/`gassed` on `L_act`), then `CANONICAL_RULES` wiring —
+- NEXT (active thread — C10 stamina): **Story 3** (gas penalty + `self.gassed`), **Story 4**
+  (`opponent.stamina`/`gassed` on `L_act`), then `CANONICAL_RULES` wiring —
   each a `planning` → TDD slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
   §P7), then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
   **air-actions** (air strikes / horizontal jump displacement) — `grill-me` → `planning` → TDD. The

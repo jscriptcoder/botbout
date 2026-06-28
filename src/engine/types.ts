@@ -174,6 +174,9 @@ export type Rules = {
   // `blockChip` (C10 Story 2) is the stamina a DEFENDER loses when its guard ABSORBS an
   // active strike (a block) — drawn on the contact tick, clamped at 0 (you cannot decline
   // to be hit, so unlike a costed commit the chip needs a floor). Absent ⇒ 0 ⇒ a guard
-  // bleeds nothing on contact (byte-identical to the Story 1 meter).
-  stamina?: { max: number; regen?: number; blockChip?: number };
+  // bleeds nothing on contact (byte-identical to the Story 1 meter). `parryChip` is the
+  // LARGER draw a DEFENDER takes when its fresh guard DEFLECTS the strike (a parry) — the
+  // deflect resolves the strike, so it chips once (vs a block's per-contact-tick draw).
+  // The design holds `parryChip > blockChip`. Absent ⇒ 0 ⇒ a parry bleeds nothing.
+  stamina?: { max: number; regen?: number; blockChip?: number; parryChip?: number };
 };

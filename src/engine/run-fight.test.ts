@@ -3721,3 +3721,113 @@ describe("runFight — guard stamina chip (a block bleeds the defender's stamina
     expect(result.scores.a).toBe(0); // block negates the strike ⇒ resolution unchanged
   });
 });
+
+describe("runFight — parry stamina chip (a deflect bleeds MORE than a block)", () => {
+  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+
+  // A defender that idles until tick `from`, then holds a `band` guard — so its guard's age
+  // when the strike's first active frame lands (tick 4) is `5 − from`. guardFrom(4) ⇒ age 1
+  // (fresh, within parryWindow 2) ⇒ PARRY; guardFrom(0) ⇒ age 5 (past the window) ⇒ BLOCK.
+  const guardFrom = (from: number, band: Band): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: from },
+            ],
+          },
+          do: { type: "block", band },
+        },
+      ],
+      { type: "idle" },
+    );
+
+  // parryWindow 2 ⇒ a guard of age 1–2 deflects. The defender is botB throughout.
+  const parryChipRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000,
+      parryWindow: 2,
+      parryRecovery: 8,
+      ...o,
+    });
+
+  it("draws parryChip from the defender once on the deflect tick (a parry resolves the strike)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: parryChipRules({ stamina: { max: 100, parryChip: 20 } }),
+        botA: ATTACKER, // strike active at tick 4
+        botB: guardFrom(4, "mid"), // fresh guard at tick 4 ⇒ age 1 ⇒ PARRY
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // deflected ⇒ never scored
+    expect(result.events[3].b.stamina).toBe(100); // pre-parry: idle, no contact ⇒ full
+    expect(result.events[4].b.stamina).toBe(80); // deflect tick ⇒ −parryChip
+    expect(result.events[5].b.stamina).toBe(80); // parry resolved the strike ⇒ no second chip
+  });
+
+  it("draws a STRICTLY LARGER chip than a block does under the same strike (parryChip > blockChip)", () => {
+    // Same rules, same attacker — only the defender's guard freshness differs, so the only
+    // variable is parry-vs-block. Compare the drop on the shared contact tick (4): a deeper
+    // drop there means the parry chip exceeds the block chip, with no literal on either amount.
+    const rules = parryChipRules({
+      stamina: { max: 100, blockChip: 10, parryChip: 20 },
+    });
+
+    const parried = runFight(
+      getMockConfig({
+        rules,
+        botA: ATTACKER,
+        botB: guardFrom(4, "mid"), // fresh ⇒ PARRY
+        maxTicks: 8,
+      }),
+    );
+
+    const blocked = runFight(
+      getMockConfig({
+        rules,
+        botA: ATTACKER,
+        botB: guardFrom(0, "mid"), // stale (age 5) ⇒ BLOCK
+        maxTicks: 8,
+      }),
+    );
+
+    expect(blocked.events[4].b.stamina).toBeLessThan(100); // the block drew a chip ...
+    expect(parried.events[4].b.stamina).toBeLessThan(
+      blocked.events[4].b.stamina,
+    ); // ... and the parry drew MORE (parryChip > blockChip)
+  });
+
+  it("floors the chipped meter at exactly 0 — a parry chip larger than current stamina cannot go negative", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: parryChipRules({ stamina: { max: 5, parryChip: 20 } }),
+        botA: ATTACKER,
+        botB: guardFrom(4, "mid"), // PARRY
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.events[3].b.stamina).toBe(5); // pre-parry: the small meter is full
+    expect(result.events[4].b.stamina).toBe(0); // chip 20 on stamina 5 ⇒ floors at 0, not −15
+    for (const e of result.events) expect(e.b.stamina).toBeGreaterThanOrEqual(0);
+  });
+
+  it("draws nothing when the meter is configured without a parryChip (byte-identical to Slice 2a)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: parryChipRules({ stamina: { max: 100 } }), // meter on, no parryChip declared
+        botA: ATTACKER,
+        botB: guardFrom(4, "mid"), // still a PARRY ...
+        maxTicks: 8,
+      }),
+    );
+
+    for (const e of result.events) expect(e.b.stamina).toBe(100); // ... but no chip ⇒ no draw
+    expect(result.scores.a).toBe(0); // the deflect still works ⇒ resolution unchanged
+  });
+});

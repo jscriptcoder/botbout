@@ -6,9 +6,11 @@
 > `runFight` relationship tests and re-tuned when the C9 arsenal lands.
 >
 > **STATUS:** ✅ **Story 1 SHIPPED** (PRs #51–#53 — meter, on-commit cost, affordability,
-> regen, `self.stamina`; its plan `plans/c10-stamina.md` is deleted). **Next: Story 2**
-> (guard contact-chip), reorderable with Story 3. Stories 2–4 plus `CANONICAL_RULES`
-> wiring remain.
+> regen, `self.stamina`; its plan `plans/c10-stamina.md` is deleted). ✅ **Story 2 SHIPPED**
+> (PRs #54–#55 — the guard contact-chip: a block draws `blockChip` per contact tick, a parry
+> draws a larger `parryChip` once, both on the defender via the §11 union with a `[0]` floor;
+> its plan `plans/c10-stamina-story2.md` is deleted). **Next: Story 3** (gassing penalty +
+> `self.gassed`). Stories 3–4 plus `CANONICAL_RULES` wiring remain.
 
 ## Parent (reframed)
 
