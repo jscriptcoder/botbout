@@ -432,7 +432,7 @@ type StrikeOutcome =
       finish: number;
     }
   | { result: "parry"; extra: number; counter: number }
-  | { result: "block"; cancel: number }
+  | { result: "block"; cancel: number; chip: number }
   | { result: "finish"; points: number };
 
 // Classify the strike att→def from the frozen snapshot. Gate order is §11.3: active →
@@ -481,7 +481,14 @@ const computeStrike = (
           extra: rules.parryRecovery ?? 0,
           counter: rules.counterWindow ?? 0,
         }
-      : { result: "block", cancel: rules.cancelWindow ?? 0 };
+      : {
+          result: "block",
+          cancel: rules.cancelWindow ?? 0,
+          // C10 Story 2: the guard stamina chip a block draws from the DEFENDER on contact.
+          // Unconfigured meter / absent chip ⇒ 0 ⇒ no draw (byte-identical). The draw lands
+          // in applyStrike (cross-fighter), clamped at 0.
+          chip: rules.stamina?.blockChip ?? 0,
+        };
   }
 
   // HIT — base score plus a counter bonus if this attacker's counter window is open. A hit
@@ -530,6 +537,10 @@ const applyStrike = (
   } else if (outcome.result === "block") {
     // A block scores nothing and only opens the cancel window; cancel 0 (unconfigured) ⇒ a no-op.
     att.cancelRemaining = outcome.cancel;
+    // C10 Story 2: the absorbing guard bleeds stamina on the DEFENDER (cross-fighter, like the
+    // parry's counter window). Clamped at 0 — a defender cannot decline the hit, so unlike a
+    // costed commit (guarded by affordability) the chip is the first consumer of the [0] floor.
+    def.stamina = Math.max(0, def.stamina - outcome.chip);
   } else {
     def.counterRemaining = outcome.counter; // parry: the counter window lands on the defender
   }

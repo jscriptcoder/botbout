@@ -171,5 +171,9 @@ export type Rules = {
   // (clamped to `max`). Absent ⇒ no meter simulated ⇒ `self.stamina` reads the inert
   // sentinel 0 and nothing is charged or recovered (byte-identical). `regen` absent ⇒
   // 0 ⇒ a meter that only ever drains (no recovery).
-  stamina?: { max: number; regen?: number };
+  // `blockChip` (C10 Story 2) is the stamina a DEFENDER loses when its guard ABSORBS an
+  // active strike (a block) — drawn on the contact tick, clamped at 0 (you cannot decline
+  // to be hit, so unlike a costed commit the chip needs a floor). Absent ⇒ 0 ⇒ a guard
+  // bleeds nothing on contact (byte-identical to the Story 1 meter).
+  stamina?: { max: number; regen?: number; blockChip?: number };
 };

@@ -3630,3 +3630,94 @@ describe("runFight — stamina regen (an uncommitted fighter recovers; a committ
     expect(result.events[19].a.stamina).toBe(70);
   });
 });
+
+describe("runFight — guard stamina chip (a block bleeds the defender's stamina on contact)", () => {
+  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const BLOCKER = bot([], { type: "block", band: "mid" });
+
+  // In range (200000 < reach 250000) ⇒ a mid strike contacts a held mid guard. The strike
+  // (startup 4, active 2) is active on ticks 4 and 5; an unconfigured parryWindow ⇒ a guard
+  // held since tick 0 is STALE ⇒ a block (not a parry). The blocker is botB throughout.
+  const chipRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({ startGap: 200000, ...o });
+
+  it("draws blockChip from the defender on each contact tick, then stops when the active window closes", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: chipRules({ stamina: { max: 100, blockChip: 10 } }),
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0); // the guard still negates the strike (resolution unchanged)
+    expect(result.events[3].b.stamina).toBe(100); // pre-active: no contact yet ⇒ full
+    expect(result.events[4].b.stamina).toBe(90); // first active/contact tick ⇒ −blockChip
+    expect(result.events[5].b.stamina).toBe(80); // second active/contact tick ⇒ −blockChip again (per contact)
+    expect(result.events[6].b.stamina).toBe(80); // active window closed ⇒ no more chip; guarding ⇒ no regen
+  });
+
+  it("draws nothing while a guard is held but never contacted (contact is the trigger, not guarding)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: chipRules({
+          startGap: 300000, // beyond reach ⇒ the strike is active but never reaches the guard
+          stamina: { max: 100, blockChip: 10 },
+        }),
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 8,
+      }),
+    );
+
+    for (const e of result.events) expect(e.b.stamina).toBe(100); // guard held, no contact ⇒ no chip
+  });
+
+  it("floors the chipped meter at exactly 0 — a chip larger than current stamina cannot go negative", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: chipRules({ stamina: { max: 5, blockChip: 10 } }), // chip exceeds the whole meter
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 8,
+      }),
+    );
+
+    expect(result.events[3].b.stamina).toBe(5); // pre-contact: the small meter is full
+    expect(result.events[4].b.stamina).toBe(0); // chip 10 on stamina 5 ⇒ floors at 0, not −5
+    for (const e of result.events) expect(e.b.stamina).toBeGreaterThanOrEqual(0);
+  });
+
+  it("draws nothing when the meter is configured without a blockChip (byte-identical to the Story 1 meter)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: chipRules({ stamina: { max: 100 } }), // meter on, but no chip declared
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 8,
+      }),
+    );
+
+    for (const e of result.events) expect(e.b.stamina).toBe(100); // configured but no chip ⇒ no draw
+    expect(result.scores.a).toBe(0); // block still negates ⇒ resolution unchanged
+  });
+
+  it("draws nothing and reads the sentinel 0 when no meter is configured (byte-identical to the pre-stamina engine)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: chipRules(), // NO stamina block ⇒ the meter is not simulated
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 8,
+      }),
+    );
+
+    for (const e of result.events) {
+      expect(e.b.stamina).toBe(0); // inert sentinel
+      expect(e.a.stamina).toBe(0);
+    }
+
+    expect(result.scores.a).toBe(0); // block negates the strike ⇒ resolution unchanged
+  });
+});
