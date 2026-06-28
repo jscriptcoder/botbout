@@ -3036,6 +3036,25 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
     expect(scoreA({})).toBe(0); // no finish anywhere ⇒ untargetable for the whole knockdown
     expect(scoreA({ finishWindow: 3 })).toBe(1); // a window opens exactly one finish
   });
+
+  it("a finish scores rules.finishScore when set, falling back to the strike's base when absent", () => {
+    // The okizeme finish should pay a fixed ippon, decoupled from the finishing poke's base score.
+    // finishRules' strike.score is 1 and the sweep scores 0, so the sweep→finish path's WHOLE score
+    // is the finish — isolating the awarded value. With finishScore 3 the finish pays the ippon (3),
+    // not the poke's 1; with finishScore absent it falls back to the strike's base (1) ⇒ byte-identical.
+    const scoreA = (o: Partial<Rules>): number =>
+      runFight(
+        getMockConfig({
+          rules: finishRules({ finishWindow: 3, ...o }),
+          botA: sweepThenStrikeAt(3, "high"),
+          botB: IDLE,
+          maxTicks: 8,
+        }),
+      ).scores.a;
+
+    expect(scoreA({ finishScore: 3 })).toBe(3); // finish pays the configured ippon, not strike.score
+    expect(scoreA({})).toBe(1); // absent ⇒ falls back to the finishing strike's base score
+  });
 });
 
 describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {

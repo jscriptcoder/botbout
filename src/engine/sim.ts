@@ -398,10 +398,12 @@ const computeStrike = (
 
   if (def.state.kind === "downed") {
     // Okizeme (C8): a downed fighter is targetable ONLY during its finish window, and then by
-    // active + reach alone — band, guard, and occupancy are ignored (the target is prone). Once
-    // the window closes (finish == 0) it is in wake-up i-frames ⇒ untargetable (the C7 behavior).
+    // active + reach alone — band, guard, and occupancy are ignored (the target is prone). The
+    // finish pays a fixed ippon `finishScore` when configured, else the finishing strike's own
+    // `spec.score` (absent ⇒ byte-identical). Once the window closes (finish == 0) it is in
+    // wake-up i-frames ⇒ untargetable (the C7 behavior).
     return def.state.finish > 0
-      ? { result: "finish", points: spec.score }
+      ? { result: "finish", points: rules.finishScore ?? spec.score }
       : null;
   }
 

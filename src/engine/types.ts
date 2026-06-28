@@ -141,12 +141,17 @@ export type Rules = {
   knockdownDuration?: number;
   // Okizeme finish window (C8). The first `finishWindow` ticks of ANY knockdown (throw
   // or sweep) are a guaranteed FINISH window: an opposing strike that is active + in
-  // reach during it scores `spec.score` once — band, guard, and occupancy ignored (the
-  // target is prone) — then the window closes (exactly one finish; never re-downs or
-  // extends `knockdownDuration`). The untargetable tail of the knockdown is the wake-up
-  // i-frames. Absent ⇒ 0 ⇒ no finish for any knockdown ⇒ byte-identical to the pre-finish
-  // (C7) engine (a downed fighter is untargetable for its whole knockdown).
+  // reach during it scores `finishScore ?? spec.score` once — band, guard, and occupancy
+  // ignored (the target is prone) — then the window closes (exactly one finish; never
+  // re-downs or extends `knockdownDuration`). The untargetable tail of the knockdown is
+  // the wake-up i-frames. Absent ⇒ 0 ⇒ no finish for any knockdown ⇒ byte-identical to
+  // the pre-finish (C7) engine (a downed fighter is untargetable for its whole knockdown).
   finishWindow?: number;
+  // The score a knockdown FINISH awards (C8 okizeme). When set, an in-window finish scores
+  // `finishScore` — a fixed ippon decoupled from the finishing move's base `score` (so a
+  // 1-point poke that finishes a downed foe is worth the full ippon, like a throw). Absent
+  // ⇒ falls back to the finishing strike's `spec.score` ⇒ byte-identical to the pre-finishScore engine.
+  finishScore?: number;
   // Opponent perception latency (ticks). Self is always live. Absent (or any
   // field absent) ⇒ 0 ⇒ that layer is perceived live (forward-compatible with
   // the L=0 skeleton). Positional fields lag by lPos; action fields by lAct.
