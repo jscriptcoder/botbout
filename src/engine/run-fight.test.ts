@@ -3526,3 +3526,107 @@ describe("runFight — stamina affordability (an unaffordable move degrades to i
       expect(e.a.stamina).toBeGreaterThanOrEqual(0); // the [0] lower bound
   });
 });
+
+describe("runFight — stamina regen (an uncommitted fighter recovers; a committed/guarding one does not)", () => {
+  // Strikes once on tick 0 (clock.tick reads 0), then falls through to its default action
+  // for the rest of the fight — letting us watch the meter recover (or not) afterwards.
+  const oneShotThen = (rest: Action): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+      ],
+      rest,
+    );
+
+  const regenRules = (o: Partial<Rules> = {}) =>
+    getMockRules({
+      startGap: 300000, // out of reach — the lone strike whiffs; we only care about the meter
+      stamina: { max: 100, regen: 5 },
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 30,
+        },
+      },
+      ...o,
+    });
+
+  it("regens only while uncommitted — not on the commit tick, not mid-move, not on the last recovery tick (B2) — then climbs and clamps at max", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: regenRules(),
+        botA: oneShotThen({ type: "idle" }),
+        botB: IDLE,
+        maxTicks: 30,
+      }),
+    );
+
+    // The strike (total 12 frames) commits at tick 0 and holds the fighter through tick 11.
+    expect(result.events[0].a.stamina).toBe(70); // commit tick: spent 30, no regen (net −cost)
+    expect(result.events[5].a.stamina).toBe(70); // mid-move: committed ⇒ no regen
+    expect(result.events[11].a.stamina).toBe(70); // last recovery tick: still committed ⇒ no regen (placement)
+    // Neutral from tick 12 onward ⇒ regen resumes at +5/tick.
+    expect(result.events[12].a.stamina).toBe(75); // first uncommitted tick
+    expect(result.events[14].a.stamina).toBe(85); // climbing at +regen
+    expect(result.events[17].a.stamina).toBe(100); // reached max (70 + 6·5)
+    expect(result.events[18].a.stamina).toBe(100); // clamped — never overfills past max
+    for (const e of result.events) expect(e.a.stamina).toBeLessThanOrEqual(100);
+  });
+
+  it("does not regen while guarding — a held block blocks recovery", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: regenRules(),
+        botA: oneShotThen({ type: "block", band: "mid" }),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    // Neutral but guarding from tick 12: the meter stays at its spent value, no recovery.
+    expect(result.events[12].a.stamina).toBe(70);
+    expect(result.events[13].a.stamina).toBe(70);
+  });
+
+  it("does regen while crouching — a crouch is uncommitted, not a guard", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: regenRules(),
+        botA: oneShotThen({ type: "crouch" }),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    // A croucher is neutral ∧ not guarding ⇒ it recovers, exactly like an idler.
+    expect(result.events[12].a.stamina).toBe(75);
+    expect(result.events[13].a.stamina).toBe(80);
+  });
+
+  it("defaults regen to 0 when the meter declares no regen — configured but no recovery", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: regenRules({ stamina: { max: 100 } }), // no regen field
+        botA: oneShotThen({ type: "idle" }),
+        botB: IDLE,
+        maxTicks: 20,
+      }),
+    );
+
+    // Idle from tick 12 with regen unset ⇒ the meter holds flat at its spent value.
+    expect(result.events[19].a.stamina).toBe(70);
+  });
+});

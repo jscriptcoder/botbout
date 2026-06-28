@@ -4,6 +4,11 @@
 > Feeds `planning`, which PR-slices ONE child story at a time (by behavior, not by
 > layer). Numbers are NOT fixed here — they are pinned in `CANONICAL_RULES` via
 > `runFight` relationship tests and re-tuned when the C9 arsenal lands.
+>
+> **STATUS:** ✅ **Story 1 SHIPPED** (PRs #51–#53 — meter, on-commit cost, affordability,
+> regen, `self.stamina`; its plan `plans/c10-stamina.md` is deleted). **Next: Story 2**
+> (guard contact-chip), reorderable with Story 3. Stories 2–4 plus `CANONICAL_RULES`
+> wiring remain.
 
 ## Parent (reframed)
 

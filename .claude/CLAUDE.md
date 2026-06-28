@@ -195,10 +195,34 @@ generating code; flag any change that would.
   finish = ippon (3) inside `finishWindow(10) < knockdownDuration(30)`, the jump arc apex 24000
   returning to exactly 0. 354 tests; `rules.ts` mutation 100%. Absent optional fields ⇒ byte-identical
   to the pre-table engine; the engine `getMockRules` mocks stay independent.
+- DONE (stamina economy — C10 Story 1, PRs #51–#53): the self-side conditioning meter — the light
+  layer that paces the fight, **never a win condition**. A fighter carries an integer `stamina`
+  meter (`Rules.stamina.max`): a committed `attack`/`throw`/`sweep` **spends `staminaCost` on
+  commit** (whiff still costs), recorded in `FighterFrame.stamina` and exposed as the **live
+  `self.stamina`** DSL field so a bot can pace itself (Slice 1, PR #51). A costed commit happens
+  **iff `stamina ≥ staminaCost`** — the last affordable move empties to exactly 0, one short
+  **degrades to idle** (no spend, no startup, no score); that `≥` is the `[0]` lower bound, so no
+  Slice-1 floor is needed (Slice 2, PR #52). An **uncommitted** fighter (neutral ∧ not guarding —
+  idle / move / **crouch**) recovers `+regen`/tick clamped to `max`, evaluated **post-intake, before
+  `advance`** so a commit / guard / in-move / knockdown tick recovers 0 (the **B2** refinement) — a
+  guarding fighter does NOT regen (Slice 3, PR #53). **No new resolution machinery** —
+  `spend`/`affordable`/`regen` are self-targeted helpers in `intake` + the advance step. 370 tests;
+  `sim.ts` mutation ~96% (changed-line 100%), `dsl.ts` interpreter 100%. `Rules.stamina` (a
+  `{ max; regen? }` block), `MoveSpec.staminaCost`, `ThrowSpec.staminaCost` are optional ⇒ absent ⇒
+  no meter simulated, `self.stamina` reads the sentinel `0` ⇒ **byte-identical** to the pre-stamina
+  engine. **Deferred — C10 Stories 2–4** (`plans/c10-stamina-split.md`): the guard contact-chip
+  (cross-fighter, rides the §11 union via `applyStrike`), the stepped gas penalty + `self.gassed`
+  (emergent special-lockout via `specialCost > gasThreshold ≥ basicCost`), and
+  `opponent.stamina`/`gassed` on the `L_act` layer; plus `CANONICAL_RULES` stamina wiring (tuned once
+  against gas + the C9 arsenal — inert in `npm run fight` until then). C9 (multi-move "real karate"
+  arsenal) is the resolved sibling capability (`docs/DESIGN.md` §P7), sequenced after C10.
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT (unresolved — pick one, then `grill-me` → `planning` → TDD): **match structure** (*yame* resets
-  / rounds / WKF win conditions) and **air-actions** (air strikes / horizontal jump displacement). The
+- NEXT (active thread — C10 stamina): **Story 2** (guard contact-chip), **Story 3** (gas penalty +
+  `self.gassed`), **Story 4** (`opponent.stamina`/`gassed` on `L_act`), then `CANONICAL_RULES` wiring —
+  each a `planning` → TDD slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
+  §P7), then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
+  **air-actions** (air strikes / horizontal jump displacement) — `grill-me` → `planning` → TDD. The
   spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply
   (live from C5, **strictly forced by C7's throws**), S1 posture → S2 intake → S3 compute → S4 apply →
   S5 advance, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. (Roadmap capabilities are

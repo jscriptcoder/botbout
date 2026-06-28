@@ -166,8 +166,10 @@ export type Rules = {
   // in [−j, +j] per tick (clamped at 0); 0 ⇒ no jitter, no PRNG draws.
   perception?: { lPos?: number; lAct?: number; jitter?: number };
   // Stamina economy (C10). Its PRESENCE is the simulate-switch: configured ⇒ each
-  // fighter carries an integer meter starting at `max`, and costed moves drain it on
-  // commit. Absent ⇒ no meter simulated ⇒ `self.stamina` reads the inert sentinel 0
-  // and no move is ever charged (byte-identical to the pre-stamina engine).
-  stamina?: { max: number };
+  // fighter carries an integer meter starting at `max`, costed moves drain it on
+  // commit, and an UNCOMMITTED fighter (neutral ∧ not guarding) recovers `regen`/tick
+  // (clamped to `max`). Absent ⇒ no meter simulated ⇒ `self.stamina` reads the inert
+  // sentinel 0 and nothing is charged or recovered (byte-identical). `regen` absent ⇒
+  // 0 ⇒ a meter that only ever drains (no recovery).
+  stamina?: { max: number; regen?: number };
 };

@@ -287,6 +287,25 @@ const affordable = (
 ): boolean =>
   rules.stamina === undefined || f.stamina >= (spec.staminaCost ?? 0);
 
+// Recover stamina for an UNCOMMITTED fighter (C10 regen). Only when a meter is configured,
+// and only while the fighter is free to act (neutral) and NOT guarding — so a fighter that
+// committed a move or raised a block this tick recovers nothing (a crouch/idle/step does).
+// Evaluated POST-INTAKE and BEFORE `advance`, so a commit tick nets exactly −cost and a
+// move's final recovery frame (still attacking until `advance` frees it) does not regen.
+// Clamped to `max` so it never overfills. Absent meter / regen ⇒ no recovery (byte-identical).
+const regen = (f: Fighter, rules: Rules): void => {
+  if (
+    rules.stamina !== undefined &&
+    f.state.kind === "neutral" &&
+    f.guardBand === null
+  ) {
+    f.stamina = Math.min(
+      rules.stamina.max,
+      f.stamina + (rules.stamina.regen ?? 0),
+    );
+  }
+};
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
@@ -816,6 +835,10 @@ export function runFight(cfg: FightConfig): FightResult {
     applyStrike(b, a, bOutcome);
     applyThrow(a, b, aThrowFinal);
     applyThrow(b, a, bThrowFinal);
+    // Regen (C10) on the fully-resolved post-intake state, BEFORE advance frees a finishing
+    // move — so a commit / guard / in-move / knocked-down tick recovers nothing (B2).
+    regen(a, rules);
+    regen(b, rules);
     advance(a, rules);
     advance(b, rules);
     // A counter window ticks down once per tick (clamped at 0) after it has been read.
