@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "name": "rekka",
+  "memory": { "stage": 0 },
+  "rules": [
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.canAct" },
+              { "op": "const", "value": 0 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "do": { "type": "idle" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.canAct" },
+              { "op": "const", "value": 1 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "set": [{ "cell": "stage", "to": { "op": "const", "value": 0 } }]
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gt",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "mem", "cell": "stage" },
+              { "op": "const", "value": 3 }
+            ]
+          }
+        ]
+      },
+      "set": [{ "cell": "stage", "to": { "op": "const", "value": 4 } }],
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "mid" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gt",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "mem", "cell": "stage" },
+              { "op": "const", "value": 2 }
+            ]
+          }
+        ]
+      },
+      "set": [{ "cell": "stage", "to": { "op": "const", "value": 3 } }],
+      "do": { "type": "attack", "move": "mawashi-geri", "band": "high" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gt",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "mem", "cell": "stage" },
+              { "op": "const", "value": 1 }
+            ]
+          }
+        ]
+      },
+      "set": [{ "cell": "stage", "to": { "op": "const", "value": 2 } }],
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "mid" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.canAct" },
+              { "op": "const", "value": 1 }
+            ]
+          },
+          {
+            "op": "lte",
+            "args": [
+              { "op": "field", "path": "opponent.distance" },
+              { "op": "const", "value": 210000 }
+            ]
+          }
+        ]
+      },
+      "set": [{ "cell": "stage", "to": { "op": "const", "value": 1 } }],
+      "do": { "type": "attack", "move": "kizami-zuki", "band": "mid" }
+    }
+  ],
+  "default": { "type": "move", "dir": 1 }
+}
