@@ -294,7 +294,17 @@ generating code; flag any change that would.
   COMPLETE** — both C10 plan files (`c10-canonical-stamina.md`, `c10-stamina-split.md`) deleted.
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT (roadmap — C10 COMPLETE): the **C9 multi-move "real karate" arsenal** (resolved, `docs/DESIGN.md`
+- IN PROGRESS (**C9 multi-move arsenal** — `plans/c9-arsenal-split.md` is the active tracker): the
+  abstract `strike` is being retired into named WKF techniques across **7 additive slices**. **Slice 1
+  (band-legality gate, PR #67) + Slice 2 (`kizami-zuki` jab, PR #68) are MERGED.** Each technique declares
+  `MoveSpec.bands?` (an out-of-band `attack` degrades to idle — `bandLegal` in `sim.ts` intake at both
+  move-start sites) and is admitted to the `dsl.ts` `MOVES` allowlist (TCB) + an optional `Rules.moves`
+  key (an attack naming an **unconfigured** move ⇒ inert, via the `spec !== undefined` guard).
+  **NEXT: Slice 3 `gyaku-zuki` (reverse punch)** — mechanical via the per-technique pattern in the split
+  plan. Mechanics still pending: band-dependent score (S5, additive `scoreByBand?`), cross-move cancels
+  (S6), canonical wiring + retire `strike` + docs reconciliation (S7). Decisions locked: Japanese move
+  ids; runtime-degrade gate; per-slice `find-gaps`. The jab is NOT yet in `CANONICAL_RULES` (S7).
+- ROADMAP (C9 in progress, above; C10 COMPLETE): the **C9 multi-move "real karate" arsenal** (resolved, `docs/DESIGN.md`
   §P7) — replace the single abstract `strike` with named techniques (own frames / reach / score /
   legal-bands + cross-move cancel routes), which also re-tunes the C10 per-move stamina costs across the
   roster. Then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
