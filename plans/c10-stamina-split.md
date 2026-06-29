@@ -9,8 +9,12 @@
 > regen, `self.stamina`; its plan `plans/c10-stamina.md` is deleted). ✅ **Story 2 SHIPPED**
 > (PRs #54–#55 — the guard contact-chip: a block draws `blockChip` per contact tick, a parry
 > draws a larger `parryChip` once, both on the defender via the §11 union with a `[0]` floor;
-> its plan `plans/c10-stamina-story2.md` is deleted). **Next: Story 3** (gassing penalty +
-> `self.gassed`). Stories 3–4 plus `CANONICAL_RULES` wiring remain.
+> its plan deleted). ✅ **Story 3 SHIPPED** (PRs #56–#58 — gassing penalty: a gassed fighter's
+> committed move recovers slower (`gasRecoveryPenalty` via the `extra` accumulator, post-spend at
+> commit), the live `self.gassed` tell (a new TCB allowlist entry), and the emergent special-lockout
+> proven over `specialCost > gasThreshold ≥ basicCost`; its plan `plans/c10-stamina-story3.md` is
+> deleted). **Next: Story 4** (`opponent.stamina`/`gassed` on the `L_act` layer), then the
+> consolidated `CANONICAL_RULES` stamina wiring.
 
 ## Parent (reframed)
 

@@ -231,11 +231,33 @@ generating code; flag any change that would.
   Story 1 meter (and no `Rules.stamina` ⇒ byte-identical to pre-stamina). **Deferred — C10 Stories
   3–4**: the stepped gas penalty + `self.gassed`, `opponent.stamina`/`gassed` on the `L_act` layer,
   plus `CANONICAL_RULES` stamina wiring.
+- DONE (gassing penalty — C10 Story 3, PRs #56–#58): the stepped conditioning mind-game — the **light**
+  layer that punishes over-extension without ever being a win condition. A fighter at/below a single
+  `Rules.stamina.gasThreshold` is **GASSED**: (Slice 3a, PR #56) its just-committed move recovers slower
+  by a flat `gasRecoveryPenalty` (recovery-only), applied **post-spend at commit** via the existing
+  `extra` accumulator — equivalent to recovery-entry since stamina is static through a move, and it
+  **composes additively with a parry's extra**. **No new resolution machinery** — a `gassed(f, rules)`
+  boolean predicate + a pure `gasRecovery` returning the penalty-or-0, applied at the attack/sweep commit
+  sites; `startAttack`'s return narrowed to `AttackingState` so the fresh move's `extra` is read without
+  a redundant kind-check. (Slice 3b, PR #57) the derived tell is exposed as the live **`self.gassed`**
+  (1 iff `stamina ≤ gasThreshold`, else 0) — the **first new DSL allowlist entry since Story 1's
+  `self.stamina`**, on the static `FIELD_READERS` map (the TCB boundary can't depend on `Rules`; only the
+  value is config-gated), so the **`dsl.ts` interpreter stays 100%**. (Slice 3c, PR #58) the **special-
+  lockout is EMERGENT, not a flag** — it falls out of Story 1's affordability gate the moment the numbers
+  satisfy **`specialCost > gasThreshold ≥ basicCost`** (a gassed fighter can't afford throw/sweep while
+  its basic strike still commits); proven by a guarantee/characterization relationship test over a fixture
+  (no production code — the affordability comparison it rides on is 9/9 mutants killed). 387 tests; `sim.ts`
+  mutation changed-line 100% (one documented equivalent: the TS-required `?.` on `gasRecoveryPenalty`),
+  `dsl.ts` interpreter 100%. `Rules.stamina.gasThreshold`/`gasRecoveryPenalty` are optional ⇒ absent ⇒
+  never gassed ⇒ **byte-identical** to the Story 2 meter; `self.gassed` reads the sentinel `0` unconfigured.
+  **Deferred — Story 4** (`opponent.stamina`/`gassed` on the `L_act` layer) + the consolidated
+  `CANONICAL_RULES` stamina wiring (the numbers — `gasThreshold`/`gasRecoveryPenalty`/per-move costs —
+  live in test fixtures until then, re-tuned against gas + the C9 arsenal).
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT (active thread — C10 stamina): **Story 3** (gas penalty + `self.gassed`), **Story 4**
-  (`opponent.stamina`/`gassed` on `L_act`), then `CANONICAL_RULES` wiring —
-  each a `planning` → TDD slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
+- NEXT (active thread — C10 stamina): **Story 4** (`opponent.stamina`/`gassed` on the `L_act`
+  perception layer — needs the history ring buffer, note N2), then the consolidated `CANONICAL_RULES`
+  stamina wiring — each a `planning` → TDD slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
   §P7), then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
   **air-actions** (air strikes / horizontal jump displacement) — `grill-me` → `planning` → TDD. The
   spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply
