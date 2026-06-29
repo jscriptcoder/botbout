@@ -51,6 +51,7 @@ export type OpponentState = {
   vx: number; // perceived horizontal velocity (sub-units/tick), for dead-reckoning
   predictedDistance: number; // distance dead-reckoned forward over the L_pos gap
   stamina: number; // perceived conditioning meter (C10 Story 4; action ⇒ L_act-delayed; 0 = no meter, the inert sentinel)
+  gassed: boolean; // perceived gas tell (C10 Story 4): delayed stamina ≤ gasThreshold (false = not gassed / no threshold)
 };
 
 export type RingState = { width: number };

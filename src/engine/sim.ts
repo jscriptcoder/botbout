@@ -194,6 +194,7 @@ const perceiveOpponent = (
   oppPos: Frame,
   oppAct: Frame,
   lPos: number,
+  rules: Rules,
 ): OpponentState => {
   const predictedX = oppPos.x + oppPos.vx * lPos;
 
@@ -210,6 +211,7 @@ const perceiveOpponent = (
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
     stamina: oppAct.stamina, // C10 Story 4: rides the action layer (L_act), like attacking
+    gassed: isGassedAt(oppAct.stamina, rules), // C10 Story 4b: gas line on the DELAYED stamina
   };
 };
 
@@ -322,13 +324,20 @@ const drawChip = (def: Fighter, chip: number): void => {
   def.stamina = Math.max(0, def.stamina - chip);
 };
 
-// Whether a fighter is GASSED (C10 Story 3): at/below the stepped gas line. Read on the
-// CURRENT (post-spend) stamina — `stamina ≤ gasThreshold`. Absent `gasThreshold` (or no
-// meter) ⇒ never gassed ⇒ byte-identical. Single source for both the recovery penalty
-// (here) and the live `self.gassed` read (a later slice).
-const gassed = (f: Fighter, rules: Rules): boolean =>
+// The gas-line predicate (C10): a stamina value is GASSED when at/below the stepped
+// `gasThreshold`. The SINGLE source of the gas line — shared by the self meter (`gassed`,
+// below) and the L_act-delayed opponent tell (`perceiveOpponent`, Story 4b), which reads
+// it on the DELAYED opponent stamina. Absent `gasThreshold` (or no meter) ⇒ never gassed
+// ⇒ byte-identical.
+const isGassedAt = (stamina: number, rules: Rules): boolean =>
   rules.stamina?.gasThreshold !== undefined &&
-  f.stamina <= rules.stamina.gasThreshold;
+  stamina <= rules.stamina.gasThreshold;
+
+// Whether a fighter is GASSED (C10 Story 3): the gas-line predicate on its CURRENT
+// (post-spend) stamina. Feeds the recovery penalty (`gasRecovery`) and the live
+// `self.gassed` read.
+const gassed = (f: Fighter, rules: Rules): boolean =>
+  isGassedAt(f.stamina, rules);
 
 // The recovery a fresh commit eats for being GASSED (C10 Story 3): `gasRecoveryPenalty` when
 // at/below the gas line, else 0. The caller adds it to the just-started move's `extra` (the
@@ -797,6 +806,7 @@ export function runFight(cfg: FightConfig): FightResult {
       perceivedFrame(histB, tick, aLPos),
       perceivedFrame(histB, tick, aLAct),
       aLPos,
+      rules,
     );
 
     const bOpp = perceiveOpponent(
@@ -804,6 +814,7 @@ export function runFight(cfg: FightConfig): FightResult {
       perceivedFrame(histA, tick, bLPos),
       perceivedFrame(histA, tick, bLAct),
       bLPos,
+      rules,
     );
 
     // 2. Both fighters decide against one immutable pre-tick snapshot.

@@ -1264,3 +1264,154 @@ describe("perception latency — delayed opponent stamina (L_act)", () => {
     expect(validate(BLOCK_ON_LOW_STAMINA).ok).toBe(true);
   });
 });
+
+// ─── slice C10.4b: perceived opponent GASSED, delayed by L_act ──────────────────
+// opponent.gassed is the L_act-delayed gas tell: 1 iff the DELAYED opponent stamina ≤
+// the shared gasThreshold (a static Rules constant), else 0. It derives from the already-
+// delayed opponent.stamina (4a), so it rides the same action layer — the punish-signal
+// for a gassed foe, on the coherent delayed snapshot (invariant #4).
+describe("perception latency — delayed opponent gassed (L_act)", () => {
+  // A drain strike: one big on-commit cost with a long recovery, so the spender stays
+  // committed (no regen) across the probe and its stamina holds at the post-spend value.
+  const DRAIN_STRIKE = {
+    startup: 1,
+    active: 1,
+    recovery: 30,
+    score: 1,
+    reach: 250000,
+    staminaCost: 30,
+  };
+
+  // B spends once on tick 0 ⇒ a deterministic stamina drop (max 50 → 20) that holds.
+  const SPEND_ONCE: BotDoc = {
+    version: 1,
+    name: "spend1",
+    memory: { fired: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "mem", cell: "fired" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fired", to: { op: "const", value: 1 } }],
+        do: { type: "attack", move: "strike", band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  };
+
+  // A guards the instant it PERCEIVES opponent.gassed === 1, so the first block tick is a
+  // clean read of *when A perceived* the foe cross the gas line.
+  const BLOCK_ON_GASSED = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "opponent.gassed" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // Out of reach ⇒ a pure perception read. gasThreshold 40 sits between max (50) and the
+  // post-spend value (20), so the spend flips gassed.
+  const gassedDelay = (perception: {
+    lPos?: number;
+    lAct?: number;
+  }): FightConfig =>
+    getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        stamina: { max: 50, gasThreshold: 40 },
+        moves: { strike: DRAIN_STRIKE },
+        perception,
+      }),
+      botA: BLOCK_ON_GASSED,
+      botB: SPEND_ONCE,
+      maxTicks: 12,
+    });
+
+  it("delays the perception of the gas line by exactly L_act ticks (plus the structural tick)", () => {
+    // L_act = 0: the spend on tick 0 enters B's history gassed on tick 1, so it's perceived
+    // at tick 1 (history[0] is the pre-spend baseline, not gassed). Each tick of action
+    // latency pushes that read one tick later.
+    expect(firstBlockTick(runFight(gassedDelay({ lAct: 0 })).events)).toBe(1);
+    expect(firstBlockTick(runFight(gassedDelay({ lAct: 1 })).events)).toBe(2);
+    expect(firstBlockTick(runFight(gassedDelay({ lAct: 2 })).events)).toBe(3);
+  });
+
+  it("rides the action (L_act) layer, not the positional (L_pos) layer", () => {
+    // Only the positional layer delayed (L_pos = 5, L_act = 0): the gas read stays live ⇒
+    // tick 1, proving opponent.gassed derives from the delayed-action stamina (oppAct).
+    expect(
+      firstBlockTick(runFight(gassedDelay({ lPos: 5, lAct: 0 })).events),
+    ).toBe(1);
+  });
+
+  it("flips at the gas line on the ≤ boundary (delayed stamina == threshold is gassed, +1 is not)", () => {
+    // Hold the post-spend stamina at 20 (max 50, cost 30); vary only gasThreshold.
+    const atThreshold = (gasThreshold: number): FightConfig =>
+      getMockConfig({
+        rules: getMockRules({
+          startGap: 300000,
+          stamina: { max: 50, gasThreshold },
+          moves: { strike: DRAIN_STRIKE },
+        }),
+        botA: BLOCK_ON_GASSED,
+        botB: SPEND_ONCE,
+        maxTicks: 12,
+      });
+
+    // stamina 20 == threshold 20 ⇒ gassed (≤) ⇒ A perceives it and blocks (tick 1).
+    expect(firstBlockTick(runFight(atThreshold(20)).events)).toBe(1);
+    // stamina 20 > threshold 19 ⇒ NOT gassed ⇒ A never blocks.
+    expect(firstBlockTick(runFight(atThreshold(19)).events)).toBeUndefined();
+  });
+
+  it("perceives the gas tell live (structural delay only) when perception is absent, replaying byte-identically", () => {
+    const cfg = getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        stamina: { max: 50, gasThreshold: 40 },
+        moves: { strike: DRAIN_STRIKE },
+      }), // no `perception` field at all
+      botA: BLOCK_ON_GASSED,
+      botB: SPEND_ONCE,
+      maxTicks: 12,
+    });
+
+    // Live ⇒ only the structural one-tick observe-after-commit delay remains.
+    expect(firstBlockTick(runFight(cfg).events)).toBe(1);
+    // The added field leaves replay byte-identical (additive + deterministic).
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  it("reads 0 when the meter has no gasThreshold — a low-stamina foe is never gassed (additive guard)", () => {
+    // Meter present, NO gasThreshold: the opponent drains to 20 but opponent.gassed stays 0
+    // (consistent with self's "absent threshold ⇒ never gassed"), so A never blocks.
+    const cfg = getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        stamina: { max: 50 }, // no gasThreshold
+        moves: { strike: DRAIN_STRIKE },
+      }),
+      botA: BLOCK_ON_GASSED,
+      botB: SPEND_ONCE,
+      maxTicks: 12,
+    });
+
+    expect(firstBlockTick(runFight(cfg).events)).toBeUndefined();
+  });
+
+  it("accepts a bot that reads opponent.gassed (additive to the allowlist)", () => {
+    expect(validate(BLOCK_ON_GASSED).ok).toBe(true);
+  });
+});

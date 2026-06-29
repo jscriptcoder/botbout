@@ -87,11 +87,11 @@ boolean (4b).
    field is byte-identical to pre-4a; a bot reading `opponent.stamina` in an unconfigured
    fight gets sentinel `0`.
 
-**RED**: In `perception.test.ts` (the home of the L_act-delayed opponent tells — mirrors the
+**RED**: In `perception.test.ts` (the home of the L*act-delayed opponent tells — mirrors the
 `opponent.posture`/`throwing`/`knockdown` describes), a `describe("perception latency — delayed
 opponent stamina (L_act)")`. A `BLOCK_ON_LOW_STAMINA` bot blocks the instant it perceives
 `opponent.stamina ≤ K`; a `SPEND_ONCE` opponent commits one costed strike (long recovery, no
-regen) so its stamina drops at a known tick and holds. `firstBlockTick` reveals _when_ the drop
+regen) so its stamina drops at a known tick and holds. `firstBlockTick` reveals \_when* the drop
 was perceived. Delay test: `lAct` 0/1/2 → tick 1/2/3 (the structural observe-after-commit tick
 
 - L_act). Layer test: `lPos = 5, lAct = 0` → still tick 1 (pins `oppAct.stamina`, kills the
