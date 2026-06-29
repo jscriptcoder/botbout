@@ -3412,6 +3412,136 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
   });
 });
 
+describe("runFight — band-legality gate (an out-of-band attack degrades to idle)", () => {
+  // A bot that attacks `strike` at `band` every tick.
+  const attackingAt = (band: Band): BotDoc =>
+    bot([], { type: "attack", move: "strike", band });
+
+  // A bot that strikes at the given (tick, band) entries, idling otherwise — so an
+  // opener and a later in-recovery CANCEL attempt can target DIFFERENT bands.
+  const strikeAt = (entries: { t: number; band: Band }[]): BotDoc =>
+    bot(
+      entries.map(({ t, band }) => ({
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: t },
+          ],
+        },
+        do: { type: "attack", move: "strike", band },
+      })),
+      { type: "idle" },
+    );
+
+  it("degrades an out-of-band attack to idle (no spend, no score) while the SAME in-band attack commits", () => {
+    const mk = (): Rules =>
+      getMockRules({
+        startGap: 200000, // within strike reach (250000) ⇒ an in-band strike connects
+        stamina: { max: 50 },
+        moves: {
+          strike: {
+            startup: 4,
+            active: 2,
+            recovery: 6,
+            score: 1,
+            reach: 250000,
+            bands: ["high", "mid"], // `low` is out of band
+            staminaCost: 30,
+          },
+        },
+      });
+
+    // `low` ∉ ["high","mid"] ⇒ the move never starts: no commit, no spend, no score.
+    const outOfBand = runFight(
+      getMockConfig({
+        rules: mk(),
+        botA: attackingAt("low"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(outOfBand.scores.a).toBe(0);
+    expect(outOfBand.events[0].a.stamina).toBe(50); // unchanged ⇒ never committed
+
+    // `mid` ∈ bands ⇒ the SAME move at the SAME range commits + connects (rules out "out of range").
+    const inBand = runFight(
+      getMockConfig({
+        rules: mk(),
+        botA: attackingAt("mid"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(inBand.scores.a).toBe(1);
+    expect(inBand.events[0].a.stamina).toBe(20); // spent 30 on commit
+  });
+
+  it("treats a move with no declared bands as legal at every band (absent ⇒ unrestricted ⇒ byte-identical)", () => {
+    // The default mock `strike` declares no `bands`; a `low` attack must still commit +
+    // score, exactly as before the gate existed.
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: attackingAt("low"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1);
+  });
+
+  it("guards the cancel path too: an out-of-band cancel is refused (only the opener scores)", () => {
+    const rules = getMockRules({
+      startGap: 200000,
+      cancelWindow: 10,
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          cancelInto: ["strike"],
+          bands: ["mid"], // `low` is out of band
+        },
+      },
+    });
+
+    // Opener MID at tick 0 (connects tick 4, opens the cancel window); cancel attempt at tick 6.
+    // A LOW cancel is out of band ⇒ refused ⇒ opener only. A MID cancel is honoured ⇒ +follow-up.
+    const lowCancel = runFight(
+      getMockConfig({
+        rules,
+        botA: strikeAt([
+          { t: 0, band: "mid" },
+          { t: 6, band: "low" },
+        ]),
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    const midCancel = runFight(
+      getMockConfig({
+        rules,
+        botA: strikeAt([
+          { t: 0, band: "mid" },
+          { t: 6, band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 16,
+      }),
+    );
+
+    expect(lowCancel.scores.a).toBe(1); // out-of-band cancel refused ⇒ opener only
+    expect(midCancel.scores.a).toBe(2); // in-band cancel honoured ⇒ opener + cancelled follow-up
+  });
+});
+
 describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
   const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
   const THROWER = bot([], { type: "throw" });

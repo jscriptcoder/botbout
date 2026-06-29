@@ -75,6 +75,13 @@ export type MoveSpec = {
   recovery: number; // ticks after the active window, still committed
   score: number; // WKF points awarded on hit (0–3)
   reach: number; // horizontal reach in sub-units
+  // The height bands this move may legally strike (C9 arsenal). An `attack` whose
+  // resolved band is NOT in this list never starts — it degrades to `idle` at intake
+  // (no startup, no stamina spend, no score; the §P7 band-legality gate). Semantics:
+  // ABSENT ⇒ unrestricted (legal at every band — byte-identical to the pre-arsenal
+  // engine); an empty `[]` ⇒ no legal band ⇒ the move always fizzles (the literal
+  // `bands.includes` reading — `bands` is trusted Rules data, not bot-validated).
+  bands?: Band[];
   // On-contact cancel routes (C6). The moves this move may cancel INTO once it
   // connects (hit, later also block — §3 / §11.3 `CancelEnable`). A committed
   // fighter whose move is cancelable may start a follow-up listed here, skipping

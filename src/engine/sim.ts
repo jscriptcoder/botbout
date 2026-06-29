@@ -347,6 +347,13 @@ const gassed = (f: Fighter, rules: Rules): boolean =>
 const gasRecovery = (f: Fighter, rules: Rules): number =>
   gassed(f, rules) ? (rules.stamina?.gasRecoveryPenalty ?? 0) : 0;
 
+// Whether a move may legally strike `band` (C9 §P7 band-legality gate). ABSENT `bands`
+// ⇒ unrestricted (legal at every band — byte-identical to the pre-arsenal engine);
+// otherwise the band must be listed (an empty `[]` ⇒ no legal band). An `attack` whose
+// resolved band fails this never starts — it degrades to `idle` (no startup / spend / score).
+const bandLegal = (spec: { bands?: Band[] }, band: Band): boolean =>
+  spec.bands === undefined || spec.bands.includes(band);
+
 // Honour a neutral fighter's action (start a move, or step). A committed fighter
 // ignores its action — the move it is locked into continues.
 const intake = (f: Fighter, action: Action, rules: Rules): void => {
@@ -358,7 +365,8 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
       f.state.kind === "attacking" &&
       f.cancelRemaining > 0 &&
       action.type === "attack" &&
-      (f.state.spec.cancelInto ?? []).includes(action.move)
+      (f.state.spec.cancelInto ?? []).includes(action.move) &&
+      bandLegal(rules.moves[action.move], action.band) // C9: an out-of-band cancel is refused
     ) {
       f.state = startAttack(rules.moves[action.move], action.band);
       f.cancelRemaining = 0; // the fresh move re-opens the window only when IT connects
@@ -369,6 +377,7 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
 
   if (
     action.type === "attack" &&
+    bandLegal(rules.moves[action.move], action.band) && // C9: an out-of-band attack degrades to idle
     affordable(f, rules.moves[action.move], rules)
   ) {
     const move = startAttack(rules.moves[action.move], action.band);
