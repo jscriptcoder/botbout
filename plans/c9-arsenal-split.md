@@ -49,17 +49,20 @@ durable learnings are folded in below.)
   `plans/c9-canonical-arsenal.md` (the active S7 plan; all 6 find-gaps decisions resolved there —
   workhorse = `gyaku-zuki`, richer cancel web + sweep→reverse finisher, punch=basic/kick=special
   gas split, mechanical bot swap, docs ride S7.3, order 7.1→7.2→7.3):
-    - ✅ **S7.1 — cancel·knockdown hardening** (this PR). A KILL-MUTANTS slice (no production
+    - ✅ **S7.1 — cancel·knockdown hardening** — MERGED (PR #74). A KILL-MUTANTS slice (no production
       change): two `runFight` tests prove a fighter knocked DOWN the same tick it lands a cancelable
       hit (a strike∥sweep trade) stays prone — its `cancelInto` follow-up is refused. **Kills the
       `sim.ts:365` survivor** (`f.state.kind === "attacking"`); scoped Stryker `sim.ts:360–378` now
       leaves only the 2 documented EQUIVALENTS (`:367` `action.type==="attack"`→`true`, `:373`
       `cancelInto ?? []`→`["Stryker was here"]`).
-    - ▶ **S7.2 — wire the 4 techniques into `CANONICAL_RULES`** (branch `feat/c9-canonical-arsenal`).
-      Additive (`strike` stays): reach hierarchy `throw<sweep<jab<reverse<front<roundhouse`, the
-      punch=basic/kick=special gas split, the richer `cancelInto` web — every number proven by a
-      *relationship* test in `rules.test.ts` (no literals-in-isolation).
-    - ◯ **S7.3 — retire `strike` + reconcile docs** (branch `feat/c9-retire-strike`). The breaking
+    - ✅ **S7.2 — wire the 4 techniques into `CANONICAL_RULES`** — MERGED (this PR). Additive
+      (`strike` stays ⇒ byte-identical existing behavior): all 4 techniques wired with reach hierarchy
+      `throw(120k)<sweep(180k)<jab(210k)<reverse(240k)<front(270k)<roundhouse(300k)`, startup 7/7/9/11
+      (all ≥ lAct+1), recovery 13/14/16/18 (all whiff-punishable), punch cost 15/20 ≤ gasThreshold(30)
+      < kick cost 35/45, `mae-geri` mid-only score 2, `mawashi-geri` scoreByBand high 3 / mid 2, and the
+      richer `cancelInto` web (jab→reverse→{front|roundhouse}, kick→reverse, sweep→reverse finisher).
+      20 relationship tests in `rules.test.ts`; `rules.ts` mutation 100% (39/39). 468 tests green.
+    - ▶ **S7.3 — retire `strike` + reconcile docs** (branch `feat/c9-retire-strike`). The breaking
       migration: remove `strike` from `MoveId`/`Rules.moves`/`MOVES` (TCB)/`CANONICAL_RULES`, migrate
       every fixture/test/CLI/`bots/` onto `gyaku-zuki`, reconcile `docs/BOT-DSL.md` + `docs/DESIGN.md`.
       On merge: **C9 complete** — delete both this tracker and `plans/c9-canonical-arsenal.md`.

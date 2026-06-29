@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig, type FightEvent } from "./sim.js";
 import type { BotDoc, BoolExpr } from "./dsl.js";
-import type { Rules, Band, Action, MoveSpec, ThrowSpec } from "./types.js";
+import type {
+  Rules,
+  Band,
+  Action,
+  MoveSpec,
+  ThrowSpec,
+  MoveId,
+} from "./types.js";
 import { CANONICAL_RULES } from "./rules.js";
 
 // ─── bot fixtures (mirroring the engine-test helpers — fixtures, not shared knowledge) ──
@@ -207,6 +214,41 @@ const withThrowStartup = (startup: number): Rules =>
 // and de-jittered, so an in-range sweep connects on a grounded target.
 const sweepFight = (o: Partial<FightConfig> = {}): FightConfig =>
   fight({ rules: deterministic({ startGap: 150000 }), ...o });
+
+// ─── C9 arsenal: lazy readers + bot builders for the four named techniques ──────
+// Each reader throws if its technique is not configured — so a malformed table fails an
+// assertion in a test, not at collection time (mirrors strike()/sweepSpec()).
+const armed =
+  (id: "kizami-zuki" | "gyaku-zuki" | "mae-geri" | "mawashi-geri") =>
+  (): MoveSpec => {
+    const m = CANONICAL_RULES.moves[id];
+    if (!m) throw new Error(`CANONICAL_RULES.moves['${id}'] is not configured`);
+
+    return m;
+  };
+
+const kizami = armed("kizami-zuki"); // jab
+const gyaku = armed("gyaku-zuki"); // reverse punch
+const mae = armed("mae-geri"); // front kick
+const mawashi = armed("mawashi-geri"); // roundhouse
+
+// Commits a single named technique at `band` on tick 0, then idles (generalizes strikeOnce).
+const attackOnce = (move: MoveId, band: Band): BotDoc =>
+  bot([{ when: clk("eq", 0), do: { type: "attack", move, band } }], {
+    type: "idle",
+  });
+
+// Throws the listed techniques at the listed ticks — an opener plus its cancel attempts.
+const comboAtTicks = (
+  steps: { tick: number; move: MoveId; band: Band }[],
+): BotDoc =>
+  bot(
+    steps.map((s) => ({
+      when: clk("eq", s.tick),
+      do: { type: "attack", move: s.move, band: s.band },
+    })),
+    { type: "idle" },
+  );
 
 describe("CANONICAL_RULES — structural shape", () => {
   it("scores a clean strike as a single WKF yuko", () => {
@@ -1011,5 +1053,256 @@ describe("CANONICAL_RULES — the gas line locks out specials (specialCost > gas
 
     expect(gassedGap).toBeGreaterThan(freshGap); // a gassed commit recovers slower
     expect(gassedGap - freshGap).toBe(6); // …by exactly gasRecoveryPenalty
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// C9 — the multi-move "real karate" arsenal wired into CANONICAL_RULES.
+// Four named WKF techniques with genuine reach / speed / score / cost trade-offs and
+// cross-move cancel routes, proven by RELATIONSHIP tests (the design inequalities), not
+// literals in isolation. The abstract `strike` stays alongside (retired in S7.3).
+// ════════════════════════════════════════════════════════════════════════════
+describe("CANONICAL_RULES — the C9 arsenal: structural shape", () => {
+  it("orders reach throw < sweep < jab < reverse < front < roundhouse (the spacing hierarchy)", () => {
+    expect(throwSpec().reach).toBeLessThan(sweepSpec().reach);
+    expect(sweepSpec().reach).toBeLessThan(kizami().reach);
+    expect(kizami().reach).toBeLessThan(gyaku().reach);
+    expect(gyaku().reach).toBeLessThan(mae().reach);
+    expect(mae().reach).toBeLessThan(mawashi().reach);
+  });
+
+  it("keeps every committed technique reactable (startup ≥ lAct + 1)", () => {
+    for (const m of [kizami(), gyaku(), mae(), mawashi()]) {
+      expect(m.startup).toBeGreaterThanOrEqual(lAct() + 1);
+    }
+  });
+
+  it("keeps every technique's whiff punishable (recovery ≥ lAct + the fastest punish startup)", () => {
+    for (const m of [kizami(), gyaku(), mae(), mawashi()]) {
+      expect(m.recovery).toBeGreaterThanOrEqual(lAct() + kizami().startup);
+    }
+  });
+
+  it("scores the punches a single yuko at high·mid", () => {
+    expect(kizami().score).toBe(1);
+    expect(kizami().bands).toEqual(["high", "mid"]);
+    expect(gyaku().score).toBe(1);
+    expect(gyaku().bands).toEqual(["high", "mid"]);
+  });
+
+  it("restricts the front kick to chudan (mid) for waza-ari (2)", () => {
+    expect(mae().bands).toEqual(["mid"]);
+    expect(mae().score).toBe(2);
+  });
+
+  it("rewards a jodan roundhouse with ippon (scoreByBand high 3, chudan fallback 2)", () => {
+    expect(mawashi().bands).toEqual(["high", "mid"]);
+    expect(mawashi().scoreByBand?.high).toBe(3);
+    expect(mawashi().score).toBe(2);
+  });
+
+  it("prices the punches as basic (≤ gasThreshold) and the kicks as special (> gasThreshold)", () => {
+    const gas = CANONICAL_RULES.stamina?.gasThreshold ?? 0;
+    expect(kizami().staminaCost ?? 0).toBeLessThanOrEqual(gas);
+    expect(gyaku().staminaCost ?? 0).toBeLessThanOrEqual(gas);
+    expect(mae().staminaCost ?? 0).toBeGreaterThan(gas);
+    expect(mawashi().staminaCost ?? 0).toBeGreaterThan(gas);
+  });
+});
+
+describe("CANONICAL_RULES — the C9 arsenal: the reach hierarchy bites", () => {
+  const scoreAtGap = (gap: number, move: MoveId): number =>
+    runFight(
+      fight({
+        rules: deterministic({ startGap: gap }),
+        botA: attackOnce(move, "mid"),
+        botB: IDLE,
+        maxTicks: 30,
+      }),
+    ).scores.a;
+
+  it("at a gap between jab and reverse reach, the jab whiffs where the reverse connects", () => {
+    // 220000: jab reach (210000) < gap < reverse reach (240000)
+    expect(scoreAtGap(220000, "kizami-zuki")).toBe(0); // out of jab range ⇒ whiff
+    expect(scoreAtGap(220000, "gyaku-zuki")).toBe(1); // reverse reaches ⇒ yuko
+  });
+
+  it("at a gap between front and roundhouse reach, the front kick whiffs where the roundhouse connects", () => {
+    // 290000: front reach (270000) < gap < roundhouse reach (300000)
+    expect(scoreAtGap(290000, "mae-geri")).toBe(0); // out of front-kick range ⇒ whiff
+    expect(scoreAtGap(290000, "mawashi-geri")).toBe(2); // roundhouse reaches at chudan ⇒ waza-ari
+  });
+});
+
+describe("CANONICAL_RULES — the C9 arsenal: band legality + band-dependent score", () => {
+  const scoreAtBand = (move: MoveId, band: Band): number =>
+    runFight(
+      fight({
+        rules: deterministic(),
+        botA: attackOnce(move, band),
+        botB: IDLE,
+        maxTicks: 30,
+      }),
+    ).scores.a;
+
+  it("the front kick is mid-only — high or low degrades to idle, mid scores waza-ari", () => {
+    expect(scoreAtBand("mae-geri", "high")).toBe(0); // out of band ⇒ idle ⇒ no score
+    expect(scoreAtBand("mae-geri", "low")).toBe(0);
+    expect(scoreAtBand("mae-geri", "mid")).toBe(2);
+  });
+
+  it("the roundhouse scores ippon jodan and waza-ari chudan (band-dependent)", () => {
+    expect(scoreAtBand("mawashi-geri", "high")).toBe(3); // jodan ⇒ ippon
+    expect(scoreAtBand("mawashi-geri", "mid")).toBe(2); // chudan ⇒ waza-ari
+  });
+});
+
+describe("CANONICAL_RULES — the C9 arsenal: the gas line splits punches from kicks", () => {
+  // Positioned AT the gas line (start stamina = gasThreshold) on the canonical table — only the
+  // start stamina is positioned (like deterministic() positions distance); the costs + threshold
+  // stay canonical. The lockout is EMERGENT: a punch (basic ≤ gasThreshold) is affordable, a kick
+  // (special > gasThreshold) is not — it degrades to idle and never scores.
+  const gas = CANONICAL_RULES.stamina?.gasThreshold ?? 0;
+
+  const atTheGasLine = deterministic({
+    stamina: { ...CANONICAL_RULES.stamina, max: gas },
+  });
+
+  const scoreOf = (rules: Rules, move: MoveId): number =>
+    runFight(
+      fight({
+        rules,
+        botA: attackOnce(move, "mid"),
+        botB: IDLE,
+        maxTicks: 30,
+      }),
+    ).scores.a;
+
+  it("a gassed fighter still commits a punch", () => {
+    expect(scoreOf(atTheGasLine, "gyaku-zuki")).toBe(1); // basic affordable at the band ⇒ commits & scores
+  });
+
+  it("a gassed fighter's kicks lock out (degrade to idle, no score)", () => {
+    expect(scoreOf(atTheGasLine, "mae-geri")).toBe(0); // special unaffordable at the band ⇒ idle
+    expect(scoreOf(atTheGasLine, "mawashi-geri")).toBe(0);
+  });
+
+  it("the same kick commits at full stamina — proving the lockout is the gas band, not an inherent whiff", () => {
+    expect(scoreOf(deterministic(), "mae-geri")).toBe(2); // full reserve ⇒ the kick commits & scores
+  });
+});
+
+describe("CANONICAL_RULES — the C9 arsenal: the cross-move cancel web (rekka)", () => {
+  it("a connecting jab cancels into the reverse (kizami-zuki → gyaku-zuki)", () => {
+    const cancelTick = kizami().startup + kizami().active; // first recovery frame
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: comboAtTicks([
+          { tick: 0, move: "kizami-zuki", band: "mid" },
+          { tick: cancelTick, move: "gyaku-zuki", band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(2); // jab (1) + cancelled reverse (1)
+  });
+
+  it("a connecting reverse cancels into the roundhouse (gyaku-zuki → mawashi-geri)", () => {
+    const cancelTick = gyaku().startup + gyaku().active;
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: comboAtTicks([
+          { tick: 0, move: "gyaku-zuki", band: "mid" },
+          { tick: cancelTick, move: "mawashi-geri", band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // reverse (1) + cancelled roundhouse chudan (2)
+  });
+
+  it("a connecting front kick cancels back into a punch (mae-geri → gyaku-zuki)", () => {
+    const cancelTick = mae().startup + mae().active;
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: comboAtTicks([
+          { tick: 0, move: "mae-geri", band: "mid" },
+          { tick: cancelTick, move: "gyaku-zuki", band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // front kick (2) + cancelled reverse (1)
+  });
+
+  it("a connecting reverse can also cancel into the front kick (gyaku-zuki → mae-geri)", () => {
+    const cancelTick = gyaku().startup + gyaku().active;
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: comboAtTicks([
+          { tick: 0, move: "gyaku-zuki", band: "mid" },
+          { tick: cancelTick, move: "mae-geri", band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // reverse (1) + cancelled front kick (2)
+  });
+
+  it("a connecting roundhouse cancels back into a punch (mawashi-geri → gyaku-zuki)", () => {
+    const cancelTick = mawashi().startup + mawashi().active;
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: comboAtTicks([
+          { tick: 0, move: "mawashi-geri", band: "mid" },
+          { tick: cancelTick, move: "gyaku-zuki", band: "mid" },
+        ]),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // roundhouse chudan (2) + cancelled reverse (1)
+  });
+
+  it("a sweep hit-confirms into a reverse-punch okizeme finish (sweep → gyaku-zuki)", () => {
+    const cancelTick = sweepSpec().startup + sweepSpec().active; // first recovery frame ⇒ cancels
+
+    const result = runFight(
+      sweepFight({
+        botA: bot(
+          [
+            { when: clk("eq", 0), do: { type: "sweep" } },
+            {
+              when: clk("eq", cancelTick),
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
+            },
+          ],
+          { type: "idle" },
+        ),
+        botB: IDLE,
+        maxTicks: 40,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3); // sweep knockdown (0) + okizeme finish (finishScore 3)
   });
 });
