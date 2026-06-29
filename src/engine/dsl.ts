@@ -120,7 +120,6 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
 const ALLOWED_FIELDS: ReadonlySet<string> = new Set(Object.keys(FIELD_READERS));
 
 const MOVES: ReadonlySet<string> = new Set<MoveId>([
-  "strike",
   "kizami-zuki",
   "gyaku-zuki",
   "mae-geri",

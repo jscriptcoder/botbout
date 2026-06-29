@@ -142,7 +142,7 @@ on the allowlist, unknown move ids, illegal band-for-move, undeclared cells/lets
 ## Worked fragment (illustrative)
 
 Reaction-block a _reactable_ high attack by band, else whiff-punish a recovering
-move in range, else hit-confirm a punch→kick cancel:
+move in range, else hit-confirm a `kizami-zuki`→`mawashi-geri` (jab→roundhouse) cancel:
 
 ```jsonc
 {
@@ -180,7 +180,7 @@ move in range, else hit-confirm a punch→kick cancel:
       "expr": {
         "op": "sub",
         "args": [
-          { "op": "rule", "move": "kick", "stat": "startup" },
+          { "op": "rule", "move": "mae-geri", "stat": "startup" },
           {
             "op": "add",
             "args": [
@@ -242,7 +242,7 @@ move in range, else hit-confirm a punch→kick cancel:
           },
         ],
       },
-      "do": { "type": "attack", "move": "roundhouse", "band": "mid" },
+      "do": { "type": "attack", "move": "mawashi-geri", "band": "mid" },
     },
 
     {
@@ -258,7 +258,7 @@ move in range, else hit-confirm a punch→kick cancel:
                 "op": "add",
                 "args": [
                   { "op": "latency", "of": "action" },
-                  { "op": "rule", "move": "jab", "stat": "startup" },
+                  { "op": "rule", "move": "kizami-zuki", "stat": "startup" },
                 ],
               },
             ],
@@ -267,13 +267,13 @@ move in range, else hit-confirm a punch→kick cancel:
             "op": "lte",
             "args": [
               { "op": "let", "name": "predDist" },
-              { "op": "rule", "move": "jab", "stat": "reach" },
+              { "op": "rule", "move": "kizami-zuki", "stat": "reach" },
             ],
           },
         ],
       },
       "set": [{ "cell": "lastHit", "to": { "op": "const", "value": 1 } }],
-      "do": { "type": "attack", "move": "jab", "band": "mid" },
+      "do": { "type": "attack", "move": "kizami-zuki", "band": "mid" },
     },
   ],
   "default": { "type": "move", "dir": 1 },

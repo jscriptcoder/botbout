@@ -10,7 +10,7 @@
           { "op": "const", "value": 0 }
         ]
       },
-      "do": { "type": "attack", "move": "strike", "band": "high" }
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "high" }
     },
     {
       "when": {

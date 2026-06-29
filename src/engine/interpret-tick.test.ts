@@ -108,13 +108,13 @@ describe("runTick — rule selection", () => {
   it("returns the default action when no rule matches", () => {
     const doc = bot([{ when: FALSE, do: { type: "block", band: "low" } }], {
       type: "attack",
-      move: "strike",
+      move: "gyaku-zuki",
       band: "mid",
     });
 
     expect(runTick(doc, getMockState(), {})).toEqual({
       type: "attack",
-      move: "strike",
+      move: "gyaku-zuki",
       band: "mid",
     });
   });

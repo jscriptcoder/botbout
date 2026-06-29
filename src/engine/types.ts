@@ -9,18 +9,13 @@
 
 export type Facing = -1 | 1;
 export type Band = "high" | "mid" | "low";
-// The flat union of named techniques a bot may `attack` with (C9 arsenal). The abstract
-// `strike` stays as scaffolding (retired into the named roster in a later slice); the
-// WKF roster is added one technique at a time. `kizami-zuki` is the jab (first technique);
-// `gyaku-zuki` is the reverse punch (longer reach, more committed — the reach hierarchy);
-// `mae-geri` is the front kick (mid-only single-band, 2-point waza-ari, out-reaches the punches);
-// `mawashi-geri` is the roundhouse (longest reach, slowest, band-dependent score — jodan 3 / chudan 2).
-export type MoveId =
-  | "strike"
-  | "kizami-zuki"
-  | "gyaku-zuki"
-  | "mae-geri"
-  | "mawashi-geri";
+// The flat union of named WKF techniques a bot may `attack` with (C9 arsenal). The abstract
+// `strike` scaffold has been RETIRED (C9 S7.3) — the roster is now the four named techniques.
+// `kizami-zuki` is the jab; `gyaku-zuki` is the reverse punch (longer reach, more committed — the
+// workhorse / reach hierarchy); `mae-geri` is the front kick (mid-only single-band, 2-point
+// waza-ari, out-reaches the punches); `mawashi-geri` is the roundhouse (longest reach, slowest,
+// band-dependent score — jodan 3 / chudan 2).
+export type MoveId = "kizami-zuki" | "gyaku-zuki" | "mae-geri" | "mawashi-geri";
 
 // ─── Action grammar — a bot returns exactly ONE per tick ─────────────────────
 // `dir` is RELATIVE to facing: +1 = toward opponent, -1 = away, 0 = hold.
@@ -134,17 +129,16 @@ export type Rules = {
   walkSpeed: number; // sub-units travelled per tick while moving
   ring: { width: number }; // ring width in sub-units
   startGap: number; // initial separation between the two fighters (sub-units)
-  // The frame table. `strike` is the base move; `sweep` (C8) is an OPTIONAL low-band
-  // knockdown move — absent ⇒ a `sweep` action is inert ⇒ byte-identical to the
-  // pre-sweep engine. Keyed concretely (not `Record<MoveId, …>`) so named moves stay
-  // OPTIONAL: `kizami-zuki` (C9 jab) is configured per-ruleset, and an `attack` naming a
-  // move this table does not configure degrades to idle (inert), like an unconfigured
-  // `sweep`. (`strike` stays required scaffolding until the arsenal retirement slice.)
+  // The frame table. `gyaku-zuki` (the C9 reverse-punch workhorse) is the base move; `sweep`
+  // (C8) is an OPTIONAL low-band knockdown move — absent ⇒ a `sweep` action is inert ⇒
+  // byte-identical to the pre-sweep engine. Keyed concretely (not `Record<MoveId, …>`) so the
+  // other named moves stay OPTIONAL: each technique is configured per-ruleset, and an `attack`
+  // naming a move this table does not configure degrades to idle (inert), like an unconfigured
+  // `sweep`. (The abstract `strike` was retired in C9 S7.3 — `gyaku-zuki` took its required slot.)
   moves: {
-    strike: MoveSpec;
+    "gyaku-zuki": MoveSpec;
     sweep?: MoveSpec;
     "kizami-zuki"?: MoveSpec;
-    "gyaku-zuki"?: MoveSpec;
     "mae-geri"?: MoveSpec;
     "mawashi-geri"?: MoveSpec;
   };

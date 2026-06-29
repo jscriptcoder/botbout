@@ -21,7 +21,13 @@ const getMockRules = (o: Partial<Rules> = {}): Rules => ({
   ring: { width: 600000 },
   startGap: 200000,
   moves: {
-    strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+    "gyaku-zuki": {
+      startup: 4,
+      active: 2,
+      recovery: 6,
+      score: 1,
+      reach: 250000,
+    },
   },
   ...o,
 });
@@ -274,7 +280,7 @@ describe("runFight — view wiring and memory", () => {
 });
 
 describe("runFight — strikes and scoring", () => {
-  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" }); // strike every tick
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" }); // strike every tick
 
   it("scores when an active strike reaches an idle opponent in range", () => {
     const rules = getMockRules({ startGap: 200000 }); // within reach (250000)
@@ -299,7 +305,7 @@ describe("runFight — strikes and scoring", () => {
   });
 
   it("scores at exactly the reach boundary but not one sub-unit beyond", () => {
-    const reach = getMockRules().moves.strike.reach;
+    const reach = getMockRules().moves["gyaku-zuki"].reach;
 
     const atEdge = runFight(
       getMockConfig({
@@ -346,7 +352,7 @@ describe("runFight — strikes and scoring", () => {
     // tick 1 is mid-startup (committed): the returned attack is logged but starts nothing.
     expect(result.events[1].a.action).toEqual({
       type: "attack",
-      move: "strike",
+      move: "gyaku-zuki",
       band: "mid",
     });
     expect(result.events[1].a.points).toBe(0);
@@ -390,7 +396,7 @@ describe("runFight — strikes and scoring", () => {
 });
 
 describe("runFight — block and simultaneity", () => {
-  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const BLOCKER = bot([], { type: "block", band: "mid" });
 
   it("a guarding defender negates the strike", () => {
@@ -427,7 +433,7 @@ describe("runFight — block and simultaneity", () => {
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "block", band: "mid" },
@@ -460,7 +466,7 @@ describe("runFight — block and simultaneity", () => {
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "block", band: "mid" },
@@ -509,7 +515,7 @@ describe("runFight — block and simultaneity", () => {
 
 describe("runFight — height bands (the guard must match the strike's height)", () => {
   const strikingAt = (band: Band): BotDoc =>
-    bot([], { type: "attack", move: "strike", band });
+    bot([], { type: "attack", move: "gyaku-zuki", band });
 
   const guardingAt = (band: Band): BotDoc => bot([], { type: "block", band });
 
@@ -582,7 +588,7 @@ describe("runFight — height bands (the guard must match the strike's height)",
             { op: "const", value: 4 },
           ],
         },
-        do: { type: "attack", move: "strike", band: "high" },
+        do: { type: "attack", move: "gyaku-zuki", band: "high" },
       },
     ],
     { type: "idle" },
@@ -621,7 +627,7 @@ describe("runFight — height bands (the guard must match the strike's height)",
 
 describe("runFight — vertical occupancy (a croucher vacates the high band)", () => {
   const strikingAt = (band: Band): BotDoc =>
-    bot([], { type: "attack", move: "strike", band });
+    bot([], { type: "attack", move: "gyaku-zuki", band });
 
   const CROUCHER = bot([], { type: "crouch" }); // a grounded posture, held every tick
 
@@ -669,7 +675,7 @@ describe("runFight — vertical occupancy (a croucher vacates the high band)", (
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "high" },
+          do: { type: "attack", move: "gyaku-zuki", band: "high" },
         },
       ],
       { type: "crouch" },
@@ -842,7 +848,13 @@ describe("runFight — airborne occupancy (a jumper vacates the low band)", () =
       startGap: 200000, // within reach (250000)
       lowClearance,
       moves: {
-        strike: { startup: 4, active: 1, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 1,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
       },
     });
 
@@ -851,7 +863,7 @@ describe("runFight — airborne occupancy (a jumper vacates the low band)", () =
     runFight(
       getMockConfig({
         rules: sweepRules(lowClearance),
-        botA: bot([], { type: "attack", move: "strike", band }),
+        botA: bot([], { type: "attack", move: "gyaku-zuki", band }),
         botB: jumpWhenFree,
         maxTicks: 8,
       }),
@@ -874,7 +886,11 @@ describe("runFight — airborne occupancy (a jumper vacates the low band)", () =
   });
 
   it("resolves airborne occupancy identically from either slot (swap-symmetric)", () => {
-    const striker = bot([], { type: "attack", move: "strike", band: "low" });
+    const striker = bot([], {
+      type: "attack",
+      move: "gyaku-zuki",
+      band: "low",
+    });
 
     const jumperAsB = runFight(
       getMockConfig({
@@ -933,7 +949,7 @@ describe("runFight — parry windows (a freshly-raised matching guard deflects t
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
       ],
       { type: "idle" },
@@ -1123,7 +1139,7 @@ describe("runFight — parry windows (a freshly-raised matching guard deflects t
 describe("runFight — parry counter window (the deflect pays off)", () => {
   // Strikes mid every neutral tick; struck once at tick 0, it is parried at tick 4 and
   // stays committed (parryRecovery 8 ⇒ open through tick 19), a hittable target.
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // Parries a mid strike (fresh mid guard at tick 4), then throws a counter mid strike
   // at tick 5 — its active frame lands at tick 9, while the parried attacker is still
@@ -1148,7 +1164,7 @@ describe("runFight — parry counter window (the deflect pays off)", () => {
             { op: "const", value: 5 },
           ],
         },
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     { type: "idle" },
@@ -1262,7 +1278,7 @@ describe("runFight — parry counter window (the deflect pays off)", () => {
             { op: "const", value: 0 },
           ],
         },
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     { type: "idle" },
@@ -1312,7 +1328,7 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
             { op: "const", value: t },
           ],
         },
-        do: { type: "attack", move: "strike", band },
+        do: { type: "attack", move: "gyaku-zuki", band },
       })),
       { type: "idle" },
     );
@@ -1376,13 +1392,13 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
       startGap: 200000, // within reach (250000)
       cancelWindow: 10,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
           score: 1,
           reach: 250000,
-          cancelInto: ["strike"],
+          cancelInto: ["gyaku-zuki"],
         },
       },
       ...o,
@@ -1444,7 +1460,7 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
       getMockConfig({
         rules: cancelRules({
           moves: {
-            strike: {
+            "gyaku-zuki": {
               startup: 4,
               active: 2,
               recovery: 6,
@@ -1535,7 +1551,7 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
           startGap: 200000,
           cancelWindow: 10,
           moves: {
-            strike: {
+            "gyaku-zuki": {
               startup: 4,
               active: 2,
               recovery: 6,
@@ -1668,7 +1684,7 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
         {
           when: {
@@ -1678,7 +1694,7 @@ describe("runFight — on-contact cancel combos (a connecting strike can cancel 
               { op: "const", value: 0 },
             ],
           },
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
       ],
       { type: "idle" },
@@ -1923,7 +1939,7 @@ describe("runFight — throws (a throw beats a guard, scores, and knocks down)",
               { op: "const", value: 1 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -2035,7 +2051,11 @@ describe("runFight — throws (a throw beats a guard, scores, and knocks down)",
   });
 
   it("adding throw config does not perturb a fight where nobody throws (additive)", () => {
-    const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+    const ATTACKER = bot([], {
+      type: "attack",
+      move: "gyaku-zuki",
+      band: "mid",
+    });
 
     const without = runFight(
       getMockConfig({
@@ -2060,7 +2080,7 @@ describe("runFight — throws (a throw beats a guard, scores, and knocks down)",
 });
 
 describe("runFight — strike beats throw (the §11.4 precedence: strike > throw)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // Throws once at tick 0 then idles (commits to the grab at tick 0).
   const throwOnce = bot(
@@ -2241,7 +2261,7 @@ describe("runFight — strike beats throw (the §11.4 precedence: strike > throw
 });
 
 describe("runFight — throw-break (the §11.4 third leg: throw-break > throw)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // Throws once at tick 0 then idles (commits at tick 0 ⇒ grab-active at tick 2).
   const throwOnce = bot(
@@ -2587,7 +2607,13 @@ describe("runFight — sweeps (a low-band strike that knocks down on hit, no sco
       startGap: 200000, // within sweep reach (250000)
       knockdownDuration: 6,
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         sweep: {
           startup: 1,
           active: 1,
@@ -2748,7 +2774,13 @@ describe("runFight — sweeps (a low-band strike that knocks down on hit, no sco
   it("trades with a simultaneous strike — the sweep downs, the strike scores", () => {
     const rules = sweepRules({
       moves: {
-        strike: { startup: 1, active: 1, recovery: 1, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 1,
+          active: 1,
+          recovery: 1,
+          score: 1,
+          reach: 250000,
+        },
         sweep: {
           startup: 1,
           active: 1,
@@ -2764,7 +2796,7 @@ describe("runFight — sweeps (a low-band strike that knocks down on hit, no sco
       [
         {
           when: atTick(0),
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "move", dir: 1 },
@@ -2834,7 +2866,13 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
       startGap: 200000, // within reach (250000)
       knockdownDuration: 8,
       moves: {
-        strike: { startup: 1, active: 1, recovery: 1, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 1,
+          active: 1,
+          recovery: 1,
+          score: 1,
+          reach: 250000,
+        },
         sweep: {
           startup: 1,
           active: 1,
@@ -2876,7 +2914,7 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
         { when: atTick(0), do: { type: "sweep" } },
         {
           when: atTick(strikeTick),
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
       ],
       { type: "idle" },
@@ -2912,11 +2950,11 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
             { when: atTick(0), do: { type: "sweep" } },
             {
               when: atTick(3),
-              do: { type: "attack", move: "strike", band: "mid" },
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
             },
             {
               when: atTick(6),
-              do: { type: "attack", move: "strike", band: "mid" },
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
             },
           ],
           { type: "idle" },
@@ -2987,7 +3025,7 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
         { when: atTick(0), do: { type: "throw" } },
         {
           when: atTick(3),
-          do: { type: "attack", move: "strike", band: "high" },
+          do: { type: "attack", move: "gyaku-zuki", band: "high" },
         },
       ],
       { type: "idle" },
@@ -3015,7 +3053,7 @@ describe("runFight — okizeme finish window (a knockdown is finishable exactly 
         { when: atTick(0), do: { type: "sweep" } },
         {
           when: whenCanAct,
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -3083,7 +3121,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
       startGap: 200000, // within reach (250000)
       knockdownDuration: 10,
       finishWindow: 5,
-      moves: { strike: STRIKE, sweep: SWEEP },
+      moves: { "gyaku-zuki": STRIKE, sweep: SWEEP },
       ...o,
     });
 
@@ -3105,7 +3143,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
 
   const STRIKE_WHEN_FINISHABLE: BotDoc["rules"][number] = {
     when: gtField("self.finishWindow", 0),
-    do: { type: "attack", move: "strike", band: "mid" },
+    do: { type: "attack", move: "gyaku-zuki", band: "mid" },
   };
 
   // Sweeps the opponent down at tick 0, then strikes ONLY while it can actually finish
@@ -3145,7 +3183,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
       [
         {
           when: eqField("self.canAct", 1),
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -3155,7 +3193,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
       [
         {
           when: eqField("self.finishWindow", 0),
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -3185,7 +3223,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
         { when: eqField("clock.tick", 0), do: { type: "sweep" } },
         {
           when: eqField("self.finishWindow", 2),
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -3196,7 +3234,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
         rules: finishRules({
           finishWindow: 4,
           moves: {
-            strike: {
+            "gyaku-zuki": {
               startup: 0,
               active: 1,
               recovery: 1,
@@ -3252,7 +3290,7 @@ describe("runFight — self.finishWindow (live okizeme hit-confirm)", () => {
 });
 
 describe("runFight — stamina meter (a costed move spends stamina on commit)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const THROWER = bot([], { type: "throw" });
   const SWEEPER = bot([], { type: "sweep" });
 
@@ -3271,7 +3309,7 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
         do: { type: "idle" },
       },
     ],
-    { type: "attack", move: "strike", band: "mid" },
+    { type: "attack", move: "gyaku-zuki", band: "mid" },
   );
 
   it("spends a strike's staminaCost on commit (even on a whiff), holds it through the move, then steps down on re-commit", () => {
@@ -3279,7 +3317,7 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
       startGap: 300000, // beyond reach (250000) ⇒ the strike whiffs
       stamina: { max: 100 },
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -3324,7 +3362,13 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
     const rules = getMockRules({
       stamina: { max: 100 },
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         sweep: {
           startup: 4,
           active: 2,
@@ -3362,7 +3406,7 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
       startGap: 200000, // within reach ⇒ a clean strike scores
       stamina: { max: 100 },
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -3388,7 +3432,7 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
       startGap: 200000,
       // NO `stamina` block ⇒ the meter is not simulated ...
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -3415,7 +3459,7 @@ describe("runFight — stamina meter (a costed move spends stamina on commit)", 
 describe("runFight — band-legality gate (an out-of-band attack degrades to idle)", () => {
   // A bot that attacks `strike` at `band` every tick.
   const attackingAt = (band: Band): BotDoc =>
-    bot([], { type: "attack", move: "strike", band });
+    bot([], { type: "attack", move: "gyaku-zuki", band });
 
   // A bot that strikes at the given (tick, band) entries, idling otherwise — so an
   // opener and a later in-recovery CANCEL attempt can target DIFFERENT bands.
@@ -3429,7 +3473,7 @@ describe("runFight — band-legality gate (an out-of-band attack degrades to idl
             { op: "const", value: t },
           ],
         },
-        do: { type: "attack", move: "strike", band },
+        do: { type: "attack", move: "gyaku-zuki", band },
       })),
       { type: "idle" },
     );
@@ -3440,7 +3484,7 @@ describe("runFight — band-legality gate (an out-of-band attack degrades to idl
         startGap: 200000, // within strike reach (250000) ⇒ an in-band strike connects
         stamina: { max: 50 },
         moves: {
-          strike: {
+          "gyaku-zuki": {
             startup: 4,
             active: 2,
             recovery: 6,
@@ -3499,13 +3543,13 @@ describe("runFight — band-legality gate (an out-of-band attack degrades to idl
       startGap: 200000,
       cancelWindow: 10,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
           score: 1,
           reach: 250000,
-          cancelInto: ["strike"],
+          cancelInto: ["gyaku-zuki"],
           bands: ["mid"], // `low` is out of band
         },
       },
@@ -3549,7 +3593,13 @@ describe("runFight — kizami-zuki (the jab: a short-reach high·mid technique)"
     getMockRules({
       startGap: 120000, // within jab reach (150000)
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         "kizami-zuki": {
           startup: 4,
           active: 2,
@@ -3626,7 +3676,7 @@ describe("runFight — kizami-zuki (the jab: a short-reach high·mid technique)"
       startGap: 120000,
       cancelWindow: 10,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -3650,7 +3700,7 @@ describe("runFight — kizami-zuki (the jab: a short-reach high·mid technique)"
               { op: "const", value: 0 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
         {
           when: {
@@ -3682,7 +3732,6 @@ describe("runFight — gyaku-zuki (the reverse punch: a longer-reach high·mid t
     getMockRules({
       startGap: 120000, // within reverse reach (200000) AND jab reach (150000)
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
         "kizami-zuki": {
           startup: 4,
           active: 2,
@@ -3774,20 +3823,10 @@ describe("runFight — gyaku-zuki (the reverse punch: a longer-reach high·mid t
     expect(result.scores.a).toBe(0);
   });
 
-  it("is inert when the move id is unconfigured in this Rules (degrades to idle, like sweep/throw)", () => {
-    // A strike-only ruleset (no `gyaku-zuki` key); a reverse attack references an unconfigured
-    // move ⇒ no spec ⇒ idle ⇒ no score (the `spec !== undefined` guard).
-    const result = runFight(
-      getMockConfig({
-        rules: getMockRules({ startGap: 120000 }),
-        botA: reverseAt("mid"),
-        botB: IDLE,
-        maxTicks: 12,
-      }),
-    );
-
-    expect(result.scores.a).toBe(0);
-  });
+  // (No "inert when unconfigured" test for gyaku-zuki: it is the required baseline move in
+  // `Rules.moves`, so a ruleset omitting it is not constructible. The runtime-degrade gate
+  // is proven by the kizami-zuki / mae-geri / mawashi-geri inert tests, whose target moves
+  // are genuinely absent from the gyaku-zuki-only baseline.)
 });
 
 describe("runFight — mae-geri (the front kick: a single-band mid waza-ari technique)", () => {
@@ -3798,7 +3837,13 @@ describe("runFight — mae-geri (the front kick: a single-band mid waza-ari tech
     getMockRules({
       startGap: 200000, // within kick reach (280000)
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         "mae-geri": {
           startup: 4,
           active: 2,
@@ -3892,7 +3937,13 @@ describe("runFight — mawashi-geri (the roundhouse: band-dependent score, high 
     getMockRules({
       startGap: 200000, // within roundhouse reach (320000)
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         "mawashi-geri": {
           startup: 6,
           active: 2,
@@ -3990,7 +4041,6 @@ describe("runFight — cross-move cancels (rekka routes between distinct techniq
       startGap: 200000, // within reach (250000) ⇒ each technique connects
       cancelWindow: 10,
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
         "kizami-zuki": {
           startup: 4,
           active: 2,
@@ -4142,25 +4192,25 @@ describe("runFight — a fighter downed the same tick it connects cannot cancel-
   // A strike∥sweep TRADE: at the connect tick A's strike HITs B (opening A's cancel window) WHILE
   // B's sweep DOWNS A the same tick — so A ends the tick with cancelRemaining > 0 AND kind:"downed".
   // The cancel guard must then refuse A's cancelInto follow-up: a prone fighter never cancel-attacks.
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const SWEEPER = bot([], { type: "sweep" });
 
-  // strike + sweep on identical 4/2/6 frames ⇒ both connect at tick 4. strike.cancelInto:["strike"]
-  // is a CONFIGURED self-cancel route, so the downed cancel attempt reaches the route check (not
-  // refused earlier as inert). No finishWindow ⇒ the downed fighter is fully untargetable (no oki).
+  // gyaku-zuki + sweep on identical 4/2/6 frames ⇒ both connect at tick 4. gyaku-zuki.cancelInto:
+  // ["gyaku-zuki"] is a CONFIGURED self-cancel route, so the downed cancel attempt reaches the route
+  // check (not refused earlier as inert). No finishWindow ⇒ the downed fighter is fully untargetable.
   const tradeKnockdownRules = (o: Partial<Rules> = {}): Rules =>
     getMockRules({
       startGap: 200000, // within reach (250000) ⇒ both the strike and the sweep connect
       cancelWindow: 10,
       knockdownDuration: 20,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
           score: 1,
           reach: 250000,
-          cancelInto: ["strike"],
+          cancelInto: ["gyaku-zuki"],
         },
         sweep: {
           startup: 4,
@@ -4209,7 +4259,7 @@ describe("runFight — a fighter downed the same tick it connects cannot cancel-
 });
 
 describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const THROWER = bot([], { type: "throw" });
   const SWEEPER = bot([], { type: "sweep" });
 
@@ -4219,7 +4269,7 @@ describe("runFight — stamina affordability (an unaffordable move degrades to i
         startGap: 200000, // within reach (250000) ⇒ a committed strike connects
         stamina: { max },
         moves: {
-          strike: {
+          "gyaku-zuki": {
             startup: 4,
             active: 2,
             recovery: 6,
@@ -4274,7 +4324,13 @@ describe("runFight — stamina affordability (an unaffordable move degrades to i
       startGap: 150000, // within sweep reach (180000)
       stamina: { max: 19 },
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
         sweep: {
           startup: 4,
           active: 2,
@@ -4300,7 +4356,7 @@ describe("runFight — stamina affordability (an unaffordable move degrades to i
       startGap: 200000, // in reach ⇒ each committed strike scores
       stamina: { max: 100 },
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -4337,7 +4393,7 @@ describe("runFight — stamina regen (an uncommitted fighter recovers; a committ
               { op: "const", value: 0 },
             ],
           },
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       rest,
@@ -4348,7 +4404,7 @@ describe("runFight — stamina regen (an uncommitted fighter recovers; a committ
       startGap: 300000, // out of reach — the lone strike whiffs; we only care about the meter
       stamina: { max: 100, regen: 5 },
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -4428,7 +4484,7 @@ describe("runFight — stamina regen (an uncommitted fighter recovers; a committ
 });
 
 describe("runFight — guard stamina chip (a block bleeds the defender's stamina on contact)", () => {
-  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const BLOCKER = bot([], { type: "block", band: "mid" });
 
   // In range (200000 < reach 250000) ⇒ a mid strike contacts a held mid guard. The strike
@@ -4520,7 +4576,7 @@ describe("runFight — guard stamina chip (a block bleeds the defender's stamina
 });
 
 describe("runFight — parry stamina chip (a deflect bleeds MORE than a block)", () => {
-  const ATTACKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // A defender that idles until tick `from`, then holds a `band` guard — so its guard's age
   // when the strike's first active frame lands (tick 4) is `5 − from`. guardFrom(4) ⇒ age 1
@@ -4631,7 +4687,7 @@ describe("runFight — parry stamina chip (a deflect bleeds MORE than a block)",
 });
 
 describe("runFight — gassing penalty (a gassed fighter's committed move recovers slower)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // A strike on the standard 4/2/6 timing (total 12), with a small on-commit cost so we can
   // drive a fighter to/below a gas line and watch when it next re-commits (the next step-down).
@@ -4643,7 +4699,7 @@ describe("runFight — gassing penalty (a gassed fighter's committed move recove
       startGap,
       stamina,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -4743,7 +4799,7 @@ describe("runFight — gassing penalty (a gassed fighter's committed move recove
 });
 
 describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   // Attacks while fresh, but idles the moment it reads itself GASSED — proving it reads the
   // live self.gassed field and flips on it (1 iff stamina ≤ gasThreshold), not a constant.
@@ -4760,7 +4816,7 @@ describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
         do: { type: "idle" },
       },
     ],
-    { type: "attack", move: "strike", band: "mid" },
+    { type: "attack", move: "gyaku-zuki", band: "mid" },
   );
 
   const gasReadRules = (stamina: NonNullable<Rules["stamina"]>): Rules =>
@@ -4768,7 +4824,7 @@ describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
       startGap: 200000, // within reach (250000) ⇒ a clean strike scores
       stamina,
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,
@@ -4801,7 +4857,13 @@ describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
     const rules = getMockRules({
       startGap: 200000,
       moves: {
-        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
       },
     });
 
@@ -4818,7 +4880,7 @@ describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
 });
 
 describe("runFight — gassed special-lockout (emergent: specialCost > gasThreshold ≥ basicCost)", () => {
-  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
   const THROWER = bot([], { type: "throw" });
   const SWEEPER = bot([], { type: "sweep" });
 
@@ -4835,7 +4897,7 @@ describe("runFight — gassed special-lockout (emergent: specialCost > gasThresh
       startGap: 100000, // within throw (120000) / sweep (180000) / strike (250000) reach
       stamina: { max, gasThreshold: GAS },
       moves: {
-        strike: {
+        "gyaku-zuki": {
           startup: 4,
           active: 2,
           recovery: 6,

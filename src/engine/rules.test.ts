@@ -36,7 +36,7 @@ const strikeOnce = (band: Band): BotDoc => ({
         ],
       },
       set: [{ cell: "fired", to: { op: "const", value: 1 } }],
-      do: { type: "attack", move: "strike", band },
+      do: { type: "attack", move: "gyaku-zuki", band },
     },
   ],
   default: { type: "idle" },
@@ -104,7 +104,7 @@ const restrikeWhenFree = (band: Band): BotDoc =>
             { op: "const", value: 1 },
           ],
         },
-        do: { type: "attack", move: "strike", band },
+        do: { type: "attack", move: "gyaku-zuki", band },
       },
     ],
     { type: "idle" },
@@ -126,13 +126,13 @@ const strikeAtTicks = (ticks: number[], band: Band): BotDoc =>
   bot(
     ticks.map((t) => ({
       when: clk("eq", t),
-      do: { type: "attack", move: "strike", band },
+      do: { type: "attack", move: "gyaku-zuki", band },
     })),
     { type: "idle" },
   );
 
 // Strikes mid on every free tick (an attacker that gets parried, then sits in recovery).
-const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+const STRIKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
 // Parries with a fresh mid guard at `parryTick`, then throws a mid counter the next tick.
 const parryThenCounter = (parryTick: number): BotDoc =>
@@ -141,7 +141,7 @@ const parryThenCounter = (parryTick: number): BotDoc =>
       { when: clk("eq", parryTick), do: { type: "block", band: "mid" } },
       {
         when: clk("eq", parryTick + 1),
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     { type: "idle" },
@@ -154,7 +154,6 @@ const attackTicks = (events: FightEvent[], side: "a" | "b"): number[] =>
 // ─── lazy readers of the canonical numbers ────────────────────────────────────
 // Read on call (inside tests/builders), never at module load — so a malformed table
 // fails an assertion in a test rather than throwing at collection time.
-const strike = (): MoveSpec => CANONICAL_RULES.moves.strike;
 const lAct = (): number => CANONICAL_RULES.perception?.lAct ?? 0;
 
 const throwSpec = (): ThrowSpec => {
@@ -194,7 +193,7 @@ const withStartup = (startup: number): Rules =>
   deterministic({
     moves: {
       ...CANONICAL_RULES.moves,
-      strike: { ...strike(), startup },
+      "gyaku-zuki": { ...gyaku(), startup },
     },
   });
 
@@ -217,7 +216,7 @@ const sweepFight = (o: Partial<FightConfig> = {}): FightConfig =>
 
 // ─── C9 arsenal: lazy readers + bot builders for the four named techniques ──────
 // Each reader throws if its technique is not configured — so a malformed table fails an
-// assertion in a test, not at collection time (mirrors strike()/sweepSpec()).
+// assertion in a test, not at collection time (mirrors gyaku()/sweepSpec()).
 const armed =
   (id: "kizami-zuki" | "gyaku-zuki" | "mae-geri" | "mawashi-geri") =>
   (): MoveSpec => {
@@ -252,19 +251,19 @@ const comboAtTicks = (
 
 describe("CANONICAL_RULES — structural shape", () => {
   it("scores a clean strike as a single WKF yuko", () => {
-    expect(strike().score).toBe(1);
+    expect(gyaku().score).toBe(1);
   });
 
   it("starts fighters outside strike range (must close to hit)", () => {
-    expect(CANONICAL_RULES.startGap).toBeGreaterThan(strike().reach);
+    expect(CANONICAL_RULES.startGap).toBeGreaterThan(gyaku().reach);
   });
 
   it("makes the strike reactable but only just (startup = lAct + 1)", () => {
-    expect(strike().startup).toBe(lAct() + 1);
+    expect(gyaku().startup).toBe(lAct() + 1);
   });
 
   it("makes a whiff punishable (recovery ≥ lAct + startup)", () => {
-    expect(strike().recovery).toBeGreaterThanOrEqual(lAct() + strike().startup);
+    expect(gyaku().recovery).toBeGreaterThanOrEqual(lAct() + gyaku().startup);
   });
 
   it("ships a reaction-viable, jittered perception layer", () => {
@@ -319,8 +318,8 @@ describe("CANONICAL_RULES — the strike read-game (reactable iff startup ≥ lA
     ).scores.b;
 
   it("a band-reading guard blocks the canonical strike at either height (the read is load-bearing)", () => {
-    expect(counterEats("high", strike().startup)).toBe(0);
-    expect(counterEats("low", strike().startup)).toBe(0);
+    expect(counterEats("high", gyaku().startup)).toBe(0);
+    expect(counterEats("low", gyaku().startup)).toBe(0);
   });
 
   it("no single fixed-height guard could do this — a fixed mid guard eats the high strike", () => {
@@ -328,7 +327,7 @@ describe("CANONICAL_RULES — the strike read-game (reactable iff startup ≥ lA
 
     const scoreB = runFight(
       fight({
-        rules: withStartup(strike().startup),
+        rules: withStartup(gyaku().startup),
         botA: fixedMid,
         botB: strikeOnce("high"),
         maxTicks: 40,
@@ -345,8 +344,8 @@ describe("CANONICAL_RULES — the strike read-game (reactable iff startup ≥ lA
 
 describe("CANONICAL_RULES — a whiffed strike is punishable", () => {
   it("a high strike whiffed over a croucher is punished during its long recovery", () => {
-    const S = strike().startup; // active window opens at elapsed = startup
-    const A = strike().active;
+    const S = gyaku().startup; // active window opens at elapsed = startup
+    const A = gyaku().active;
 
     // Punisher: crouch through the attacker's active window (duck the high strike), then strike
     // into its recovery. recovery ≥ lAct + startup is what lets the reaction land before wake-up.
@@ -358,7 +357,7 @@ describe("CANONICAL_RULES — a whiffed strike is punishable", () => {
         },
         {
           when: clk("eq", S + A),
-          do: { type: "attack", move: "strike", band: "mid" },
+          do: { type: "attack", move: "gyaku-zuki", band: "mid" },
         },
       ],
       { type: "idle" },
@@ -401,7 +400,7 @@ describe("CANONICAL_RULES — parry deflects and punishes (C5)", () => {
   };
 
   it("a fresh matching guard parries — no score, and the attacker eats extra recovery", () => {
-    const firstActive = strike().startup; // the active window opens at elapsed = startup
+    const firstActive = gyaku().startup; // the active window opens at elapsed = startup
     const fresh = vsGuard(firstActive); // guard up on the active frame ⇒ age 1 ⇒ PARRY
     const stale = vsGuard(0); // held since tick 0 ⇒ stale ⇒ BLOCK
 
@@ -413,7 +412,7 @@ describe("CANONICAL_RULES — parry deflects and punishes (C5)", () => {
     // A guard raised at `from` has age (firstActive − from + 1) on the active frame. With
     // parryWindow 2: age 2 (from = firstActive−1) parries; age 3 (from = firstActive−2) blocks —
     // so the younger guard's attacker eats strictly more recovery only at exactly window 2.
-    const firstActive = strike().startup;
+    const firstActive = gyaku().startup;
 
     expect(vsGuard(firstActive - 1).secondStrike).toBeGreaterThan(
       vsGuard(firstActive - 2).secondStrike,
@@ -427,7 +426,7 @@ describe("CANONICAL_RULES — counter rewards the read (C5)", () => {
       fight({
         rules: deterministic(),
         botA: STRIKER, // strikes mid, gets parried, sits in extended recovery
-        botB: parryThenCounter(strike().startup), // parry on the active frame, counter next tick
+        botB: parryThenCounter(gyaku().startup), // parry on the active frame, counter next tick
         maxTicks: 40,
       }),
     );
@@ -436,34 +435,42 @@ describe("CANONICAL_RULES — counter rewards the read (C5)", () => {
   });
 });
 
-describe("CANONICAL_RULES — on-contact cancel (C6 rekka)", () => {
-  it("a connecting strike cancels into a follow-up — two hits in one exchange", () => {
-    // Opener at tick 0 connects on its active frame, opening the cancel window; a follow-up `attack`
-    // one tick into recovery cancels into a second strike that also lands ⇒ score 2.
-    const cancelTick = strike().startup + strike().active; // the first recovery frame
+describe("CANONICAL_RULES — on-contact cancel (C6 rekka, cross-move)", () => {
+  it("a connecting reverse cancels into a different technique — two hits in one exchange", () => {
+    // Opener gyaku-zuki at tick 0 connects on its active frame, opening the cancel window; a
+    // follow-up `attack` one tick into recovery cancels into mawashi-geri (a real canonical route)
+    // that also lands ⇒ score 3 (reverse 1 + roundhouse chudan 2). The retired `strike` had a
+    // self-rekka route; the canonical reverse cancels into the kicks instead.
+    const cancelTick = gyaku().startup + gyaku().active; // the first recovery frame
 
     const result = runFight(
       fight({
         rules: deterministic(),
-        botA: strikeAtTicks([0, cancelTick], "mid"),
+        botA: comboAtTicks([
+          { tick: 0, move: "gyaku-zuki", band: "mid" },
+          { tick: cancelTick, move: "mawashi-geri", band: "mid" },
+        ]),
         botB: IDLE,
         maxTicks: 40,
       }),
     );
 
-    expect(result.scores.a).toBe(2); // opener + cancelled follow-up
+    expect(result.scores.a).toBe(3); // opener + cancelled cross-move follow-up
   });
 
-  it("a whiffed strike never opens the cancel window (no feint)", () => {
+  it("a whiffed reverse never opens the cancel window (no feint)", () => {
     // The high opener whiffs over a croucher (never connects), so the cancel attempt is inert. The
     // croucher stands again from the cancel tick, so a wrongly-enabled cancel's follow-up WOULD
     // land — proving it does not.
-    const cancelTick = strike().startup + strike().active;
+    const cancelTick = gyaku().startup + gyaku().active;
 
     const result = runFight(
       fight({
         rules: deterministic(),
-        botA: strikeAtTicks([0, cancelTick], "high"),
+        botA: comboAtTicks([
+          { tick: 0, move: "gyaku-zuki", band: "high" },
+          { tick: cancelTick, move: "mawashi-geri", band: "mid" },
+        ]),
         botB: crouchUntil(cancelTick),
         maxTicks: 40,
       }),
@@ -495,15 +502,13 @@ describe("CANONICAL_RULES — defensive structural shape", () => {
   });
 
   it("ships a counter window wide enough for a startup-7 counter, worth one yuko", () => {
-    expect(CANONICAL_RULES.counterWindow ?? 0).toBeGreaterThan(
-      strike().startup,
-    );
+    expect(CANONICAL_RULES.counterWindow ?? 0).toBeGreaterThan(gyaku().startup);
     expect(CANONICAL_RULES.counterBonus).toBe(1);
   });
 
-  it("ships a cancel window and a self-rekka route", () => {
+  it("ships a cancel window and a cross-move cancel route", () => {
     expect(CANONICAL_RULES.cancelWindow ?? 0).toBeGreaterThan(0);
-    expect(strike().cancelInto).toContain("strike");
+    expect(gyaku().cancelInto).toContain("mawashi-geri");
   });
 });
 
@@ -556,12 +561,12 @@ describe("CANONICAL_RULES — throw structural shape", () => {
 
   it("makes a whiffed throw punishable (recovery ≥ lAct + strike startup)", () => {
     expect(throwSpec().recovery).toBeGreaterThanOrEqual(
-      lAct() + strike().startup,
+      lAct() + gyaku().startup,
     );
   });
 
   it("is shorter-range than the strike (a grab must be close)", () => {
-    expect(throwSpec().reach).toBeLessThan(strike().reach);
+    expect(throwSpec().reach).toBeLessThan(gyaku().reach);
   });
 
   it("knocks the defender down for a real duration", () => {
@@ -678,18 +683,18 @@ describe("CANONICAL_RULES — sweep & okizeme structural shape", () => {
   });
 
   it("cancels into the strike (the hit-confirm finish route)", () => {
-    expect(sweepSpec().cancelInto).toContain("strike");
+    expect(sweepSpec().cancelInto).toContain("gyaku-zuki");
   });
 
   it("completes the reach hierarchy throw < sweep < strike", () => {
     expect(throwSpec().reach).toBeLessThan(sweepSpec().reach);
-    expect(sweepSpec().reach).toBeLessThan(strike().reach);
+    expect(sweepSpec().reach).toBeLessThan(gyaku().reach);
   });
 
   it("keeps the sweep reactable (startup = lAct+1) and its whiff punishable", () => {
     expect(sweepSpec().startup).toBe(lAct() + 1);
     expect(sweepSpec().recovery).toBeGreaterThanOrEqual(
-      lAct() + strike().startup,
+      lAct() + gyaku().startup,
     );
   });
 
@@ -765,7 +770,7 @@ describe("CANONICAL_RULES — sweep → cancel → okizeme finish (3, hit-confir
             { when: clk("eq", 0), do: { type: "sweep" } },
             {
               when: clk("eq", strikeTick),
-              do: { type: "attack", move: "strike", band: "mid" },
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
             },
           ],
           { type: "idle" },
@@ -872,7 +877,7 @@ const PACED_POKER: BotDoc = bot(
           { op: "const", value: 100 },
         ],
       },
-      do: { type: "attack", move: "strike", band: "mid" },
+      do: { type: "attack", move: "gyaku-zuki", band: "mid" },
     },
   ],
   { type: "idle" },
@@ -915,12 +920,12 @@ describe("CANONICAL_RULES — stamina structural shape", () => {
     expect(CANONICAL_RULES.stamina?.max).toBe(100);
     expect(CANONICAL_RULES.stamina?.regen).toBe(10);
     expect(CANONICAL_RULES.stamina?.regen ?? 0).toBeLessThan(
-      strike().staminaCost ?? 0,
+      gyaku().staminaCost ?? 0,
     );
   });
 
   it("prices a basic strike below the specials (basic < special)", () => {
-    const basic = strike().staminaCost ?? 0;
+    const basic = gyaku().staminaCost ?? 0;
 
     expect(basic).toBe(20);
     expect(basic).toBeLessThan(throwSpec().staminaCost ?? 0);
@@ -940,7 +945,7 @@ describe("CANONICAL_RULES — stamina structural shape", () => {
     const gas = CANONICAL_RULES.stamina?.gasThreshold ?? 0;
 
     expect(gas).toBe(30);
-    expect(strike().staminaCost ?? 0).toBeLessThanOrEqual(gas); // a gassed fighter can still afford its strike
+    expect(gyaku().staminaCost ?? 0).toBeLessThanOrEqual(gas); // a gassed fighter can still afford its strike
     expect(gas).toBeLessThan(throwSpec().staminaCost ?? 0); // …but not its throw
     expect(gas).toBeLessThan(sweepSpec().staminaCost ?? 0); // …nor its sweep
   });
@@ -959,7 +964,7 @@ describe("CANONICAL_RULES — the guard chip bleeds the defender (parry > block)
   // stamina drop across that contact tick is exactly the chip drawn from it (a guarding fighter
   // never regens, so the drop is the chip alone).
   const defenderDropOnContact = (defender: BotDoc): number => {
-    const t = strike().startup; // the first active/contact frame
+    const t = gyaku().startup; // the first active/contact frame
 
     const result = runFight(
       fight({
@@ -975,7 +980,7 @@ describe("CANONICAL_RULES — the guard chip bleeds the defender (parry > block)
 
   it("a block bleeds the defender, and a parry bleeds strictly more", () => {
     const blockDrop = defenderDropOnContact(guardFrom(0, "mid")); // stale ⇒ block
-    const parryDrop = defenderDropOnContact(guardFrom(strike().startup, "mid")); // fresh ⇒ parry
+    const parryDrop = defenderDropOnContact(guardFrom(gyaku().startup, "mid")); // fresh ⇒ parry
 
     expect(blockDrop).toBeGreaterThan(0); // a block draws blockChip on contact
     expect(parryDrop).toBeGreaterThan(blockDrop); // a parry draws strictly more (parryChip > blockChip)
@@ -1017,7 +1022,7 @@ const DRAIN_THEN_THROW: BotDoc = bot(
       do: { type: "throw" },
     },
   ],
-  { type: "attack", move: "strike", band: "mid" },
+  { type: "attack", move: "gyaku-zuki", band: "mid" },
 );
 
 describe("CANONICAL_RULES — the gas line locks out specials (specialCost > gasThreshold ≥ basicCost)", () => {
@@ -1060,7 +1065,8 @@ describe("CANONICAL_RULES — the gas line locks out specials (specialCost > gas
 // C9 — the multi-move "real karate" arsenal wired into CANONICAL_RULES.
 // Four named WKF techniques with genuine reach / speed / score / cost trade-offs and
 // cross-move cancel routes, proven by RELATIONSHIP tests (the design inequalities), not
-// literals in isolation. The abstract `strike` stays alongside (retired in S7.3).
+// literals in isolation. The abstract `strike` has been retired (S7.3) — the four named
+// techniques are the whole roster.
 // ════════════════════════════════════════════════════════════════════════════
 describe("CANONICAL_RULES — the C9 arsenal: structural shape", () => {
   it("orders reach throw < sweep < jab < reverse < front < roundhouse (the spacing hierarchy)", () => {
