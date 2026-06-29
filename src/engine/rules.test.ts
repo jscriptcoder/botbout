@@ -893,6 +893,19 @@ describe("CANONICAL_RULES — stamina structural shape", () => {
     expect(parry).toBe(15);
     expect(parry).toBeGreaterThan(block);
   });
+
+  it("sets the gas line between basic and special (basicCost ≤ gasThreshold < specialCost)", () => {
+    const gas = CANONICAL_RULES.stamina?.gasThreshold ?? 0;
+
+    expect(gas).toBe(30);
+    expect(strike().staminaCost ?? 0).toBeLessThanOrEqual(gas); // a gassed fighter can still afford its strike
+    expect(gas).toBeLessThan(throwSpec().staminaCost ?? 0); // …but not its throw
+    expect(gas).toBeLessThan(sweepSpec().staminaCost ?? 0); // …nor its sweep
+  });
+
+  it("slows a gassed commit's recovery by a flat penalty", () => {
+    expect(CANONICAL_RULES.stamina?.gasRecoveryPenalty).toBe(6);
+  });
 });
 
 // ─── Canonical stamina, Slice 2: the guard chip bleeds the defender (parry > block) ──
@@ -940,5 +953,63 @@ describe("CANONICAL_RULES — the guard chip bleeds the defender (parry > block)
     );
 
     expect(result.events.every((e) => e.b.stamina === 100)).toBe(true);
+  });
+});
+
+// ─── Canonical stamina, Slice 3: the gas line locks out specials (closes C10) ──
+
+// Strikes (the default) to drain itself, but the moment it reads itself GASSED switches to
+// a THROW — which, in the gas band, is unaffordable (special 40 > gasThreshold 30) and
+// degrades to idle. So it can never drain past the band: the special is locked out while the
+// basic strike would keep committing. A pure read of the live self.gassed tell.
+const DRAIN_THEN_THROW: BotDoc = bot(
+  [
+    {
+      when: {
+        op: "eq",
+        args: [
+          { op: "field", path: "self.gassed" },
+          { op: "const", value: 1 },
+        ],
+      },
+      do: { type: "throw" },
+    },
+  ],
+  { type: "attack", move: "strike", band: "mid" },
+);
+
+describe("CANONICAL_RULES — the gas line locks out specials (specialCost > gasThreshold ≥ basicCost)", () => {
+  it("a gassed fighter still strikes to empty, but its special locks out at the gas band", () => {
+    // Same canonical table, out of range (both whiff ⇒ no score noise). The always-striker keeps
+    // committing its BASIC poke (20 ≤ stamina at the band) and floors the meter to exactly 0; the
+    // drain-then-throw bot can only answer the gas band with its SPECIAL (40 > the band), which
+    // degrades to idle — so it stalls at the band and never empties. The lockout is emergent: it
+    // rides Story 1's affordability gate the moment the canonical numbers satisfy the inequality.
+    const staminaSeries = (botA: BotDoc): number[] =>
+      runFight(fight({ botA, botB: IDLE, maxTicks: 150 })).events.map(
+        (e) => e.a.stamina,
+      );
+
+    expect(Math.min(...staminaSeries(STRIKER))).toBe(0); // basic commits even gassed ⇒ floors
+    expect(Math.min(...staminaSeries(DRAIN_THEN_THROW))).toBeGreaterThan(0); // special locked out ⇒ stalls at the band
+  });
+
+  it("a gassed strike recovers slower than a fresh one by exactly the gas penalty", () => {
+    // A re-striker whiffs in place; each strike spends 20 (100 → 80 → 60 → 40 → 20 → 0). The 4th
+    // strike (commit at 40, post-spend 20 ≤ gasThreshold) is the first committed GASSED, so its
+    // recovery eats the flat penalty — widening the gap before the 5th strike. The recovery of the
+    // 3rd strike (post-spend 40, fresh) sets the baseline gap. The DIFFERENCE is the penalty alone.
+    const ticks = attackTicks(
+      runFight(
+        fight({ botA: restrikeWhenFree("mid"), botB: IDLE, maxTicks: 130 }),
+      ).events,
+      "a",
+    );
+
+    const freshGap = ticks[3] - ticks[2]; // gap set by the 3rd (fresh) strike's recovery
+    const gassedGap = ticks[4] - ticks[3]; // gap set by the 4th (gassed) strike's recovery
+
+    expect(gassedGap).toBeGreaterThan(freshGap); // a gassed commit recovers slower
+    expect(gassedGap - freshGap).toBe(6); // …by exactly gasRecoveryPenalty
   });
 });

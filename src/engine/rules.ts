@@ -139,6 +139,18 @@ export const CANONICAL_RULES: Rules = {
   //     a matching guard that ABSORBS a strike bleeds the DEFENDER. A held block draws blockChip
   //     per contact tick; a fresh deflecting parry draws the larger parryChip once. Non-lethal vs
   //     the 100 reserve (a parried defender keeps ≥ a strike's worth, so it can still counter).
+  //   • gasThreshold 30 / gasRecoveryPenalty 6 — the gas line, sitting between basic (20) and
+  //     special (40): basicCost 20 ≤ 30 < specialCost 40. A fighter at/below 30 is GASSED — its
+  //     throw / sweep degrade to idle (unaffordable) while its strike still commits (the EMERGENT
+  //     special-lockout, riding the affordability gate), and a move it commits while gassed eats a
+  //     flat +6 recovery. With gasThreshold wired, self.gassed / opponent.gassed go live here too.
   // Absent ⇒ no meter simulated ⇒ byte-identical to the pre-stamina engine.
-  stamina: { max: 100, regen: 10, blockChip: 5, parryChip: 15 },
+  stamina: {
+    max: 100,
+    regen: 10,
+    blockChip: 5,
+    parryChip: 15,
+    gasThreshold: 30,
+    gasRecoveryPenalty: 6,
+  },
 };
