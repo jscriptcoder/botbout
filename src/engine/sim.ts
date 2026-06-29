@@ -561,11 +561,15 @@ const computeStrike = (
 
   // HIT — base score plus a counter bonus if this attacker's counter window is open. A hit
   // also opens the on-contact cancel window (C6); absent config ⇒ 0 ⇒ no cancel.
+  // C9: band-dependent score — `scoreByBand[band]` overrides the flat `score`, missing ⇒ falls
+  // back to it (absent `scoreByBand` ⇒ flat `score` everywhere ⇒ byte-identical). The okizeme
+  // finish above stays band-agnostic and is deliberately NOT band-resolved.
+  const baseScore = spec.scoreByBand?.[st.band] ?? spec.score;
   const bonus = att.counterRemaining > 0 ? (rules.counterBonus ?? 0) : 0;
 
   return {
     result: "hit",
-    points: spec.score + bonus,
+    points: baseScore + bonus,
     cancel: rules.cancelWindow ?? 0,
     knockdown: spec.knockdown ?? false,
     finish: rules.finishWindow ?? 0, // the finish window to grant if this hit knocks down (C8)

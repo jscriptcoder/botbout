@@ -279,6 +279,24 @@ describe("validate — bot intake gate", () => {
       expect(validate(doc).ok).toBe(true);
     });
 
+    it("accepts an attack with the mawashi-geri (roundhouse) move id", () => {
+      const doc = getMockBotDoc({
+        default: { type: "attack", move: "mawashi-geri", band: "high" },
+      });
+
+      expect(validate(doc).ok).toBe(true);
+    });
+
+    it("accepts a mawashi-geri attack at any syntactically valid band (the runtime gate, not the validator, decides legality)", () => {
+      // `low` is out of the roundhouse's legal bands, but band-legality is a RUNTIME concern —
+      // the validator only checks the move id + band are well-formed. It must still pass.
+      const doc = getMockBotDoc({
+        default: { type: "attack", move: "mawashi-geri", band: "low" },
+      });
+
+      expect(validate(doc).ok).toBe(true);
+    });
+
     it("rejects a block with an unknown band", () => {
       const doc = {
         ...getMockBotDoc(),

@@ -124,6 +124,7 @@ const MOVES: ReadonlySet<string> = new Set<MoveId>([
   "kizami-zuki",
   "gyaku-zuki",
   "mae-geri",
+  "mawashi-geri",
 ]);
 
 const BANDS: ReadonlySet<string> = new Set<Band>(["high", "mid", "low"]);

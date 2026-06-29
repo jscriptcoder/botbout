@@ -26,24 +26,33 @@ durable learnings are folded in below.)
   the validator-accept tests (the `MOVES` TCB) + `tsc` (the union + `Rules.moves` key); the
   `runFight` tests are green-from-start (esbuild strips types) and stand as the behavior spec
   + end-to-end mutation coverage. Scoped Stryker on the `MOVES` allowlist: 100% (4/4).
-- ▶ **NEXT — Slice 4 — `mae-geri` (front kick).** Drafted → `plans/c9-mae-geri.md` (branch
-  `feat/c9-mae-geri-front-kick`). First **single-band** move (`bands:["mid"]` ⇒ the gate now
-  rejects **both** high and low) + first **2-point (*waza-ari*)** strike (`score 2` — flows
-  through `computeStrike`'s `spec.score`, no cap, zero code), `reach > reverse`. Mechanical via
-  the per-technique pattern. Run: `find-gaps` (optional — shape is settled) → TDD.
+- ✅ **Slice 4 — `mae-geri` front kick** — MERGED (PR #71). `MoveId += "mae-geri"`; `MOVES` +
+  optional `Rules.moves["mae-geri"]`. First **single-band** move (`bands:["mid"]` ⇒ the gate
+  rejects **both** high and low) + first **2-point (*waza-ari*)** strike (`score 2` flows
+  through `computeStrike`'s `spec.score` — no cap, zero resolver code), `reach > reverse`.
+  Mechanical (no `sim.ts` change). Scoped Stryker on `MOVES`: 100% (5/5).
+- ▶ **NEXT — Slice 5 — `mawashi-geri` (roundhouse) + band-dependent score.** Drafted →
+  `plans/c9-mawashi-geri.md` (branch `feat/c9-mawashi-geri-roundhouse`). The **first
+  non-mechanical** arsenal slice: adds `MoveSpec.scoreByBand?: Partial<Record<Band, number>>`
+  + the **one** new resolver line in `computeStrike` (`baseScore = spec.scoreByBand?.[st.band]
+  ?? spec.score`). Roundhouse: longest reach, slowest, `high·mid`, jodan 3 / chudan 2. The
+  okizeme finish stays band-agnostic (NOT band-resolved). Run: TDD (RED here is genuine — a
+  high roundhouse scoring 3 needs the resolver change).
 
-**Per-technique pattern (established S2 — S3/S4 are mechanical):** to add a technique:
+**Per-technique pattern (established S2 — S3/S4 were purely mechanical):** to add a technique:
 (1) extend the `MoveId` union (`types.ts`); (2) add it to the `MOVES` allowlist
-(`dsl.ts:121` — the **TCB**, keep at 100% mutation); (3) add the optional
+(`dsl.ts` — the **TCB**, keep at 100% mutation); (3) add the optional
 `"<id>"?: MoveSpec` key to `Rules.moves` (`types.ts`); (4) configure it in a **test
 fixture** (NOT `CANONICAL_RULES` — canonical wiring is Slice 7); (5) `runFight` behavior
 tests (in-reach scores · out-of-band fizzles via the Slice-1 gate · beyond-reach whiffs ·
-unconfigured ⇒ inert). The `sim.ts` resolver already handles all of this generically —
-**no resolver change** for S3/S4. New mechanics remain: **band-dependent score** (S5,
-additive `scoreByBand?`) and **cross-move cancels** (S6). `dsl.ts` reader/validator at
-100%; `sim.ts` changed-line ~100% (one documented equivalent on the C6 `cancelInto ?? []`
-fallback at `sim.ts`). Validator scope: it accepts any valid `move`+`band`; the runtime
-gate decides legality (no static out-of-band reject).
+unconfigured ⇒ inert). For S2–S4 the `sim.ts` resolver handled all of this generically —
+**no resolver change**. **S5 (`mawashi-geri`) breaks the pure-mechanical streak**: it adds
+band-dependent score (additive `scoreByBand?` + the one `computeStrike` `baseScore` line) —
+the first genuine RED `runFight` test since the arsenal began. **Cross-move cancels** remain
+(S6 — `cancelInto` routes between distinct moves). `dsl.ts` reader/validator at 100%;
+`sim.ts` changed-line 100% (one documented equivalent on the C6 `cancelInto ?? []` fallback).
+Validator scope: it accepts any valid `move`+`band`; the runtime gate decides legality (no
+static out-of-band reject). `scoreByBand` is trusted Rules data ⇒ NOT validator-checked.
 
 ## Parent
 
@@ -89,7 +98,7 @@ slice. Demonstrable on canonical: a bot's `kizami-zuki` scores at `mid`, fizzles
 | 1 ✅ | **Out-of-band attacks fizzle (band-legality gate)** + multi-move schema [MERGED #67] | Height becomes a per-move constraint (you can't strike a band a move can't reach); the foundation the rest rests on | `MoveSpec.bands: Band[]`; `MoveId` becomes a union; `Rules.moves` record-keyed (sweep stays optional); `MOVES` allowlist = the roster; intake degrades an out-of-band `attack` → `idle` (no startup/spend/score) | Telemetry emission on fizzle (telemetry object NOT YET BUILT); per-move score>1; band-dependent score | Given a move with `bands:["high","mid"]`, When a bot attacks `low`, Then it is `idle` (no commitment, no stamina spend). Within-band attack resolves exactly as today (byte-identical) | Shippable; inert on CANONICAL until a move restricts bands |
 | 2 ✅ | **Bot can throw the jab (`kizami-zuki`)** [MERGED #68] | First real technique: a fast, cheap, short-range high/mid poke — a distinct opener | `kizami-zuki` MoveSpec (short reach < strike, `["high","mid"]`, score 1, low staminaCost, own startup/active/recovery); added to roster + allowlist + a test rules fixture; demonstrates slice 1's gate on a real move | Reach hierarchy vs other moves; canonical wiring of jab numbers | Given canonical+jab fixture, When the bot lands `kizami-zuki` at `mid` in range, Then +1 point; When it attacks `low`, Then `idle`; When out of (short) reach, Then whiff | Shippable; jab present alongside `strike` |
 | 3 ✅ | **Bot can throw the reverse punch (`gyaku-zuki`)** [MERGED #70] | A longer-range, more-committed second opener → a real reach/speed spacing choice between two punches | `gyaku-zuki` MoveSpec (reach > jab, slower/more recovery, `["high","mid"]`, score 1, higher staminaCost); establishes the **reach hierarchy** jab < reverse | The kicks; band-dependent score | Given jab reach < reverse reach, When the bot is at a gap only the reverse reaches, Then jab whiffs and reverse hits. Reverse's longer recovery is whiff-punishable per the master inequality | Shippable |
-| 4 | **Bot can throw the front kick (`mae-geri`)** | First single-band move + first 2-point (waza-ari) strike; deeper reach than punches | `mae-geri` MoveSpec (reach > punches, `["mid"]` only, score 2, kick-tier staminaCost); the gate now bites at **both** high and low | Band-dependent score; canonical re-tune | Given `mae-geri bands:["mid"]`, When attacked `high` or `low`, Then `idle`; When landed `mid` in range, Then +2 | Shippable |
+| 4 ✅ | **Bot can throw the front kick (`mae-geri`)** [MERGED #71] | First single-band move + first 2-point (waza-ari) strike; deeper reach than punches | `mae-geri` MoveSpec (reach > punches, `["mid"]` only, score 2, kick-tier staminaCost); the gate now bites at **both** high and low | Band-dependent score; canonical re-tune | Given `mae-geri bands:["mid"]`, When attacked `high` or `low`, Then `idle`; When landed `mid` in range, Then +2 | Shippable |
 | 5 | **Bot can throw the roundhouse (`mawashi-geri`) for band-dependent points** | The risk/reward apex: longest reach, slowest, costliest; **3 jodan / 2 chudan** — aiming high is worth ippon but easier to block / whiffs a croucher | `mawashi-geri` MoveSpec (longest reach, slowest, highest staminaCost, `["high","mid"]`); introduces **band-dependent score** (the only new mechanic here — see parking lot for shape) | Cross-move cancels; canonical re-tune | Given roundhouse, When landed `high`, Then +3; When landed `mid`, Then +2; When attacked `low`, Then `idle`. A high roundhouse is blocked by a `high` guard / whiffs a croucher | Shippable |
 | 6 | **Bot can chain techniques via cross-move cancels** | Combos: a hit-confirmed technique cancels into a *different* one (the rekka routes) — within-exchange escalation across the roster | Canonical `cancelInto` routes between distinct moves (e.g. jab→reverse→roundhouse); a `runFight` proof that cross-move cancel resolves and preserves the **no-feint / connect-required** property (whiff/parry never opens it) | The exact tuned route table (canonical-content, lands here or in slice 7) | Given a jab that connects with jab.cancelInto⊇[reverse], When the bot returns `gyaku-zuki` within `cancelWindow`, Then recovery is interrupted into it; When the jab whiffed, Then the cancel is ignored | Shippable |
 | 7 | **Platform fights the arsenal: canonical wiring + stamina re-tune + retire `strike`** | The platform (`npm run fight`, future API/viewer) fights real karate on the 4-strike roster; the abstract `strike` scaffold is gone | Wire all 4 techniques into `CANONICAL_RULES` (reaches `throw<sweep<jab<reverse<front<roundhouse` around the locked anchors; per-move staminaCost cheap-jab→expensive-roundhouse); re-prove the gas band `basic ≤ gasThreshold < special` and the master inequalities by relationship tests; **remove `strike`** from `MoveId`/`moves`/allowlist; migrate engine `getMockRules`/fixtures off `strike` | Match structure, air-actions, telemetry (separate roadmap items) | Given CANONICAL_RULES, the relationship tests hold (every committed startup ≥ lAct+1; reach hierarchy; gas band); `strike` is no longer a valid `MoveId`; full suite green | Shippable — C9 complete |
@@ -142,13 +151,11 @@ slice. Demonstrable on canonical: a bot's `kizami-zuki` scores at `mid`, fizzles
 
 ## Next Step
 
-**Slice 4 — `mae-geri` (front kick).** Drafted → `plans/c9-mae-geri.md` (branch
-`feat/c9-mae-geri-front-kick`). Run the per-slice loop: `tdd` + `testing` +
-`mutation-testing` + `refactoring` (RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR) → present → PR.
-Use the **per-technique pattern** in the Status section above — S4 is mechanical: first
-**single-band** move (`bands:["mid"]` ⇒ gate rejects high AND low) + first **2-point** strike
-(`score 2`, flows through `spec.score`, no resolver change), `reach > reverse`. Then S5
-(`mawashi-geri` + band-dependent `scoreByBand?` — the one genuinely new mechanic left),
-S6 (cross-move cancels), S7 (canonical wiring + retire `strike` + docs reconciliation). The
-session-resolved defaults (Japanese ids, additive `scoreByBand?`, runtime gate, per-slice
-find-gaps) hold throughout.
+**Slice 5 — `mawashi-geri` (roundhouse) + band-dependent score.** Drafted →
+`plans/c9-mawashi-geri.md` (branch `feat/c9-mawashi-geri-roundhouse`). Run the per-slice loop:
+`tdd` + `testing` + `mutation-testing` + `refactoring` (RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR)
+→ present → PR. **First non-mechanical slice**: adds `MoveSpec.scoreByBand?` + the one
+`computeStrike` `baseScore` line (jodan 3 / chudan 2; okizeme finish stays band-agnostic).
+Then S6 (cross-move cancels — `cancelInto` routes between distinct moves), S7 (canonical wiring
++ retire `strike` + docs reconciliation). The session-resolved defaults (Japanese ids, additive
+`scoreByBand?`, runtime gate, per-slice find-gaps) hold throughout.

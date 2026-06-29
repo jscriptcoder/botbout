@@ -13,8 +13,14 @@ export type Band = "high" | "mid" | "low";
 // `strike` stays as scaffolding (retired into the named roster in a later slice); the
 // WKF roster is added one technique at a time. `kizami-zuki` is the jab (first technique);
 // `gyaku-zuki` is the reverse punch (longer reach, more committed — the reach hierarchy);
-// `mae-geri` is the front kick (mid-only single-band, 2-point waza-ari, out-reaches the punches).
-export type MoveId = "strike" | "kizami-zuki" | "gyaku-zuki" | "mae-geri";
+// `mae-geri` is the front kick (mid-only single-band, 2-point waza-ari, out-reaches the punches);
+// `mawashi-geri` is the roundhouse (longest reach, slowest, band-dependent score — jodan 3 / chudan 2).
+export type MoveId =
+  | "strike"
+  | "kizami-zuki"
+  | "gyaku-zuki"
+  | "mae-geri"
+  | "mawashi-geri";
 
 // ─── Action grammar — a bot returns exactly ONE per tick ─────────────────────
 // `dir` is RELATIVE to facing: +1 = toward opponent, -1 = away, 0 = hold.
@@ -80,6 +86,13 @@ export type MoveSpec = {
   recovery: number; // ticks after the active window, still committed
   score: number; // WKF points awarded on hit (0–3)
   reach: number; // horizontal reach in sub-units
+  // Band-dependent score (C9 — `mawashi-geri`: jodan ippon 3 / chudan waza-ari 2). When set,
+  // a HIT awards `scoreByBand[band] ?? score` — the per-band entry OVERRIDES the flat `score`,
+  // a missing band FALLS BACK to it (a `0` entry is respected via `??`). The okizeme FINISH is
+  // band-agnostic (prone target) ⇒ it keeps the flat `score`/`finishScore`, NOT this. Absent ⇒
+  // the flat `score` at every band ⇒ byte-identical to the pre-scoreByBand engine. Trusted
+  // Rules data, not bot-validated (like `bands`).
+  scoreByBand?: Partial<Record<Band, number>>;
   // The height bands this move may legally strike (C9 arsenal). An `attack` whose
   // resolved band is NOT in this list never starts — it degrades to `idle` at intake
   // (no startup, no stamina spend, no score; the §P7 band-legality gate). Semantics:
@@ -133,6 +146,7 @@ export type Rules = {
     "kizami-zuki"?: MoveSpec;
     "gyaku-zuki"?: MoveSpec;
     "mae-geri"?: MoveSpec;
+    "mawashi-geri"?: MoveSpec;
   };
   // Vertical axis (C4). Both absent ⇒ inert (a `jump` launches no arc) ⇒
   // byte-identical to the pre-vertical engine. `jumpImpulse` is the initial

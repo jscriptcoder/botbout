@@ -3883,6 +3883,101 @@ describe("runFight — mae-geri (the front kick: a single-band mid waza-ari tech
   });
 });
 
+describe("runFight — mawashi-geri (the roundhouse: band-dependent score, high 3 / mid 2)", () => {
+  // A ruleset configuring the roundhouse alongside the baseline strike. The roundhouse is the
+  // risk/reward apex: longest reach (320000), slowest (startup 6 / recovery 16), high·mid, and
+  // it introduces BAND-DEPENDENT SCORE — `scoreByBand:{high:3}` overrides the flat `score:2` at
+  // high (jodan ippon), while mid FALLS BACK to the flat 2 (chudan waza-ari).
+  const roundhouseRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within roundhouse reach (320000)
+      moves: {
+        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "mawashi-geri": {
+          startup: 6,
+          active: 2,
+          recovery: 16,
+          score: 2,
+          reach: 320000,
+          bands: ["high", "mid"],
+          scoreByBand: { high: 3 },
+        },
+      },
+      ...o,
+    });
+
+  const roundhouseAt = (band: Band): BotDoc =>
+    bot([], { type: "attack", move: "mawashi-geri", band });
+
+  it("scores 3 (jodan ippon) when landed high — the per-band score override", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: roundhouseRules(),
+        botA: roundhouseAt("high"),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(3);
+  });
+
+  it("scores 2 (chudan waza-ari) when landed mid — the flat-score fallback (no mid override)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: roundhouseRules(),
+        botA: roundhouseAt("mid"),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(2);
+  });
+
+  it("fizzles to idle at low — the roundhouse strikes only high·mid (the band gate)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: roundhouseRules(),
+        botA: roundhouseAt("low"),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("whiffs beyond its (longest) reach — at a gap even the roundhouse cannot close", () => {
+    // startGap 360000: beyond roundhouse reach (320000), still within the ring (width 600000).
+    const result = runFight(
+      getMockConfig({
+        rules: roundhouseRules({ startGap: 360000 }),
+        botA: roundhouseAt("high"),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("is inert when the move id is unconfigured in this Rules (degrades to idle, like sweep/throw)", () => {
+    // A strike-only ruleset (no `mawashi-geri` key); the attack references an unconfigured move
+    // ⇒ no spec ⇒ idle ⇒ no score (the `spec !== undefined` guard).
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 200000 }),
+        botA: roundhouseAt("high"),
+        botB: IDLE,
+        maxTicks: 14,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+});
+
 describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
   const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
   const THROWER = bot([], { type: "throw" });
