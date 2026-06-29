@@ -508,8 +508,8 @@ win). **Why:** single source of truth the DSL reads via `rule`/`field` ops and t
 sim resolves against. **Alternative:** keep score and impact in separate tables —
 more indirection.
 
-**✓ RESOLVED → the arsenal capability (C9; grill 2026-06-28).** The single abstract
-`strike` becomes a **flat `MoveId` union** of named techniques — `Rules.moves` is a
+**✓ DONE → the arsenal capability (C9; shipped 2026-06-29).** The single abstract
+`strike` is now **RETIRED** into a **flat `MoveId` union** of named techniques — `Rules.moves` is a
 record of `MoveSpec` keyed by id (sweep stays an optional concrete key); **no
 `family` in the engine** (families are a docs/telemetry grouping only). Each move
 declares its legal **`bands: Band[]`** (an out-of-band `attack` fails → `idle` +
@@ -523,12 +523,15 @@ canonical-table content). **Target roster (the 4-strike WKF core):** `kizami-zuk
 committed/mid-reach, high·mid, 1), `mae-geri` (front kick — mid-reach, mid, 2),
 `mawashi-geri` (roundhouse — long/slow/expensive, high·mid, 3 _jodan_ / 2 _chudan_)
 — plus the existing `sweep` + `throw`. The reach hierarchy extends jab < reverse
-punch < front kick < roundhouse (slotted around the locked `strike` reach), and each
-move's `staminaCost` (C10) spreads cheap jab → expensive roundhouse. **Planning
-slices this one move at a time, preserving green tests** (the abstract `strike` is
-retired into the named techniques additively). **Sequencing: C10 stamina ships
-BEFORE C9 arsenal** — but `staminaCost` on `MoveSpec`/`ThrowSpec` is
-forward-compatible with this roster, so nothing blocks stamina-first.
+punch < front kick < roundhouse. **As shipped in `CANONICAL_RULES`:** reaches
+`throw 120k < sweep 180k < jab 210k < reverse 240k < front 270k < roundhouse 300k`;
+startups 7/7/9/11 (all ≥ `lAct+1`, reactable); per-move `staminaCost` 15/20 (punches,
+≤ `gasThreshold 30`) < 35/45 (kicks, special) — so a gassed fighter keeps its punches
+but loses its kicks; the cancel web is jab→reverse→{front|roundhouse}, kick→reverse, and
+the sweep→reverse okizeme finisher. **It shipped additively across 7 slices** (C9 S1–S7,
+PRs #67–#76), one technique at a time, preserving green tests — and the abstract `strike`
+was retired in the final slice (S7.3) once all four techniques were canonical. (C10 stamina
+shipped first; `staminaCost` on `MoveSpec`/`ThrowSpec` was forward-compatible, as planned.)
 
 ### P8. Platform / meta loop — ✓ RESOLVED
 

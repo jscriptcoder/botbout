@@ -136,7 +136,7 @@ describe("validate — bot intake gate", () => {
                   { op: "const", value: 100 },
                 ],
               },
-              do: { type: "attack", move: "strike", band: "mid" },
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
             },
           ],
         }),
@@ -220,6 +220,17 @@ describe("validate — bot intake gate", () => {
       const doc = {
         ...getMockBotDoc(),
         default: { type: "attack", move: "fireball", band: "mid" },
+      };
+
+      expect(validate(doc).ok).toBe(false);
+    });
+
+    it("rejects an attack with the now-retired `strike` move id", () => {
+      // C9 S7.3: `strike` is gone from the MOVES allowlist (the TCB) — a bot still naming it is
+      // rejected, exactly like any other unknown move id.
+      const doc = {
+        ...getMockBotDoc(),
+        default: { type: "attack", move: "strike", band: "mid" },
       };
 
       expect(validate(doc).ok).toBe(false);
@@ -361,7 +372,7 @@ describe("validate — bot intake gate", () => {
                   { op: "const", value: 1 },
                 ],
               },
-              do: { type: "attack", move: "strike", band: "low" },
+              do: { type: "attack", move: "gyaku-zuki", band: "low" },
             },
             {
               when: {
@@ -455,7 +466,7 @@ describe("validate — bot intake gate", () => {
                   },
                 ],
               },
-              do: { type: "attack", move: "strike", band: "mid" },
+              do: { type: "attack", move: "gyaku-zuki", band: "mid" },
             },
           ],
         }),
@@ -768,7 +779,7 @@ describe("validate — bot intake gate", () => {
       expect(
         validate({
           ...getMockBotDoc(),
-          default: { type: "attack", move: "strike", band: "behind" },
+          default: { type: "attack", move: "gyaku-zuki", band: "behind" },
         }).ok,
       ).toBe(false);
     });

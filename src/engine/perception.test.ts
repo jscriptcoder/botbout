@@ -41,7 +41,13 @@ const getMockRules = (o: Partial<Rules> = {}): Rules => ({
   ring: { width: 600000 },
   startGap: 200000,
   moves: {
-    strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+    "gyaku-zuki": {
+      startup: 4,
+      active: 2,
+      recovery: 6,
+      score: 1,
+      reach: 250000,
+    },
   },
   ...o,
 });
@@ -101,7 +107,7 @@ const ATTACK_ONCE: BotDoc = {
         ],
       },
       set: [{ cell: "fired", to: { op: "const", value: 1 } }],
-      do: { type: "attack", move: "strike", band: "mid" },
+      do: { type: "attack", move: "gyaku-zuki", band: "mid" },
     },
   ],
   default: { type: "idle" },
@@ -138,7 +144,13 @@ const inequalityConfig = (
     rules: getMockRules({
       perception: { lPos, lAct },
       moves: {
-        strike: { startup, active: 1, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup,
+          active: 1,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
       },
     }),
     maxTicks: 30,
@@ -183,7 +195,7 @@ const strikeWhen = (
             { op: "const", value: threshold },
           ],
         },
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     { type: "idle" },
@@ -302,7 +314,13 @@ const jitterConfig = (
     rules: getMockRules({
       perception: { lPos: 0, lAct, jitter },
       moves: {
-        strike: { startup, active: 1, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup,
+          active: 1,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
       },
     }),
     maxTicks: 30,
@@ -365,7 +383,7 @@ const strikeOnce = (band: Band): BotDoc => ({
         ],
       },
       set: [{ cell: "fired", to: { op: "const", value: 1 } }],
-      do: { type: "attack", move: "strike", band },
+      do: { type: "attack", move: "gyaku-zuki", band },
     },
   ],
   default: { type: "idle" },
@@ -441,7 +459,13 @@ describe("perception latency — perceived attack band (L_act, numerically encod
       perception: { lPos: 0, lAct: 6 },
       // startup 7 ≥ L_act + 1 ⇒ the perceived band arrives in time to guard.
       moves: {
-        strike: { startup: 7, active: 1, recovery: 6, score: 1, reach: 250000 },
+        "gyaku-zuki": {
+          startup: 7,
+          active: 1,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+        },
       },
     });
 
@@ -610,7 +634,7 @@ describe("perception latency — delayed opponent height (L_pos)", () => {
               { op: "const", value: 12000 },
             ],
           },
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
       ],
       { type: "idle" },
@@ -715,7 +739,7 @@ describe("perception latency — delayed opponent posture (L_act)", () => {
               { op: "const", value: 1 }, // crouching
             ],
           },
-          do: { type: "attack", move: "strike", band },
+          do: { type: "attack", move: "gyaku-zuki", band },
         },
       ],
       { type: "idle" },
@@ -1038,7 +1062,10 @@ describe("perception latency — delayed opponent knockdown (L_act)", () => {
     getMockConfig({
       rules: getMockRules({
         startGap: 200000, // within sweep reach (250000)
-        moves: { strike: getMockRules().moves.strike, sweep: SWEEP },
+        moves: {
+          "gyaku-zuki": getMockRules().moves["gyaku-zuki"],
+          sweep: SWEEP,
+        },
         knockdownDuration: 10,
         perception,
       }),
@@ -1099,7 +1126,10 @@ describe("perception latency — delayed opponent knockdown (L_act)", () => {
     const cfg = getMockConfig({
       rules: getMockRules({
         startGap: 200000,
-        moves: { strike: getMockRules().moves.strike, sweep: SWEEP },
+        moves: {
+          "gyaku-zuki": getMockRules().moves["gyaku-zuki"],
+          sweep: SWEEP,
+        },
         knockdownDuration: 10,
       }), // no `perception` field at all
       botA: SWEEP_THEN_BLOCK,
@@ -1124,7 +1154,7 @@ describe("perception latency — delayed opponent knockdown (L_act)", () => {
 // `opponent.stamina`. A bot reads the DELAYED conditioning to pace against a tiring foe
 // — the self-side economy (C10 Stories 1–3) becomes a two-player read game.
 describe("perception latency — delayed opponent stamina (L_act)", () => {
-  // A drain strike: one big on-commit cost with a long recovery, so the spender stays
+  // A drain "gyaku-zuki":one big on-commit cost with a long recovery, so the spender stays
   // committed (no regen) across the probe and its stamina holds at the post-spend value.
   const DRAIN_STRIKE = {
     startup: 1,
@@ -1151,7 +1181,7 @@ describe("perception latency — delayed opponent stamina (L_act)", () => {
           ],
         },
         set: [{ cell: "fired", to: { op: "const", value: 1 } }],
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     default: { type: "idle" },
@@ -1185,7 +1215,7 @@ describe("perception latency — delayed opponent stamina (L_act)", () => {
       rules: getMockRules({
         startGap: 300000,
         stamina: { max: 50 },
-        moves: { strike: DRAIN_STRIKE },
+        moves: { "gyaku-zuki": DRAIN_STRIKE },
         perception,
       }),
       botA: BLOCK_ON_LOW_STAMINA,
@@ -1216,7 +1246,7 @@ describe("perception latency — delayed opponent stamina (L_act)", () => {
       rules: getMockRules({
         startGap: 300000,
         stamina: { max: 50 },
-        moves: { strike: DRAIN_STRIKE },
+        moves: { "gyaku-zuki": DRAIN_STRIKE },
       }), // no `perception` field at all
       botA: BLOCK_ON_LOW_STAMINA,
       botB: SPEND_ONCE,
@@ -1271,7 +1301,7 @@ describe("perception latency — delayed opponent stamina (L_act)", () => {
 // delayed opponent.stamina (4a), so it rides the same action layer — the punish-signal
 // for a gassed foe, on the coherent delayed snapshot (invariant #4).
 describe("perception latency — delayed opponent gassed (L_act)", () => {
-  // A drain strike: one big on-commit cost with a long recovery, so the spender stays
+  // A drain "gyaku-zuki":one big on-commit cost with a long recovery, so the spender stays
   // committed (no regen) across the probe and its stamina holds at the post-spend value.
   const DRAIN_STRIKE = {
     startup: 1,
@@ -1297,7 +1327,7 @@ describe("perception latency — delayed opponent gassed (L_act)", () => {
           ],
         },
         set: [{ cell: "fired", to: { op: "const", value: 1 } }],
-        do: { type: "attack", move: "strike", band: "mid" },
+        do: { type: "attack", move: "gyaku-zuki", band: "mid" },
       },
     ],
     default: { type: "idle" },
@@ -1331,7 +1361,7 @@ describe("perception latency — delayed opponent gassed (L_act)", () => {
       rules: getMockRules({
         startGap: 300000,
         stamina: { max: 50, gasThreshold: 40 },
-        moves: { strike: DRAIN_STRIKE },
+        moves: { "gyaku-zuki": DRAIN_STRIKE },
         perception,
       }),
       botA: BLOCK_ON_GASSED,
@@ -1363,7 +1393,7 @@ describe("perception latency — delayed opponent gassed (L_act)", () => {
         rules: getMockRules({
           startGap: 300000,
           stamina: { max: 50, gasThreshold },
-          moves: { strike: DRAIN_STRIKE },
+          moves: { "gyaku-zuki": DRAIN_STRIKE },
         }),
         botA: BLOCK_ON_GASSED,
         botB: SPEND_ONCE,
@@ -1381,7 +1411,7 @@ describe("perception latency — delayed opponent gassed (L_act)", () => {
       rules: getMockRules({
         startGap: 300000,
         stamina: { max: 50, gasThreshold: 40 },
-        moves: { strike: DRAIN_STRIKE },
+        moves: { "gyaku-zuki": DRAIN_STRIKE },
       }), // no `perception` field at all
       botA: BLOCK_ON_GASSED,
       botB: SPEND_ONCE,
@@ -1401,7 +1431,7 @@ describe("perception latency — delayed opponent gassed (L_act)", () => {
       rules: getMockRules({
         startGap: 300000,
         stamina: { max: 50 }, // no gasThreshold
-        moves: { strike: DRAIN_STRIKE },
+        moves: { "gyaku-zuki": DRAIN_STRIKE },
       }),
       botA: BLOCK_ON_GASSED,
       botB: SPEND_ONCE,

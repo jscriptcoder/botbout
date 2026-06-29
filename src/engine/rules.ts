@@ -29,27 +29,14 @@ export const CANONICAL_RULES: Rules = {
   ring: { width: 600000 }, // 600 units
   startGap: 300000, // 300 units apart; startGap > strike.reach ⇒ must close to hit
   moves: {
-    // The base strike (WKF yuko = 1). It sits on the design's two knife-edges:
-    //   • startup 7 = lAct (6) + 1 ⇒ the band tell is reactable — but only just.
-    //   • recovery 13 = lAct (6) + startup (7) ⇒ a whiff is punishable — but only just.
-    // cancelInto:["strike"] is the C6 rekka route: a connect lets it hit-confirm into a follow-up.
-    strike: {
-      startup: 7,
-      active: 3,
-      recovery: 13,
-      score: 1,
-      reach: 240000, // 240 units — LOCKED; later reach hierarchy throw < sweep < strike
-      cancelInto: ["strike"],
-      staminaCost: 20, // basic move cost (C10) — half a special; the gas band sits above it
-    },
-    // The sweep (C8 ashi-barai) — a LOW-band knockdown strike, on the same startup-7 timing:
+    // The sweep (C8 ashi-barai) — a LOW-band knockdown strike, on the canonical startup-7 timing:
     //   • score 0 + knockdown ⇒ a clean low hit DOWNS the foe (the points live in the okizeme
     //     finish, not the sweep itself). Blockable / parryable at `low`; whiffs a jumper.
     //   • startup 7 = lAct (6) + 1 ⇒ a committed move stays reactable (a low guard / jump answers it).
-    //   • recovery 13 ≥ lAct (6) + strike.startup (7) ⇒ a whiffed sweep is punishable.
-    //   • reach 180000 ⇒ throw (120000) < sweep < strike (240000) — the close-to-far hierarchy.
-    //   • cancelInto:["strike"] ⇒ the knockdown is a connect that opens the cancel window, so a
-    //     hit-confirm cancels into the finishing strike (see finishWindow below).
+    //   • recovery 13 ≥ lAct (6) + jab.startup (7) ⇒ a whiffed sweep is punishable.
+    //   • reach 180000 ⇒ throw (120000) < sweep < jab (210000) — the close-to-far hierarchy.
+    //   • cancelInto:["gyaku-zuki"] ⇒ the knockdown is a connect that opens the cancel window, so a
+    //     hit-confirm cancels into the finishing reverse punch (see finishWindow below).
     sweep: {
       startup: 7,
       active: 2,
@@ -57,10 +44,8 @@ export const CANONICAL_RULES: Rules = {
       score: 0,
       reach: 180000,
       knockdown: true,
-      // The okizeme finisher route. Lists BOTH `strike` (legacy) and `gyaku-zuki` (the C9
-      // reverse-punch finisher) — additive; S7.3 drops `strike` when it is retired.
-      cancelInto: ["strike", "gyaku-zuki"],
-      staminaCost: 40, // special move cost (C10) — twice the basic strike
+      cancelInto: ["gyaku-zuki"], // the C9 reverse-punch okizeme finisher (was the retired `strike`)
+      staminaCost: 40, // special move cost (C10) — twice the basic punch
     },
     // ── The C9 "real karate" arsenal (§P7): four named WKF techniques replacing the abstract
     // `strike` (retired in S7.3). Reach hierarchy throw(120k) < sweep(180k) < jab(210k) <

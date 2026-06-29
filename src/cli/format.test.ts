@@ -45,7 +45,7 @@ describe("formatAction", () => {
     [{ type: "block", band: "high" }, "block high"],
     [{ type: "crouch" }, "crouch"],
     [{ type: "jump", dir: 1 }, "jump +1"],
-    [{ type: "attack", move: "strike", band: "high" }, "strike high"],
+    [{ type: "attack", move: "gyaku-zuki", band: "high" }, "gyaku-zuki high"],
     [{ type: "sweep" }, "sweep"],
     [{ type: "throw" }, "throw"],
     [{ type: "throw-break" }, "break"],
@@ -105,12 +105,15 @@ describe("formatFight — full vs changes mode", () => {
     ),
     event(
       3,
-      { action: { type: "attack", move: "strike", band: "high" } },
+      { action: { type: "attack", move: "gyaku-zuki", band: "high" } },
       { action: { type: "idle" } },
     ),
     event(
       4,
-      { action: { type: "attack", move: "strike", band: "high" }, points: 1 },
+      {
+        action: { type: "attack", move: "gyaku-zuki", band: "high" },
+        points: 1,
+      },
       { action: { type: "idle" } },
     ),
   ];

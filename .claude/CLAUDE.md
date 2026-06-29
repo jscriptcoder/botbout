@@ -294,21 +294,29 @@ generating code; flag any change that would.
   COMPLETE** — both C10 plan files (`c10-canonical-stamina.md`, `c10-stamina-split.md`) deleted.
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- IN PROGRESS (**C9 multi-move arsenal** — `plans/c9-arsenal-split.md` is the active tracker): the
-  abstract `strike` is being retired into named WKF techniques across **7 additive slices**. **Slice 1
-  (band-legality gate, PR #67) + Slice 2 (`kizami-zuki` jab, PR #68) are MERGED.** Each technique declares
-  `MoveSpec.bands?` (an out-of-band `attack` degrades to idle — `bandLegal` in `sim.ts` intake at both
-  move-start sites) and is admitted to the `dsl.ts` `MOVES` allowlist (TCB) + an optional `Rules.moves`
-  key (an attack naming an **unconfigured** move ⇒ inert, via the `spec !== undefined` guard).
-  **NEXT: Slice 3 `gyaku-zuki` (reverse punch)** — mechanical via the per-technique pattern in the split
-  plan. Mechanics still pending: band-dependent score (S5, additive `scoreByBand?`), cross-move cancels
-  (S6), canonical wiring + retire `strike` + docs reconciliation (S7). Decisions locked: Japanese move
-  ids; runtime-degrade gate; per-slice `find-gaps`. The jab is NOT yet in `CANONICAL_RULES` (S7).
-- ROADMAP (C9 in progress, above; C10 COMPLETE): the **C9 multi-move "real karate" arsenal** (resolved, `docs/DESIGN.md`
-  §P7) — replace the single abstract `strike` with named techniques (own frames / reach / score /
-  legal-bands + cross-move cancel routes), which also re-tunes the C10 per-move stamina costs across the
-  roster. Then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
-  **air-actions** (air strikes / horizontal jump displacement) — `grill-me` → `planning` → TDD. The
+- DONE (**C9 multi-move "real karate" arsenal** — PRs #67–#76): the abstract `strike` is RETIRED into
+  four named WKF techniques, shipped across **7 additive slices** (band-legality gate #67 → `kizami-zuki`
+  jab #68 → `gyaku-zuki` reverse #70 → `mae-geri` front kick #71 → `mawashi-geri` roundhouse +
+  band-dependent `scoreByBand` #72 → cross-move cancels #73 → the S7 finale #74–#76). Each technique
+  declares `MoveSpec.bands?` (an out-of-band `attack` ⇒ idle via `bandLegal` in `sim.ts` intake), is
+  admitted to the `dsl.ts` `MOVES` allowlist (the TCB), and is an optional `Rules.moves` key (an attack
+  naming an **unconfigured** move ⇒ inert via `spec !== undefined`). `mawashi-geri` added the one new
+  resolver line — `MoveSpec.scoreByBand?` (jodan 3 / chudan 2, overriding the flat `score`). **The S7
+  finale:** S7.1 (#74) killed the deferred `sim.ts:365` cancel·knockdown survivor (a fighter downed the
+  same tick it lands a cancelable hit can't cancel-attack while prone); S7.2 (#75) wired all 4 into
+  **`CANONICAL_RULES`** — reach `throw 120k < sweep 180k < jab 210k < reverse 240k < front 270k <
+  roundhouse 300k`, startups 7/7/9/11 (all ≥ `lAct+1`), punch cost 15/20 ≤ `gasThreshold 30` < kick 35/45
+  (so a gassed fighter keeps its punches but loses its kicks — the emergent special-lockout), and the
+  rekka cancel web — every number proven by a `runFight` *relationship* test in `rules.test.ts`; S7.3
+  (#76) **retired `strike`** — removed from `MoveId` / `Rules.moves` (`gyaku-zuki` took its required slot)
+  / the `MOVES` TCB allowlist / `CANONICAL_RULES`, migrated every fixture + the `bots/` demos onto
+  `gyaku-zuki`, and reconciled `docs/BOT-DSL.md` + `docs/DESIGN.md` §P7. 468 tests; `dsl.ts` MOVES +
+  `rules.ts` mutation 100%. The `sim.ts` resolver was **unchanged throughout** (generic
+  `rules.moves[action.move]`). **C9 is COMPLETE** — both C9 plan files deleted.
+- ROADMAP (C9 + C10 COMPLETE): the still-unresolved **match structure** (*yame* resets / rounds / WKF
+  win conditions) and **air-actions** (air strikes / horizontal jump displacement) — `grill-me` →
+  `planning` → TDD. (C9, the multi-move arsenal, is now DONE — see the entry above; its per-move stamina
+  costs are wired into `CANONICAL_RULES`, provisional in magnitude but structurally locked.) The
   spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply
   (live from C5, **strictly forced by C7's throws**), S1 posture → S2 intake → S3 compute → S4 apply →
   S5 advance, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. (Roadmap capabilities are
