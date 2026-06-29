@@ -35,6 +35,7 @@ export type SelfState = {
   cancelWindow: number; // on-contact cancel-window ticks left after a connect (live; 0 = closed)
   finishWindow: number; // okizeme finish-window ticks left on the LIVE opponent's knockdown (C8; live, 0 = can't finish — not downed, or in i-frames)
   stamina: number; // C10 conditioning meter (live self-proprioception); 0 when no meter is configured (the inactive sentinel)
+  gassed: number; // C10 derived gas tell (live): 1 iff stamina ≤ gasThreshold, else 0 (also 0 when no threshold/meter — the inert sentinel)
 };
 
 export type OpponentState = {
