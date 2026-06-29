@@ -4137,6 +4137,77 @@ describe("runFight — cross-move cancels (rekka routes between distinct techniq
   });
 });
 
+describe("runFight — a fighter downed the same tick it connects cannot cancel-attack while prone", () => {
+  // The §11 cancel·knockdown edge (the deferred sim.ts:365 guard `f.state.kind === "attacking"`).
+  // A strike∥sweep TRADE: at the connect tick A's strike HITs B (opening A's cancel window) WHILE
+  // B's sweep DOWNS A the same tick — so A ends the tick with cancelRemaining > 0 AND kind:"downed".
+  // The cancel guard must then refuse A's cancelInto follow-up: a prone fighter never cancel-attacks.
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+  const SWEEPER = bot([], { type: "sweep" });
+
+  // strike + sweep on identical 4/2/6 frames ⇒ both connect at tick 4. strike.cancelInto:["strike"]
+  // is a CONFIGURED self-cancel route, so the downed cancel attempt reaches the route check (not
+  // refused earlier as inert). No finishWindow ⇒ the downed fighter is fully untargetable (no oki).
+  const tradeKnockdownRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000, // within reach (250000) ⇒ both the strike and the sweep connect
+      cancelWindow: 10,
+      knockdownDuration: 20,
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          cancelInto: ["strike"],
+        },
+        sweep: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 0,
+          reach: 250000,
+          knockdown: true,
+        },
+      },
+      ...o,
+    });
+
+  it("stays prone after a same-tick connect+knockdown — the cancelInto follow-up is refused", () => {
+    // Tick 4: A's strike HITs B (A scores 1, A's cancel window opens) while B's sweep DOWNS A.
+    // From tick 5 A is downed with cancelRemaining > 0 and keeps issuing `attack strike` — every
+    // one must be refused (A is `downed`, not `attacking`), so A never lands the rekka follow-up.
+    const result = runFight(
+      getMockConfig({
+        rules: tradeKnockdownRules(),
+        botA: STRIKER,
+        botB: SWEEPER,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.events[4].a.points).toBe(1); // the trade strike landed ⇒ A's cancel window opened this tick
+    expect(result.scores.a).toBe(1); // ...but A is DOWNED ⇒ the follow-up cancel is refused (no rekka while prone)
+    expect(result.scores.b).toBe(0); // B's sweep downed A for no score; later sweeps whiff a prone (untargetable) foe
+  });
+
+  it("the same cancel DOES fire without the knockdown — proving the suppression above is a real refusal", () => {
+    // Identical, but B is IDLE so A is never downed: A's strike connects at tick 4 and cancels into
+    // a second strike that connects at tick 9 ⇒ 2. The knockdown denies exactly this rekka.
+    const result = runFight(
+      getMockConfig({
+        rules: tradeKnockdownRules(),
+        botA: STRIKER,
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(2); // strike (tick 4) → cancel → strike (tick 9): the rekka the knockdown denied
+  });
+});
+
 describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
   const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
   const THROWER = bot([], { type: "throw" });

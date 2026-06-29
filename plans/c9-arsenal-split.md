@@ -6,7 +6,7 @@
 > child is a new tactical capability the bot author can exercise and a `runFight`
 > test can demonstrate.
 
-## ⏱ Status / Resume (updated 2026-06-29) — READ FIRST
+## ⏱ Status / Resume (updated 2026-06-29, S6 closeout) — READ FIRST
 
 **This is the single active C9 tracker.** (The Slice 1–2 detail plan
 `c9-arsenal-foundation.md` was deleted on closeout — its record is in PRs #67/#68; its
@@ -37,19 +37,32 @@ durable learnings are folded in below.)
   spec.score`). Roundhouse: longest reach, slowest, `high·mid`, jodan 3 / chudan 2 (the okizeme
   finish stays band-agnostic). AC-1 (high = 3) was the genuine resolver RED. Scoped Stryker:
   `sim.ts` baseScore 9/9, `dsl.ts` MOVES 6/6 — both 100%.
-- ▶ **NEXT — Slice 6 — cross-move cancels (rekka routes).** Drafted →
-  `plans/c9-cross-move-cancels.md` (branch `feat/c9-cross-move-cancels`). A **tests-only proof
+- ✅ **Slice 6 — cross-move cancels (rekka routes)** — MERGED (PR #73). A **tests-only proof
   slice** — the C6 cancel machinery is move-agnostic, so cross-move routes already work with
   ZERO production change. Permanent behavior `runFight` tests lock in: cross-move cancel
   resolves (jab→reverse), the no-feint property (a whiffed opener never opens the window), route
   restriction (a configured-but-unlisted move is refused), and a 3-move chain (jab→reverse→
-  roundhouse). **Known pre-existing gap (deferred to a future hardening — NOT this slice):**
-  `sim.ts:365` `f.state.kind === "attacking"` cancel guard survives mutation — a fighter knocked
-  DOWN the same tick it lands a cancelable hit keeps `cancelRemaining > 0` while `downed`, and
-  the guard is what stops it cancel-attacking while prone. Reachable only via a same-tick
-  connect+knockdown (mutual sweep/throw); belongs to the C6/C7 cancel·knockdown interaction.
-  (The other two block survivors — `sim.ts:367` `action.type==="attack"`→`true` and `sim.ts:373`
-  `cancelInto ?? []`→`["Stryker was here"]` — are documented EQUIVALENT mutants.)
+  roundhouse). Scoped Stryker confirmed the cancel machinery stays 100% under the cross-move
+  tests. **Deferred (folded into Slice 7 — see below): the `sim.ts:365` cancel-guard survivor.**
+- ◐ **Slice 7 — canonical wiring + retire `strike` (the C9 FINALE) — IN PROGRESS.** `planning` +
+  `find-gaps` DONE → split into **three PR-sized sub-slices**, detailed in
+  `plans/c9-canonical-arsenal.md` (the active S7 plan; all 6 find-gaps decisions resolved there —
+  workhorse = `gyaku-zuki`, richer cancel web + sweep→reverse finisher, punch=basic/kick=special
+  gas split, mechanical bot swap, docs ride S7.3, order 7.1→7.2→7.3):
+    - ✅ **S7.1 — cancel·knockdown hardening** (this PR). A KILL-MUTANTS slice (no production
+      change): two `runFight` tests prove a fighter knocked DOWN the same tick it lands a cancelable
+      hit (a strike∥sweep trade) stays prone — its `cancelInto` follow-up is refused. **Kills the
+      `sim.ts:365` survivor** (`f.state.kind === "attacking"`); scoped Stryker `sim.ts:360–378` now
+      leaves only the 2 documented EQUIVALENTS (`:367` `action.type==="attack"`→`true`, `:373`
+      `cancelInto ?? []`→`["Stryker was here"]`).
+    - ▶ **S7.2 — wire the 4 techniques into `CANONICAL_RULES`** (branch `feat/c9-canonical-arsenal`).
+      Additive (`strike` stays): reach hierarchy `throw<sweep<jab<reverse<front<roundhouse`, the
+      punch=basic/kick=special gas split, the richer `cancelInto` web — every number proven by a
+      *relationship* test in `rules.test.ts` (no literals-in-isolation).
+    - ◯ **S7.3 — retire `strike` + reconcile docs** (branch `feat/c9-retire-strike`). The breaking
+      migration: remove `strike` from `MoveId`/`Rules.moves`/`MOVES` (TCB)/`CANONICAL_RULES`, migrate
+      every fixture/test/CLI/`bots/` onto `gyaku-zuki`, reconcile `docs/BOT-DSL.md` + `docs/DESIGN.md`.
+      On merge: **C9 complete** — delete both this tracker and `plans/c9-canonical-arsenal.md`.
 
 **Per-technique pattern (established S2 — S3/S4 were purely mechanical):** to add a technique:
 (1) extend the `MoveId` union (`types.ts`); (2) add it to the `MOVES` allowlist
@@ -60,8 +73,10 @@ tests (in-reach scores · out-of-band fizzles via the Slice-1 gate · beyond-rea
 unconfigured ⇒ inert). For S2–S4 the `sim.ts` resolver handled all of this generically —
 **no resolver change**. **S5 (`mawashi-geri`) breaks the pure-mechanical streak**: it adds
 band-dependent score (additive `scoreByBand?` + the one `computeStrike` `baseScore` line) —
-the first genuine RED `runFight` test since the arsenal began. **Cross-move cancels** remain
-(S6 — `cancelInto` routes between distinct moves). `dsl.ts` reader/validator at 100%;
+the first genuine RED `runFight` test since the arsenal began. **Cross-move cancels** (S6 —
+`cancelInto` routes between distinct moves) shipped as a tests-only proof (zero production
+change — the C6 machinery is move-agnostic). Only **S7 — canonical wiring + retire `strike`**
+remains. `dsl.ts` reader/validator at 100%;
 `sim.ts` changed-line 100% (one documented equivalent on the C6 `cancelInto ?? []` fallback).
 Validator scope: it accepts any valid `move`+`band`; the runtime gate decides legality (no
 static out-of-band reject). `scoreByBand` is trusted Rules data ⇒ NOT validator-checked.
@@ -112,7 +127,7 @@ slice. Demonstrable on canonical: a bot's `kizami-zuki` scores at `mid`, fizzles
 | 3 ✅ | **Bot can throw the reverse punch (`gyaku-zuki`)** [MERGED #70] | A longer-range, more-committed second opener → a real reach/speed spacing choice between two punches | `gyaku-zuki` MoveSpec (reach > jab, slower/more recovery, `["high","mid"]`, score 1, higher staminaCost); establishes the **reach hierarchy** jab < reverse | The kicks; band-dependent score | Given jab reach < reverse reach, When the bot is at a gap only the reverse reaches, Then jab whiffs and reverse hits. Reverse's longer recovery is whiff-punishable per the master inequality | Shippable |
 | 4 ✅ | **Bot can throw the front kick (`mae-geri`)** [MERGED #71] | First single-band move + first 2-point (waza-ari) strike; deeper reach than punches | `mae-geri` MoveSpec (reach > punches, `["mid"]` only, score 2, kick-tier staminaCost); the gate now bites at **both** high and low | Band-dependent score; canonical re-tune | Given `mae-geri bands:["mid"]`, When attacked `high` or `low`, Then `idle`; When landed `mid` in range, Then +2 | Shippable |
 | 5 ✅ | **Bot can throw the roundhouse (`mawashi-geri`) for band-dependent points** [MERGED #72] | The risk/reward apex: longest reach, slowest, costliest; **3 jodan / 2 chudan** — aiming high is worth ippon but easier to block / whiffs a croucher | `mawashi-geri` MoveSpec (longest reach, slowest, highest staminaCost, `["high","mid"]`); introduces **band-dependent score** (the only new mechanic here — see parking lot for shape) | Cross-move cancels; canonical re-tune | Given roundhouse, When landed `high`, Then +3; When landed `mid`, Then +2; When attacked `low`, Then `idle`. A high roundhouse is blocked by a `high` guard / whiffs a croucher | Shippable |
-| 6 | **Bot can chain techniques via cross-move cancels** | Combos: a hit-confirmed technique cancels into a *different* one (the rekka routes) — within-exchange escalation across the roster | Canonical `cancelInto` routes between distinct moves (e.g. jab→reverse→roundhouse); a `runFight` proof that cross-move cancel resolves and preserves the **no-feint / connect-required** property (whiff/parry never opens it) | The exact tuned route table (canonical-content, lands here or in slice 7) | Given a jab that connects with jab.cancelInto⊇[reverse], When the bot returns `gyaku-zuki` within `cancelWindow`, Then recovery is interrupted into it; When the jab whiffed, Then the cancel is ignored | Shippable |
+| 6 ✅ | **Bot can chain techniques via cross-move cancels** [MERGED #73] | Combos: a hit-confirmed technique cancels into a *different* one (the rekka routes) — within-exchange escalation across the roster | Canonical `cancelInto` routes between distinct moves (e.g. jab→reverse→roundhouse); a `runFight` proof that cross-move cancel resolves and preserves the **no-feint / connect-required** property (whiff/parry never opens it) | The exact tuned route table (canonical-content, lands here or in slice 7) | Given a jab that connects with jab.cancelInto⊇[reverse], When the bot returns `gyaku-zuki` within `cancelWindow`, Then recovery is interrupted into it; When the jab whiffed, Then the cancel is ignored | Shippable |
 | 7 | **Platform fights the arsenal: canonical wiring + stamina re-tune + retire `strike`** | The platform (`npm run fight`, future API/viewer) fights real karate on the 4-strike roster; the abstract `strike` scaffold is gone | Wire all 4 techniques into `CANONICAL_RULES` (reaches `throw<sweep<jab<reverse<front<roundhouse` around the locked anchors; per-move staminaCost cheap-jab→expensive-roundhouse); re-prove the gas band `basic ≤ gasThreshold < special` and the master inequalities by relationship tests; **remove `strike`** from `MoveId`/`moves`/allowlist; migrate engine `getMockRules`/fixtures off `strike` | Match structure, air-actions, telemetry (separate roadmap items) | Given CANONICAL_RULES, the relationship tests hold (every committed startup ≥ lAct+1; reach hierarchy; gas band); `strike` is no longer a valid `MoveId`; full suite green | Shippable — C9 complete |
 
 ## Resolved (session 2026-06-29)
@@ -163,15 +178,26 @@ slice. Demonstrable on canonical: a bot's `kizami-zuki` scores at `mid`, fizzles
 
 ## Next Step
 
-**Slice 6 — cross-move cancels (rekka routes).** Drafted → `plans/c9-cross-move-cancels.md`
-(branch `feat/c9-cross-move-cancels`). A **tests-only proof slice** (the C6 cancel machinery is
-move-agnostic ⇒ zero production change): permanent behavior `runFight` tests lock in cross-move
-cancel resolution (jab→reverse), the no-feint property, route restriction, and a 3-move chain.
-**Then the C9 finale — Slice 7 (canonical wiring + retire `strike`):** wire all 4 techniques into
-`CANONICAL_RULES` (reach hierarchy `throw<sweep<jab<reverse<front<roundhouse`; per-move
-`staminaCost`; canonical `cancelInto` route table; re-prove the gas band + master inequalities by
-relationship tests), **remove `strike`** from `MoveId`/`moves`/allowlist, migrate the engine
-`getMockRules`/fixtures off `strike`, and reconcile `docs/BOT-DSL.md` / `docs/DESIGN.md`. Also
-fold in the **deferred line-365 hardening** (the downed+pending-cancel guard test) if not done
-sooner. The session-resolved defaults (Japanese ids, additive `scoreByBand?`, runtime gate,
-per-slice find-gaps) hold throughout.
+**Slice 7 — canonical wiring + retire `strike` (the C9 FINALE).** Branch `feat/c9-canonical-arsenal`.
+This is the **only remaining C9 slice** — Slices 1–6 are merged (#67/#68/#70/#71/#72/#73). It is
+substantial (canonical re-tune + a breaking `strike` removal + docs), so run `planning` to split it
+into PR-sized increments, then `find-gaps` on that plan, before TDD. Scope:
+1. **Wire all 4 techniques into `CANONICAL_RULES`** (`rules.ts`): reach hierarchy
+   `throw<sweep<jab<reverse<front<roundhouse` around the locked anchors (`throw 120k < sweep 180k <
+   strike 240k`); per-move `staminaCost` (cheap jab → expensive roundhouse, preserving the gas band
+   `basic ≤ gasThreshold < special`); the canonical `cancelInto` route table (the rekka routes proven
+   in S6). Re-prove every number by a *relationship* test in `rules.test.ts` (master inequalities +
+   gas band + reach hierarchy — no literals-in-isolation).
+2. **Retire the abstract `strike`**: remove it from `MoveId` (`types.ts`), `Rules.moves` (`types.ts`),
+   and the `MOVES` allowlist (`dsl.ts` — the TCB); migrate every engine `getMockRules`/fixture and the
+   existing `runFight`/`rules` tests off `strike` onto a real technique. This is the breaking change —
+   expect broad test churn; keep the suite green at each increment.
+3. **Reconcile docs**: `docs/BOT-DSL.md` (the illustrative `jab`/`kick`/`roundhouse` examples →
+   the canonical Japanese ids; deferred since S1) + `docs/DESIGN.md` (§P7 arsenal — mark C9 done).
+4. **Fold in the deferred line-365 hardening**: a `runFight`/`sim` test that a fighter knocked DOWN
+   the same tick it lands a cancelable hit does NOT cancel-attack while prone (kills the `sim.ts:365`
+   `f.state.kind === "attacking"` survivor; reachable via a mutual same-tick connect+knockdown).
+
+The session-resolved defaults (Japanese ids, additive `scoreByBand?`, runtime gate, per-slice
+find-gaps) hold throughout. When S7 merges, **C9 is complete** — delete this tracker (per the
+planning workflow; the record lives in PRs #67–#73 + git history).
