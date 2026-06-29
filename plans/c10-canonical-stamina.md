@@ -1,8 +1,9 @@
 # Plan: C10 — canonical stamina wiring
 
 **Branch**: feat/canonical-stamina
-**Status**: Active — Slice 1 SHIPPED (economy core: `stamina {max 100, regen 10}` + per-move
-`staminaCost` strike 20 < throw/sweep 40); next is Slice 2 (guard chip).
+**Status**: Active — Slices 1–2 SHIPPED (economy core: `stamina {max 100, regen 10}` + per-move
+`staminaCost` strike 20 < throw/sweep 40; guard chip `blockChip 5 < parryChip 15`); next is
+Slice 3 (gas line — closes C10).
 
 > The final C10 unit (last row of `plans/c10-stamina-split.md`). The behavioral economy
 > (Stories 1–4) is shipped; this promotes the per-story **test-fixture** numbers into
@@ -45,8 +46,8 @@ design relationships hold on the canonical table — built additively in 3 slice
 - [x] On the canonical table: a costed strike spends `staminaCost` on commit; a fighter
       poking at a sustainable cadence keeps acting (regen offsets it) while a faster
       spammer runs the meter down and degrades to idle. _(Slice 1)_
-- [ ] A block bleeds the defender's stamina on contact; a parry bleeds **strictly more**
-      (`parryChip > blockChip`).
+- [x] A block bleeds the defender's stamina on contact; a parry bleeds **strictly more**
+      (`parryChip > blockChip`). _(Slice 2)_
 - [ ] The emergent special-lockout holds on canonical: a gassed fighter (stamina ≤
       `gasThreshold`) **cannot afford** throw/sweep while its basic strike still commits
       (`specialCost > gasThreshold ≥ basicCost`); and a gassed strike's recovery extends

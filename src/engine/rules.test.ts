@@ -884,4 +884,61 @@ describe("CANONICAL_RULES — stamina structural shape", () => {
     expect(basic).toBeLessThan(throwSpec().staminaCost ?? 0);
     expect(basic).toBeLessThan(sweepSpec().staminaCost ?? 0);
   });
+
+  it("bleeds a guard on contact, a parry harder than a block (parryChip > blockChip)", () => {
+    const block = CANONICAL_RULES.stamina?.blockChip ?? 0;
+    const parry = CANONICAL_RULES.stamina?.parryChip ?? 0;
+
+    expect(block).toBe(5);
+    expect(parry).toBe(15);
+    expect(parry).toBeGreaterThan(block);
+  });
+});
+
+// ─── Canonical stamina, Slice 2: the guard chip bleeds the defender (parry > block) ──
+
+describe("CANONICAL_RULES — the guard chip bleeds the defender (parry > block)", () => {
+  // strikeOnce(mid) commits at tick 0; its active window opens at elapsed = strike.startup,
+  // so the first contact lands on tick = startup. The defender guards mid: a STALE guard (held
+  // from tick 0) BLOCKS, a FRESH guard (raised on the active frame) PARRIES. The defender's
+  // stamina drop across that contact tick is exactly the chip drawn from it (a guarding fighter
+  // never regens, so the drop is the chip alone).
+  const defenderDropOnContact = (defender: BotDoc): number => {
+    const t = strike().startup; // the first active/contact frame
+
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: strikeOnce("mid"),
+        botB: defender,
+        maxTicks: 20,
+      }),
+    );
+
+    return result.events[t - 1].b.stamina - result.events[t].b.stamina;
+  };
+
+  it("a block bleeds the defender, and a parry bleeds strictly more", () => {
+    const blockDrop = defenderDropOnContact(guardFrom(0, "mid")); // stale ⇒ block
+    const parryDrop = defenderDropOnContact(guardFrom(strike().startup, "mid")); // fresh ⇒ parry
+
+    expect(blockDrop).toBeGreaterThan(0); // a block draws blockChip on contact
+    expect(parryDrop).toBeGreaterThan(blockDrop); // a parry draws strictly more (parryChip > blockChip)
+  });
+
+  it("an un-contacted guard draws nothing (contact is the trigger, not merely guarding)", () => {
+    // The defender holds a mid guard the whole fight but is never struck (the attacker idles),
+    // so it bleeds nothing — and a guarding fighter does not regen either — ⇒ it sits at the
+    // full reserve throughout.
+    const result = runFight(
+      fight({
+        rules: deterministic(),
+        botA: IDLE,
+        botB: guardFrom(0, "mid"),
+        maxTicks: 20,
+      }),
+    );
+
+    expect(result.events.every((e) => e.b.stamina === 100)).toBe(true);
+  });
 });

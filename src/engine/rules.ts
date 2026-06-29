@@ -135,6 +135,10 @@ export const CANONICAL_RULES: Rules = {
   //   • basic (strike 20) < special (throw / sweep 40) — the cost hierarchy the C10 gas band
   //     (a later slice) sits inside (specialCost > gasThreshold ≥ basicCost): a gassed fighter
   //     loses its specials before its strike.
+  //   • blockChip 5 < parryChip 15 — the guard contact-chip (the gentle secondary anti-turtle):
+  //     a matching guard that ABSORBS a strike bleeds the DEFENDER. A held block draws blockChip
+  //     per contact tick; a fresh deflecting parry draws the larger parryChip once. Non-lethal vs
+  //     the 100 reserve (a parried defender keeps ≥ a strike's worth, so it can still counter).
   // Absent ⇒ no meter simulated ⇒ byte-identical to the pre-stamina engine.
-  stamina: { max: 100, regen: 10 },
+  stamina: { max: 100, regen: 10, blockChip: 5, parryChip: 15 },
 };
