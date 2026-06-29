@@ -253,11 +253,32 @@ generating code; flag any change that would.
   **Deferred — Story 4** (`opponent.stamina`/`gassed` on the `L_act` layer) + the consolidated
   `CANONICAL_RULES` stamina wiring (the numbers — `gasThreshold`/`gasRecoveryPenalty`/per-move costs —
   live in test fixtures until then, re-tuned against gas + the C9 arsenal).
+- DONE (opponent stamina read — C10 Story 4, PRs #60–#61): the delayed conditioning tell that completes
+  the two-player read game (bait the gas, punish a gassed foe) — closing C10's **behavioral** economy.
+  **`opponent.stamina`** (Slice 4a, PR #60) rides the **`L_act` action layer** (the coherent delayed
+  snapshot, invariant #4) like `attacking`/`throwing`/`posture`/`knockdown`: `frameOf` records `f.stamina`
+  into the per-fighter history ring buffer, `perceiveOpponent` serves it from the **`oppAct`**
+  (lAct-delayed) frame — so it reads `tick − L_act` (the structural observe-after-commit tick at
+  `L_act = 0`), live at `L_act = 0`, sentinel `0` unconfigured. **`opponent.gassed`** (Slice 4b, PR #61)
+  is **derived from that delayed stamina** vs the shared `gasThreshold` — observably identical to a
+  separately-recorded delayed boolean (the threshold is a static `Rules` constant ⇒
+  `delayed(gassed(s)) == gassed(delayed(s))`), so **no new `Frame` field**: the gas line is extracted as a
+  pure **`isGassedAt(stamina, rules)`** shared by the self meter (`gassed` now delegates to it) and
+  `perceiveOpponent` (gains a `rules` param). Both are **new static `FIELD_READERS` allowlist entries**
+  (`? 1 : 0` like the other boolean tells; the TCB boundary can't depend on `Rules`, only the value is
+  config-gated), so the **`dsl.ts` interpreter stays 100%**. 400 tests; `sim.ts` changed-line mutation
+  100% (4a 5/5, 4b 11/11), `dsl.ts` reader region 100% (16/16, 17/17). `OpponentState.stamina`/`gassed`
+  are additive ⇒ absent stamina config ⇒ sentinel `0`/`0` ⇒ **byte-identical** to the pre-Story-4 engine.
+  **Deferred — the consolidated `CANONICAL_RULES` stamina wiring** (the last C10 unit: promote the fixture
+  numbers into the canonical table, each proven by a `runFight` relationship test).
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
   structure, telemetry object, Vercel API, or Pixi viewer.
-- NEXT (active thread — C10 stamina): **Story 4** (`opponent.stamina`/`gassed` on the `L_act`
-  perception layer — needs the history ring buffer, note N2), then the consolidated `CANONICAL_RULES`
-  stamina wiring — each a `planning` → TDD slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
+- NEXT (active thread — C10 stamina): the consolidated **`CANONICAL_RULES` stamina wiring** — the last
+  C10 unit. Promote the fixture numbers (`max`/`regen`/per-move `staminaCost`/`gasThreshold`/
+  `gasRecoveryPenalty`/`blockChip`/`parryChip`) into the canonical table, each proven by a `runFight`
+  relationship test (the cost inequality `specialCost > gasThreshold ≥ basicCost`; regen offsetting a
+  sustainable poke; `parryChip > blockChip`), re-tuned against gas + the C9 arsenal — a `planning` → TDD
+  slice off `plans/c10-stamina-split.md`. After C10: the **C9 arsenal** (resolved,
   §P7), then the still-unresolved **match structure** (*yame* resets / rounds / WKF win conditions) and
   **air-actions** (air strikes / horizontal jump displacement) — `grill-me` → `planning` → TDD. The
   spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply

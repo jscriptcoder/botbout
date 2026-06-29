@@ -13,8 +13,12 @@
 > committed move recovers slower (`gasRecoveryPenalty` via the `extra` accumulator, post-spend at
 > commit), the live `self.gassed` tell (a new TCB allowlist entry), and the emergent special-lockout
 > proven over `specialCost > gasThreshold ≥ basicCost`; its plan `plans/c10-stamina-story3.md` is
-> deleted). **Next: Story 4** (`opponent.stamina`/`gassed` on the `L_act` layer), then the
-> consolidated `CANONICAL_RULES` stamina wiring.
+> deleted). ✅ **Story 4 SHIPPED** (PRs #60–#61 — the `L_act`-delayed opponent read: `opponent.stamina`
+> served from the `oppAct` history frame, `opponent.gassed` derived from that delayed stamina via a shared
+> `isGassedAt` predicate; two new static `FIELD_READERS` entries, interpreter 100%; its plan
+> `plans/c10-stamina-story4.md` is deleted). This closes C10's **behavioral** economy.
+> **Next: the consolidated `CANONICAL_RULES` stamina wiring** (promote the fixture numbers into the
+> canonical table, each proven by a `runFight` relationship test).
 
 ## Parent (reframed)
 
@@ -155,11 +159,12 @@ blockChip`). **Out of scope:** any quantitative balance metric (spam / turtle wi
 
 ## Next step
 
-Stories 1–3 are SHIPPED. Load **`planning`** for **Story 4 (opponent stamina read —
-`opponent.stamina`/`opponent.gassed` on the `L_act` layer)** → PR-sized slices, each
-running the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle (load `tdd`, `testing`,
-`mutation-testing`, `refactoring` before code). Heed planning note **N2** — the values
-must ride the per-fighter perception ring buffer so the `L_act` read stays coherent with
-`attacking`/`throwing`/`posture` (invariant #4). After Story 4: the consolidated
-`CANONICAL_RULES` stamina wiring (the numbers — `gasThreshold`/`gasRecoveryPenalty`/
-per-move costs — promoted from test fixtures, re-tuned against gas + the C9 arsenal).
+Stories 1–4 are SHIPPED — C10's **behavioral** economy is complete. The one remaining
+C10 unit is the consolidated **`CANONICAL_RULES` stamina wiring**: promote the fixture
+numbers (`max`/`regen`/per-move `staminaCost`/`gasThreshold`/`gasRecoveryPenalty`/
+`blockChip`/`parryChip`) into the canonical table, each proven by a `runFight`
+_relationship_ test — the cost inequality `specialCost > gasThreshold ≥ basicCost`, regen
+offsetting a sustainable poke rate, `parryChip > blockChip` — re-tuned against gas + the
+C9 arsenal. Load **`planning`** → PR-sized slices, each the full RED-GREEN-MUTATE-KILL
+MUTANTS-REFACTOR cycle (load `tdd`, `testing`, `mutation-testing`, `refactoring` before
+code). **When that ships, this split tracker is done — delete it.**
