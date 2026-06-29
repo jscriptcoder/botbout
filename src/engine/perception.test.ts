@@ -1117,3 +1117,150 @@ describe("perception latency — delayed opponent knockdown (L_act)", () => {
     expect(validate(SWEEP_THEN_BLOCK).ok).toBe(true);
   });
 });
+
+// ─── slice C10.4a: perceived opponent STAMINA, delayed by L_act ─────────────────
+// The opponent's stamina rides the SAME coherent delayed action layer as the
+// attacking/throwing/posture/knockdown tells (invariant #4), exposed as the raw number
+// `opponent.stamina`. A bot reads the DELAYED conditioning to pace against a tiring foe
+// — the self-side economy (C10 Stories 1–3) becomes a two-player read game.
+describe("perception latency — delayed opponent stamina (L_act)", () => {
+  // A drain strike: one big on-commit cost with a long recovery, so the spender stays
+  // committed (no regen) across the probe and its stamina holds at the post-spend value.
+  const DRAIN_STRIKE = {
+    startup: 1,
+    active: 1,
+    recovery: 30,
+    score: 1,
+    reach: 250000,
+    staminaCost: 30,
+  };
+
+  // B spends once on tick 0 (a single committed strike) ⇒ a deterministic stamina drop
+  // (max 50 → 20) that then holds (no regen while committed, and no regen configured).
+  const SPEND_ONCE: BotDoc = {
+    version: 1,
+    name: "spend1",
+    memory: { fired: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "mem", cell: "fired" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fired", to: { op: "const", value: 1 } }],
+        do: { type: "attack", move: "strike", band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  };
+
+  // A guards the instant it PERCEIVES opponent.stamina ≤ 40 — between max (50) and the
+  // post-spend value (20) — so the first block tick is a clean read of *when A perceived*
+  // the drain.
+  const BLOCK_ON_LOW_STAMINA = bot(
+    [
+      {
+        when: {
+          op: "lte",
+          args: [
+            { op: "field", path: "opponent.stamina" },
+            { op: "const", value: 40 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    { type: "idle" },
+  );
+
+  // Out of reach (startGap 300000 > reach 250000) ⇒ a pure perception read, no scoring.
+  const staminaDelay = (perception: {
+    lPos?: number;
+    lAct?: number;
+  }): FightConfig =>
+    getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        stamina: { max: 50 },
+        moves: { strike: DRAIN_STRIKE },
+        perception,
+      }),
+      botA: BLOCK_ON_LOW_STAMINA,
+      botB: SPEND_ONCE,
+      maxTicks: 12,
+    });
+
+  it("delays the perception of a stamina drain by exactly L_act ticks (plus the structural tick)", () => {
+    // L_act = 0: the spend on tick 0 enters B's history on tick 1, so the drop is
+    // perceived at tick 1 — the structural observe-after-commit tick (history[0] is the
+    // pre-spend baseline at max). Each extra tick of action latency pushes it one later.
+    expect(firstBlockTick(runFight(staminaDelay({ lAct: 0 })).events)).toBe(1);
+    expect(firstBlockTick(runFight(staminaDelay({ lAct: 1 })).events)).toBe(2);
+    expect(firstBlockTick(runFight(staminaDelay({ lAct: 2 })).events)).toBe(3);
+  });
+
+  it("rides the action (L_act) layer, not the positional (L_pos) layer", () => {
+    // Only the positional layer delayed (L_pos = 5, L_act = 0): the stamina read stays
+    // live ⇒ tick 1, proving opponent.stamina follows the action layer (read off oppAct,
+    // not oppPos — a positional read would surface the drain at tick 6, not 1).
+    expect(
+      firstBlockTick(runFight(staminaDelay({ lPos: 5, lAct: 0 })).events),
+    ).toBe(1);
+  });
+
+  it("perceives stamina live (structural delay only) when perception is absent, replaying byte-identically", () => {
+    const cfg = getMockConfig({
+      rules: getMockRules({
+        startGap: 300000,
+        stamina: { max: 50 },
+        moves: { strike: DRAIN_STRIKE },
+      }), // no `perception` field at all
+      botA: BLOCK_ON_LOW_STAMINA,
+      botB: SPEND_ONCE,
+      maxTicks: 12,
+    });
+
+    // Live ⇒ only the structural one-tick observe-after-commit delay remains.
+    expect(firstBlockTick(runFight(cfg).events)).toBe(1);
+    // The added field leaves replay byte-identical (additive + deterministic).
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  it("reads the inert sentinel 0 when no stamina is configured, a bot can branch on it", () => {
+    // With no Rules.stamina, opponent.stamina reads the sentinel 0 (not undefined): a bot
+    // can branch on it. No meter ⇒ stamina stays 0, so A advances every tick (0 ≤ 0).
+    const onZero = bot(
+      [
+        {
+          when: {
+            op: "lte",
+            args: [
+              { op: "field", path: "opponent.stamina" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "move", dir: 1 },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: onZero,
+        botB: bot([], { type: "idle" }), // no meter configured ⇒ stamina sentinel 0
+        rules: getMockRules({ startGap: 300000 }),
+        maxTicks: 3,
+      }),
+    );
+
+    expect(result.events[0].a.action).toEqual({ type: "move", dir: 1 });
+  });
+
+  it("accepts a bot that reads opponent.stamina (additive to the allowlist)", () => {
+    expect(validate(BLOCK_ON_LOW_STAMINA).ok).toBe(true);
+  });
+});

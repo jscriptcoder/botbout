@@ -50,6 +50,7 @@ export type OpponentState = {
   knockdown: boolean; // is the (perceived) opponent knocked down? (action ⇒ L_act-delayed; true for the WHOLE knockdown — finish window AND i-frame tail)
   vx: number; // perceived horizontal velocity (sub-units/tick), for dead-reckoning
   predictedDistance: number; // distance dead-reckoned forward over the L_pos gap
+  stamina: number; // perceived conditioning meter (C10 Story 4; action ⇒ L_act-delayed; 0 = no meter, the inert sentinel)
 };
 
 export type RingState = { width: number };

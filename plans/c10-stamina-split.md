@@ -155,7 +155,11 @@ blockChip`). **Out of scope:** any quantitative balance metric (spam / turtle wi
 
 ## Next step
 
-Load **`planning`** for **Story 1 (self-side stamina economy)** → PR-sized slices,
-each running the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle (load `tdd`,
-`testing`, `mutation-testing`, `refactoring` before code). Optionally run `find-gaps`
-on this split first to harden the acceptance examples.
+Stories 1–3 are SHIPPED. Load **`planning`** for **Story 4 (opponent stamina read —
+`opponent.stamina`/`opponent.gassed` on the `L_act` layer)** → PR-sized slices, each
+running the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle (load `tdd`, `testing`,
+`mutation-testing`, `refactoring` before code). Heed planning note **N2** — the values
+must ride the per-fighter perception ring buffer so the `L_act` read stays coherent with
+`attacking`/`throwing`/`posture` (invariant #4). After Story 4: the consolidated
+`CANONICAL_RULES` stamina wiring (the numbers — `gasThreshold`/`gasRecoveryPenalty`/
+per-move costs — promoted from test fixtures, re-tuned against gas + the C9 arsenal).

@@ -149,6 +149,7 @@ type Frame = {
   throwing: boolean;
   knockdown: boolean;
   vx: number;
+  stamina: number; // conditioning meter (C10 Story 4) — an action-layer tell (L_act)
 };
 
 const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
@@ -161,6 +162,7 @@ const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   throwing: f.state.kind === "throwing",
   knockdown: f.state.kind === "downed",
   vx: prev ? f.x - prev.x : 0,
+  stamina: f.stamina,
 });
 
 const initMem = (bot: BotDoc): Record<string, number> => ({
@@ -207,6 +209,7 @@ const perceiveOpponent = (
     knockdown: oppAct.knockdown,
     vx: oppPos.vx,
     predictedDistance: Math.abs(predictedX - selfX),
+    stamina: oppAct.stamina, // C10 Story 4: rides the action layer (L_act), like attacking
   };
 };
 
