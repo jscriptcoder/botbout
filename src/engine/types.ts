@@ -9,7 +9,10 @@
 
 export type Facing = -1 | 1;
 export type Band = "high" | "mid" | "low";
-export type MoveId = "strike";
+// The flat union of named techniques a bot may `attack` with (C9 arsenal). The abstract
+// `strike` stays as scaffolding (retired into the named roster in a later slice); the
+// WKF roster is added one technique at a time. `kizami-zuki` is the jab (first technique).
+export type MoveId = "strike" | "kizami-zuki";
 
 // ─── Action grammar — a bot returns exactly ONE per tick ─────────────────────
 // `dir` is RELATIVE to facing: +1 = toward opponent, -1 = away, 0 = hold.
@@ -118,8 +121,11 @@ export type Rules = {
   startGap: number; // initial separation between the two fighters (sub-units)
   // The frame table. `strike` is the base move; `sweep` (C8) is an OPTIONAL low-band
   // knockdown move — absent ⇒ a `sweep` action is inert ⇒ byte-identical to the
-  // pre-sweep engine. Keyed concretely (not `Record<MoveId, …>`) so `sweep` stays optional.
-  moves: { strike: MoveSpec; sweep?: MoveSpec };
+  // pre-sweep engine. Keyed concretely (not `Record<MoveId, …>`) so named moves stay
+  // OPTIONAL: `kizami-zuki` (C9 jab) is configured per-ruleset, and an `attack` naming a
+  // move this table does not configure degrades to idle (inert), like an unconfigured
+  // `sweep`. (`strike` stays required scaffolding until the arsenal retirement slice.)
+  moves: { strike: MoveSpec; sweep?: MoveSpec; "kizami-zuki"?: MoveSpec };
   // Vertical axis (C4). Both absent ⇒ inert (a `jump` launches no arc) ⇒
   // byte-identical to the pre-vertical engine. `jumpImpulse` is the initial
   // upward velocity (sub-units/tick); `gravity` is the per-tick downward delta

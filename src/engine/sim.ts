@@ -364,26 +364,36 @@ const intake = (f: Fighter, action: Action, rules: Rules): void => {
     if (
       f.state.kind === "attacking" &&
       f.cancelRemaining > 0 &&
-      action.type === "attack" &&
-      (f.state.spec.cancelInto ?? []).includes(action.move) &&
-      bandLegal(rules.moves[action.move], action.band) // C9: an out-of-band cancel is refused
+      action.type === "attack"
     ) {
-      f.state = startAttack(rules.moves[action.move], action.band);
-      f.cancelRemaining = 0; // the fresh move re-opens the window only when IT connects
+      const spec = rules.moves[action.move]; // C9: undefined ⇒ move not configured ⇒ no cancel
+
+      if (
+        spec !== undefined &&
+        (f.state.spec.cancelInto ?? []).includes(action.move) &&
+        bandLegal(spec, action.band) // C9: an out-of-band cancel is refused
+      ) {
+        f.state = startAttack(spec, action.band);
+        f.cancelRemaining = 0; // the fresh move re-opens the window only when IT connects
+      }
     }
 
     return;
   }
 
-  if (
-    action.type === "attack" &&
-    bandLegal(rules.moves[action.move], action.band) && // C9: an out-of-band attack degrades to idle
-    affordable(f, rules.moves[action.move], rules)
-  ) {
-    const move = startAttack(rules.moves[action.move], action.band);
-    f.state = move;
-    spend(f, rules.moves[action.move], rules); // C10: a costed move drains stamina on commit
-    move.extra += gasRecovery(f, rules); // C10 Story 3: a commit into the gas line recovers slower
+  if (action.type === "attack") {
+    const spec = rules.moves[action.move]; // C9: undefined ⇒ move not configured ⇒ idle (inert)
+
+    if (
+      spec !== undefined &&
+      bandLegal(spec, action.band) && // C9: an out-of-band attack degrades to idle
+      affordable(f, spec, rules)
+    ) {
+      const move = startAttack(spec, action.band);
+      f.state = move;
+      spend(f, spec, rules); // C10: a costed move drains stamina on commit
+      move.extra += gasRecovery(f, rules); // C10 Story 3: a commit into the gas line recovers slower
+    }
   } else if (
     action.type === "sweep" &&
     rules.moves.sweep !== undefined &&

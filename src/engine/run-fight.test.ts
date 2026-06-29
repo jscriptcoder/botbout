@@ -3542,6 +3542,138 @@ describe("runFight — band-legality gate (an out-of-band attack degrades to idl
   });
 });
 
+describe("runFight — kizami-zuki (the jab: a short-reach high·mid technique)", () => {
+  // A ruleset configuring the jab alongside the (longer-reach) strike. The jab's distinct
+  // traits are its SHORTER reach (150000 < strike's 250000) and its high·mid legal bands.
+  const jabRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 120000, // within jab reach (150000)
+      moves: {
+        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+        "kizami-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 150000,
+          bands: ["high", "mid"],
+        },
+      },
+      ...o,
+    });
+
+  const jabAt = (band: Band): BotDoc =>
+    bot([], { type: "attack", move: "kizami-zuki", band });
+
+  it("scores 1 when a legal in-reach jab connects at mid", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: jabRules(),
+        botA: jabAt("mid"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(1);
+  });
+
+  it("fizzles to idle at low — the jab strikes only high·mid (the band gate)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: jabRules(),
+        botA: jabAt("low"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("whiffs beyond its (short) reach — at a gap a strike would reach but the jab cannot", () => {
+    // startGap 200000: beyond jab reach (150000), still within strike reach (250000).
+    const result = runFight(
+      getMockConfig({
+        rules: jabRules({ startGap: 200000 }),
+        botA: jabAt("mid"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("is inert when the move id is unconfigured in this Rules (degrades to idle, like sweep/throw)", () => {
+    // A strike-only ruleset (no `kizami-zuki` key); a jab attack references an unconfigured
+    // move ⇒ no spec ⇒ idle ⇒ no score (the `spec !== undefined` guard).
+    const result = runFight(
+      getMockConfig({
+        rules: getMockRules({ startGap: 120000 }),
+        botA: jabAt("mid"),
+        botB: IDLE,
+        maxTicks: 12,
+      }),
+    );
+
+    expect(result.scores.a).toBe(0);
+  });
+
+  it("is inert as a cancel target when unconfigured — a cancel into an unconfigured move is refused", () => {
+    // `strike` may cancel INTO `kizami-zuki`, but this ruleset does not configure the jab.
+    const rules = getMockRules({
+      startGap: 120000,
+      cancelWindow: 10,
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          cancelInto: ["kizami-zuki"],
+        },
+      },
+    });
+
+    // Opener `strike` at tick 0 (connects tick 4, opens the cancel window); a cancel into the
+    // unconfigured `kizami-zuki` at tick 6 ⇒ no spec ⇒ refused (the cancel-path `spec !==
+    // undefined` guard) ⇒ the fighter finishes its recovery ⇒ opener only.
+    const opener = bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "attack", move: "strike", band: "mid" },
+        },
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 6 },
+            ],
+          },
+          do: { type: "attack", move: "kizami-zuki", band: "mid" },
+        },
+      ],
+      { type: "idle" },
+    );
+
+    const result = runFight(
+      getMockConfig({ rules, botA: opener, botB: IDLE, maxTicks: 16 }),
+    );
+
+    expect(result.scores.a).toBe(1);
+  });
+});
+
 describe("runFight — stamina affordability (an unaffordable move degrades to idle)", () => {
   const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
   const THROWER = bot([], { type: "throw" });

@@ -1,7 +1,15 @@
 # Plan: C9 — Arsenal foundation (band-legality gate + first technique)
 
 **Branch**: `feat/c9-band-legality-gate` (Slice 1) · `feat/c9-kizami-zuki-jab` (Slice 2)
-**Status**: Active — **Slice 1 code complete (pending commit approval)**; Slice 2 not started.
+**Status**: Active — **Slice 1 MERGED (PR #67)**; **Slice 2 code complete (pending commit
+approval)** on `feat/c9-kizami-zuki-jab`. Slice 2 result: 421/421 green (byte-identical
+prior suite + 7 new); `dsl.ts` allowlist mutation 100% (TCB); `sim.ts` changed-line 12/13
+killed with **one documented equivalent** — the pre-existing `cancelInto ?? []`
+ArrayDeclaration (`sim.ts:373`), unkillable since no valid `MoveId` equals the bogus
+string. Mutation also surfaced a real gap (cancel-path unconfigured-move guard untested) →
+added the cancel-target-unconfigured test. Docs reconciliation (BOT-DSL.md jab/kick/
+roundhouse examples → Japanese roster; CLAUDE.md C9 Status entry) deferred to the split's
+Slice 7 (C9 completion), not per-technique.
 
 > Implements **Slice 1** of `plans/c9-arsenal-split.md` (the multi-move arsenal
 > foundation), broken into two PR-sized planning slices. Session-resolved defaults:
@@ -110,9 +118,13 @@ green, mutation report reviewed, human approves commit.
 cheap, `high·mid`, 1 yuko); the gate from Slice 1 now bites a real move on a realistic fixture.
 **Path**: `MoveId` gains `"kizami-zuki"`; `Rules.moves` gains optional `"kizami-zuki"?:
 MoveSpec`; the `dsl.ts` `MOVES` allowlist (the TCB security boundary for `attack.move`)
-gains `"kizami-zuki"`; the sim resolves it through the **existing** generic
-`rules.moves[action.move]` indexing — **no resolver change**. Observability: `runFight`
-awards +1 on a legal in-reach jab.
+gains `"kizami-zuki"`; a fixture configures the jab spec. Observability: `runFight` awards
++1 on a legal in-reach jab. **`sim.ts` DOES change** (find-gaps 2026-06-29): once a move id
+is OPTIONAL in `Rules.moves`, `rules.moves[action.move]` is `MoveSpec | undefined`, so the
+two attack-handling sites (`intake` neutral commit + cancel exception) must capture the
+spec once and guard `spec !== undefined` — an attack referencing an allowlisted-but-
+**unconfigured** move degrades to **idle / inert** (like an unconfigured `sweep`/`throw`).
+Byte-identical for configured moves (`strike` is always present ⇒ guard always true).
 **Contract decision** (split parking-lot #2): explicit optional key `"kizami-zuki"?:
 MoveSpec` (keep `strike` **required** through the additive phase; switch `Rules.moves` to
 `Partial<Record<MoveId, MoveSpec>>` only at the split's final retirement slice).
@@ -122,22 +134,35 @@ MoveSpec` (keep `strike` **required** through the additive phase; switch `Rules.
 **Acceptance criteria** (present + confirm before any code):
   1. Validator accepts `{type:"attack", move:"kizami-zuki", band:"mid"}`; rejects an
      unknown id (e.g. `{move:"oroshi"}`) with the existing structured "unknown move" error.
-  2. `runFight` on a fixture (canonical-ish rules + a `kizami-zuki` spec with reach **<**
-     `strike.reach`): a legal in-reach `kizami-zuki` at `mid` scores **1**; at `low` ⇒
-     `idle` (Slice-1 gate); at a gap **beyond jab reach but within `strike.reach`** ⇒
-     **whiff** (proves the shorter reach is real, not incidental).
-  3. `CANONICAL_RULES` (no `kizami-zuki` key) unchanged ⇒ existing fights byte-identical.
-**RED**: validator tests (accept new id / reject unknown) + the three `runFight`
-behaviors. Mutator-aware: the `MOVES` set membership (a mutant dropping the new id must
-fail the accept test; a mutant adding a bogus id is caught by the reject test), and the
-reach boundary (`<=` vs `<` at the jab-reach edge — borrow the existing strike-reach
-boundary test shape).
+     **Validator scope** (resolved, runtime-gate decision): it accepts any *syntactically*
+     valid `move` (∈ allowlist) + `band` (∈ bands) pair — e.g. `{move:"kizami-zuki",
+     band:"low"}` **validates** — and the *runtime* band-legality gate decides whether it
+     connects or fizzles. No static out-of-band reject in this slice.
+  2. `runFight` on a fixture (a `kizami-zuki` spec with reach **<** `strike.reach`): a legal
+     in-reach `kizami-zuki` at `mid` scores **1**; at `low` ⇒ `idle` (Slice-1 gate); at a gap
+     **beyond jab reach but within `strike.reach`** ⇒ **whiff** (proves the shorter reach is
+     real — position beyond the jab's reach; `strike` need not be in the fixture).
+  3. **Unconfigured ⇒ inert** (the find-gaps blocker): a bot attacking `kizami-zuki` against
+     a `Rules` that configures only `strike` (no `kizami-zuki` key) ⇒ `idle` — no score, no
+     spend. Pins the `spec !== undefined` guard (removing it would crash on `undefined`).
+  4. `CANONICAL_RULES` (no `kizami-zuki` key) unchanged ⇒ existing fights byte-identical;
+     the jab is **not** wired into canonical until the split's Slice 7. The jab also gets
+     **no `cancelInto`** here (cross-move cancels are the split's Slice 6).
+**RED**: validator tests (accept new id / reject unknown) + the four `runFight` behaviors
+(in-reach mid scores 1 · low fizzles · beyond-jab-reach whiffs · unconfigured fizzles).
+Mutator-aware: the `MOVES` set membership (a mutant dropping the new id must fail the
+accept test; a mutant adding a bogus id is caught by the reject test); the reach boundary
+(`<=` vs `<` at the jab-reach edge — borrow the existing strike-reach boundary test shape);
+and the **`spec !== undefined` guard** (a mutant forcing it true ⇒ `startAttack(undefined,…)`
+crash on the unconfigured-move test).
 **GREEN**: extend the `MoveId` type union; add `"kizami-zuki"` to the `MOVES` `Set`; add
-the optional `"kizami-zuki"?: MoveSpec` key to `Rules.moves`; add the fixture spec in the
-test. No `sim.ts` change expected (resolution is already generic over `MoveId`).
+the optional `"kizami-zuki"?: MoveSpec` key to `Rules.moves`; **in `sim.ts`** capture
+`const spec = rules.moves[action.move]` once per attack-handling site and gate on
+`spec !== undefined` (a small restructure of the two `if` conditions — byte-identical for
+the always-present `strike`); add the fixture spec in the test.
 **MUTATE**: run `mutation-testing` on `dsl.ts` (the allowlist/validator) + `sim.ts`.
 **KILL MUTANTS**: the allowlist is TCB — every member's membership must be test-pinned
-(keep `dsl.ts` at 100%); kill the reach-boundary survivor.
+(keep `dsl.ts` at 100%); kill the reach-boundary + `spec !== undefined` survivors.
 **REFACTOR**: assess (e.g. whether the test fixture deserves a shared `kizami-zuki` factory).
 **Done when**: all ACs met, suite + typecheck + lint green, mutation report reviewed,
 human approves commit.
@@ -150,15 +175,28 @@ human approves commit.
 4. Update `.claude/CLAUDE.md` Status (a new C9 entry) and reconcile `docs/BOT-DSL.md`'s
    illustrative move-id examples with the Japanese roster — at the slice where it lands.
 
-## Slice 2 parking lot (harden when we plan/build it — after Slice 1 merges)
+## Slice 2 parking lot — RESOLVED (find-gaps + recon 2026-06-29)
 
-- `kizami-zuki` gets **no `cancelInto`** in Slice 2 (cross-move cancels are the split's
-  Slice 6). Keep the jab a plain move; revisit routes later.
-- Verify adding `"kizami-zuki"` to `MoveId` breaks **no exhaustive switch** (today
-  resolution is via `rules.moves[action.move]` indexing — no `switch (move)` seen — but
-  re-grep before coding).
-- Jab frames / reach / `staminaCost` live in a **test fixture**, not `CANONICAL_RULES`
-  (split parking-lot #3 — canonical re-tune is the split's Slice 7).
+- ✓ **Unconfigured move ⇒ idle/inert** (the Blocker): `spec !== undefined` guard at both
+  attack sites; allowlist still rejects unknown ids. → AC-3 + Path/GREEN above.
+- ✓ **No exhaustive `MoveId` switch** to break: `dsl.ts` switches are on `e.op`/`e.type`,
+  not move ids (re-grepped) — extending the union is safe. The only TCB touch-point is the
+  `MOVES` allowlist (`dsl.ts:121`).
+- ✓ `kizami-zuki` gets **no `cancelInto`** (cross-move cancels = split Slice 6). → AC-4.
+- ✓ **Validator scope**: accepts any valid `move`+`band`; runtime gate decides legality
+  (no static out-of-band reject). → AC-1.
+- ✓ Jab frames / reach / `staminaCost` live in a **test fixture**, not `CANONICAL_RULES`
+  (split parking-lot #3 — canonical re-tune is the split's Slice 7). → AC-2/AC-4.
+
+## Gaps closed — find-gaps session 2026-06-29 (Slice 2)
+
+Resolved (4):
+- [Blocker → AC-3 + Path/GREEN] Unconfigured-but-allowlisted move ⇒ idle/inert (`spec !== undefined` guard; sim.ts changes)
+- [Should  → AC-1]              Validator scope: accepts valid move+band; runtime gate decides legality (no static reject)
+- [Should  → AC-4]              Jab has no `cancelInto` in this slice (cross-move cancels deferred to split Slice 6)
+- [Should  → recon]             No exhaustive `MoveId` switch exists ⇒ union extension is safe; TCB = the `MOVES` allowlist only
+
+Parked: none.
 
 ## Gaps closed — find-gaps session 2026-06-29 (Slice 1)
 
