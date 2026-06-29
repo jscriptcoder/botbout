@@ -3945,3 +3945,78 @@ describe("runFight — gassing penalty (a gassed fighter's committed move recove
     expect(withPenaltyNoThreshold.events).toEqual(plainMeter.events);
   });
 });
+
+describe("runFight — self.gassed (a bot reads its own live gas tell)", () => {
+  const STRIKER = bot([], { type: "attack", move: "strike", band: "mid" });
+
+  // Attacks while fresh, but idles the moment it reads itself GASSED — proving it reads the
+  // live self.gassed field and flips on it (1 iff stamina ≤ gasThreshold), not a constant.
+  const GASS_PACER = bot(
+    [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.gassed" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    { type: "attack", move: "strike", band: "mid" },
+  );
+
+  const gasReadRules = (stamina: NonNullable<Rules["stamina"]>): Rules =>
+    getMockRules({
+      startGap: 200000, // within reach (250000) ⇒ a clean strike scores
+      stamina,
+      moves: {
+        strike: {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 10,
+        },
+      },
+    });
+
+  it("flips a bot's action at the gas line: attacks while fresh, idles once gassed", () => {
+    // No gasRecoveryPenalty ⇒ recovery stays 12, isolating the READ. tick 0: stamina 55 > 50 ⇒
+    // gassed 0 ⇒ attack (spends to 45). At tick 12 (neutral again): 45 ≤ 50 ⇒ gassed 1 ⇒ idle.
+    const result = runFight(
+      getMockConfig({
+        rules: gasReadRules({ max: 55, gasThreshold: 50 }),
+        botA: GASS_PACER,
+        botB: IDLE,
+        maxTicks: 20,
+      }),
+    );
+
+    expect(result.events[0].a.action.type).toBe("attack"); // fresh (55 > 50) ⇒ gassed 0 ⇒ attacks
+    expect(result.events[12].a.action.type).toBe("idle"); // gassed (45 ≤ 50) ⇒ reads 1 ⇒ holds fire
+    expect(result.scores.a).toBe(1); // one strike landed, then it read itself gassed and stopped
+  });
+
+  it("reads the sentinel 0 when no stamina is configured — the read is inert (byte-identical)", () => {
+    // With no meter, self.gassed reads 0, so the pacer never idles — identical to plain spamming.
+    const rules = getMockRules({
+      startGap: 200000,
+      moves: {
+        strike: { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+      },
+    });
+
+    const reads = runFight(
+      getMockConfig({ rules, botA: GASS_PACER, botB: IDLE, maxTicks: 18 }),
+    );
+
+    const plain = runFight(
+      getMockConfig({ rules, botA: STRIKER, botB: IDLE, maxTicks: 18 }),
+    );
+
+    expect(reads.events).toEqual(plain.events); // self.gassed = 0 ⇒ no divergence
+  });
+});

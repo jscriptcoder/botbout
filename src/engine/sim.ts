@@ -248,6 +248,7 @@ const viewFor = (
       cancelWindow: self.cancelRemaining, // live — the attacker's open cancel window
       finishWindow, // live — the okizeme finish window on the foe's knockdown (C8)
       stamina: self.stamina, // live — the conditioning meter is self-proprioception (C10)
+      gassed: gassed(self, rules) ? 1 : 0, // live — the derived gas tell (C10 Story 3): 1 iff at/below the gas line
     },
     opponent,
     ring: { width: rules.ring.width },

@@ -38,6 +38,7 @@ const getMockState = (o: StateOverrides = {}): State => ({
     cancelWindow: 0,
     finishWindow: 0,
     stamina: 0,
+    gassed: 0,
     ...o.self,
   },
   opponent: {
@@ -196,6 +197,7 @@ describe("runTick — numeric reads", () => {
     ["self.counterWindow", { self: { counterWindow: 9 } }, 9],
     ["self.cancelWindow", { self: { cancelWindow: 5 } }, 5],
     ["self.stamina", { self: { stamina: 42 } }, 42],
+    ["self.gassed", { self: { gassed: 1 } }, 1],
     ["opponent.x", { opponent: { x: 250 } }, 250],
     ["opponent.facing", { opponent: { facing: -1 } }, -1],
     ["opponent.distance", { opponent: { distance: 88 } }, 88],

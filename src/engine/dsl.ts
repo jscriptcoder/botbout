@@ -30,6 +30,7 @@ export type FieldPath =
   | "self.cancelWindow"
   | "self.finishWindow"
   | "self.stamina"
+  | "self.gassed"
   | "opponent.x"
   | "opponent.y"
   | "opponent.facing"
@@ -95,6 +96,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "self.cancelWindow": (s) => s.self.cancelWindow,
   "self.finishWindow": (s) => s.self.finishWindow,
   "self.stamina": (s) => s.self.stamina,
+  "self.gassed": (s) => s.self.gassed,
   "opponent.x": (s) => s.opponent.x,
   "opponent.y": (s) => s.opponent.y,
   "opponent.facing": (s) => s.opponent.facing,
