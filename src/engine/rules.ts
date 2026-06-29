@@ -57,8 +57,62 @@ export const CANONICAL_RULES: Rules = {
       score: 0,
       reach: 180000,
       knockdown: true,
-      cancelInto: ["strike"],
+      // The okizeme finisher route. Lists BOTH `strike` (legacy) and `gyaku-zuki` (the C9
+      // reverse-punch finisher) — additive; S7.3 drops `strike` when it is retired.
+      cancelInto: ["strike", "gyaku-zuki"],
       staminaCost: 40, // special move cost (C10) — twice the basic strike
+    },
+    // ── The C9 "real karate" arsenal (§P7): four named WKF techniques replacing the abstract
+    // `strike` (retired in S7.3). Reach hierarchy throw(120k) < sweep(180k) < jab(210k) <
+    // reverse(240k) < front(270k) < roundhouse(300k); every committed startup ≥ lAct(6)+1
+    // (reactable) and recovery ≥ lAct + jab.startup (whiff-punishable). Punches are basic-cost
+    // (≤ gasThreshold 30 ⇒ still commit when gassed); kicks are special (> 30 ⇒ lock out when
+    // gassed — the emergent special-lockout). Cancel web: jab→reverse→{front|roundhouse},
+    // kick→reverse; the sweep→reverse finisher is above.
+    "kizami-zuki": {
+      // jab — fastest, shortest, cheapest; the high·mid opener (yuko).
+      startup: 7, // = lAct + 1 ⇒ reactable, but only just
+      active: 2,
+      recovery: 13, // = lAct + jab.startup ⇒ whiff-punishable, but only just
+      score: 1,
+      reach: 210000, // > sweep (180k), < reverse (240k)
+      bands: ["high", "mid"],
+      staminaCost: 15, // basic (≤ gasThreshold 30); the cheapest commit
+      cancelInto: ["gyaku-zuki"],
+    },
+    "gyaku-zuki": {
+      // reverse punch — the workhorse: longer reach, slightly more committed than the jab (yuko).
+      startup: 7,
+      active: 3,
+      recovery: 14,
+      score: 1,
+      reach: 240000, // the locked old-strike anchor
+      bands: ["high", "mid"],
+      staminaCost: 20, // basic (≤ gasThreshold 30)
+      cancelInto: ["mae-geri", "mawashi-geri"], // escalate the punch into either kick
+    },
+    "mae-geri": {
+      // front kick — chudan-only (mid) for waza-ari (2); deeper than the punches, slower, special.
+      startup: 9, // slower wind-up than the punches (more telegraphed)
+      active: 3,
+      recovery: 16, // ≥ lAct + jab.startup ⇒ whiff-punishable
+      score: 2,
+      reach: 270000, // > reverse (240k), < roundhouse (300k)
+      bands: ["mid"], // jodan/gedan front kicks are not WKF-scored ⇒ out-of-band degrades to idle
+      staminaCost: 35, // special (> gasThreshold 30) ⇒ locks out when gassed
+      cancelInto: ["gyaku-zuki"], // a punch can follow the kick
+    },
+    "mawashi-geri": {
+      // roundhouse — the risk/reward apex: longest reach, slowest, costliest. Jodan 3 / chudan 2.
+      startup: 11, // slowest wind-up ⇒ most reactable, balancing the ippon reward
+      active: 3,
+      recovery: 18, // ≥ lAct + jab.startup ⇒ whiff-punishable
+      score: 2, // chudan fallback (waza-ari)
+      scoreByBand: { high: 3 }, // jodan ⇒ ippon
+      reach: 300000, // the longest in the arsenal
+      bands: ["high", "mid"],
+      staminaCost: 45, // special (> gasThreshold 30), the costliest ⇒ locks out when gassed
+      cancelInto: ["gyaku-zuki"], // a punch can follow the kick
     },
   },
   // Defensive depth (C5/C6), tuned to the canonical strike's startup-7 timing:
