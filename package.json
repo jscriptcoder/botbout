@@ -14,7 +14,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "fight": "tsx src/cli/fight.ts"
+    "fight": "tsx src/cli/fight.ts",
+    "benchmark": "tsx src/cli/benchmark.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

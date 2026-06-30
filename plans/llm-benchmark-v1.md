@@ -29,7 +29,7 @@ Resolved via `grill-me` (full record in the originating conversation). The load-
 - **DSL growth** (additive to `src/engine/dsl.ts`, the TCB): a unified **`rule(path)`** read
   over the whole frozen ruleset (allowlist generated, mirroring `FIELD_READERS`; nothing
   withheld; `latency` collapses into it) + **integer arithmetic** (`add/sub/mul/min/max/div/
-  neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
+neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
 - **State surface**: add **`opponent.points`, exposed live** (a scoreboard fact, not a
   body-perception tell) ⇒ a bot derives `scoreGap` via arithmetic. Hit-confirm / self-posture
   / `edgeDistance` deferred.
@@ -37,8 +37,8 @@ Resolved via `grill-me` (full record in the originating conversation). The load-
   `/validate`, `/fight`) is an explicit later phase.
 - **Spec**: a single self-contained **Markdown `spec.md`** — hybrid generated (grammar,
   allowlists, `LIMITS`, frame table, embedded **JSON Schema**, error catalog, benchmark rules)
-  + hand-authored primer with **all numbers interpolated from `CANONICAL_RULES`** + **real
-  validated example bots**. **Committed snapshot + drift test**; Markdown-only for v1.
+  - hand-authored primer with **all numbers interpolated from `CANONICAL_RULES`** + **real
+    validated example bots**. **Committed snapshot + drift test**; Markdown-only for v1.
 - **Invalid-bot policy**: **hard-zero-distinct** (invalid bots never fight; recorded as a
   distinct last-ranked outcome with the validator errors) + **lenient JSON extraction** (last
   fenced ```json block, else last top-level `{…}`), identical for every model.
@@ -91,7 +91,7 @@ in v1).
 
 ### Slice 1: Score a valid bot against the frozen gauntlet (walking skeleton)
 
-**Value**: The benchmark operator can score *any* valid bot and get a deterministic ranking
+**Value**: The benchmark operator can score _any_ valid bot and get a deterministic ranking
 number — the core benchmark loop, proven end-to-end with today's DSL and existing bots.
 **Path**: `npm run benchmark -- bots/zoner.json` → CLI loads the bot through the existing
 validator gate → runs it via `runFight` against each gauntlet bot (from a new versioned
@@ -102,13 +102,14 @@ telemetry — later slices.)
 **Required implementation skills**: load `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `cli-design` for stream/exit discipline.
 **Acceptance criteria**:
+
 - A new `src/engine/benchmark.ts` (pure) exposes a function that, given `(bot, gauntlet, seeds,
-  maxTicks, rules)`, returns `{ netPoints, winRate, perOpponent: [...] }` computed over every
+maxTicks, rules)`, returns `{ netPoints, winRate, perOpponent: [...] }` computed over every
   (opponent × seed × side) fight using `runFight`, where each (opponent × seed) is run **twice**
   — submitted bot as fighter A and as fighter B — and both fights count.
 - Net-points = Σ over all fights (both sides) of `(botScore − oppScore)`, where `botScore` is
   the submitted bot's score regardless of which side it played; win-rate = `botWins /
-  totalFights` (draw ≠ win); `totalFights = |gauntlet| × |seeds| × 2`.
+totalFights` (draw ≠ win); `totalFights = |gauntlet| × |seeds| × 2`.
 - A tie on **both** net-points and win-rate is reported as a **genuine tie** — no third
   tiebreak key for v1 (an exact double-tie is vanishingly rare given net-points is a wide
   integer sum).
@@ -122,27 +123,31 @@ telemetry — later slices.)
   bump**. Documented policy: also bump on any change to the engine **outcome path** (`sim.ts` /
   `dsl.ts` interpreter), leaning on the existing determinism/replay tests to catch unintended
   outcome drift. So a score is comparable iff its `BENCHMARK_VERSION` matches.
-- **Gauntlet composition**: the frozen roster is **5–7 bots drawn from `bots/`** that MUST span
-  the strategic axes — pressure, band-reading defense, grappler, sweeper/okizeme, and zoner — so
-  no single counter-strategy can top-score. Exact selection is made in this slice. The submitted
-  bot is **never** in the gauntlet (no mirror / self match — a bot vs its clone is just
-  side-asymmetry noise).
+- **Gauntlet composition** (LOCKED): the frozen roster is the **6 bots** `jabber, rekka, zoner,
+grappler, sweeper, vulture` — spanning the strategic axes (pressure ×2 flavors = `jabber`
+  poke + `rekka` cancel-combo, zoner = `zoner`, grappler = `grappler`, sweeper/okizeme =
+  `sweeper`, band-reading defense = `vulture`) so no single counter-strategy can top-score.
+  Self-defeating bots (`berserker` self-gasses, `turtle` blocks one band, `counter` never
+  scores) are deliberately excluded — they don't discriminate as opponents. The submitted bot is
+  **never** in the gauntlet (no mirror / self match): a gauntlet opponent whose loaded document
+  **deep-equals** the submitted document is skipped (`totalFights` drops by `|seeds| × 2` for
+  that opponent — only triggers when self-testing a roster bot; never for an LLM submission).
 - `npm run benchmark -- <bot.json>` prints net-points, win-rate, and a per-opponent table to
   **stdout**; usage/errors to **stderr**; exit 0 on success, 2 on bad usage. Output is
   byte-stable across repeat runs (determinism).
 - A bot path that the validator rejects exits non-zero with the structured errors (full
-  hard-zero-distinct *reporting* deferred to slice 7; here a rejected bot simply fails fast).
-**RED**: a `benchmark.test.ts` asserting the aggregation on a tiny fixed gauntlet (2 bots × 2
-seeds) yields known net-points/win-rate; a `format`/CLI test asserting the report layout and
-stream/exit discipline. Mutator watch: comparison-operator mutants on `>`/`>=` in
-win/draw/net-points, the `botScore − oppScore` subtraction direction, and the seed-loop bounds.
-**GREEN**: implement the pure aggregator + a thin CLI shell reusing `loadBotDoc` and
-`CANONICAL_RULES`; add the `benchmark` npm script and the manifest module.
-**MUTATE**: run Stryker on `benchmark.ts` (+ changed CLI lines).
-**KILL MUTANTS**: cover the subtraction direction, win-vs-draw boundary, and empty/edge
-aggregation.
-**REFACTOR**: assess sharing the table renderer with `src/cli/format.ts`.
-**Done when**: all ACs met, mutation report reviewed, human approves commit.
+  hard-zero-distinct _reporting_ deferred to slice 7; here a rejected bot simply fails fast).
+  **RED**: a `benchmark.test.ts` asserting the aggregation on a tiny fixed gauntlet (2 bots × 2
+  seeds) yields known net-points/win-rate; a `format`/CLI test asserting the report layout and
+  stream/exit discipline. Mutator watch: comparison-operator mutants on `>`/`>=` in
+  win/draw/net-points, the `botScore − oppScore` subtraction direction, and the seed-loop bounds.
+  **GREEN**: implement the pure aggregator + a thin CLI shell reusing `loadBotDoc` and
+  `CANONICAL_RULES`; add the `benchmark` npm script and the manifest module.
+  **MUTATE**: run Stryker on `benchmark.ts` (+ changed CLI lines).
+  **KILL MUTANTS**: cover the subtraction direction, win-vs-draw boundary, and empty/edge
+  aggregation.
+  **REFACTOR**: assess sharing the table renderer with `src/cli/format.ts`.
+  **Done when**: all ACs met, mutation report reviewed, human approves commit.
 
 ---
 
@@ -157,6 +162,7 @@ a real fight.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `functional` for the pure evaluator; `typescript-strict` for the discriminated `NumExpr` union.
 **Acceptance criteria**:
+
 - `NumExpr` gains the eight ops: variadic `add/mul/min/max` (≥1 arg), binary `sub/div`, unary
   `neg/abs`. Validator enforces arities, recurses into args (node + depth budget), and rejects
   malformed shapes with structured errors.
@@ -166,17 +172,17 @@ a real fight.
   picks the expected action (behavior, through the public interpreter), and that overflow
   saturates rather than producing a non-integer.
 - Absent any arithmetic op ⇒ byte-identical to the pre-arithmetic engine.
-**RED**: validator tests (each op's arity + nesting budget + rejection paths); interpreter
-tests for saturation boundary, `div` truncation toward zero (incl. negative operands), and
-÷0:=0. Mutator watch: arithmetic-operator swaps (`+`↔`-`, `*`↔`/`), the saturation clamp
-bounds (`Math.min`/`Math.max` arg swaps), `Math.trunc` vs round, and the ÷0 guard.
-**GREEN**: extend the `NumExpr` type, the validator's `num()` switch, and `evalNum()`’s switch
-with a shared int32-saturating helper.
-**MUTATE**: Stryker on the changed `dsl.ts` regions (target 100% on the new ops, matching the
-existing interpreter coverage bar).
-**KILL MUTANTS**: add cases for each surviving operator/boundary mutant.
-**REFACTOR**: assess a single `clampInt32` + `foldVariadic` helper.
-**Done when**: ACs met, `dsl.ts` interpreter stays 100%, human approves commit.
+  **RED**: validator tests (each op's arity + nesting budget + rejection paths); interpreter
+  tests for saturation boundary, `div` truncation toward zero (incl. negative operands), and
+  ÷0:=0. Mutator watch: arithmetic-operator swaps (`+`↔`-`, `*`↔`/`), the saturation clamp
+  bounds (`Math.min`/`Math.max` arg swaps), `Math.trunc` vs round, and the ÷0 guard.
+  **GREEN**: extend the `NumExpr` type, the validator's `num()` switch, and `evalNum()`’s switch
+  with a shared int32-saturating helper.
+  **MUTATE**: Stryker on the changed `dsl.ts` regions (target 100% on the new ops, matching the
+  existing interpreter coverage bar).
+  **KILL MUTANTS**: add cases for each surviving operator/boundary mutant.
+  **REFACTOR**: assess a single `clampInt32` + `foldVariadic` helper.
+  **Done when**: ACs met, `dsl.ts` interpreter stays 100%, human approves commit.
 
 ---
 
@@ -192,6 +198,7 @@ bot's expression in a real fight.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `api-design` for the path naming; `typescript-strict`.
 **Acceptance criteria**:
+
 - A `RULE_READERS: Record<RulePath, (r: Rules) => number>` enumerates every readable frozen
   constant: per-move stats (`moves.<id>.{startup,active,recovery,score,reach,staminaCost}` and
   `moves.mawashi-geri.scoreByBand.high`), perception (`perception.{lPos,lAct,jitter}`), stamina
@@ -202,7 +209,7 @@ bot's expression in a real fight.
   The validator allowlist is exactly its keys.
 - An **optional/unconfigured** constant (e.g. `moves.sweep.reach` when sweep is absent) reads
   the sentinel **`0`** (matching the engine's inert-sentinel convention) — never throws. The
-  validator stays **rules-agnostic**: a path is valid by *shape*, independent of which ruleset
+  validator stays **rules-agnostic**: a path is valid by _shape_, independent of which ruleset
   it runs on (preserving validate-once-run-on-any-rules). A bot gating on an unconfigured
   constant simply never satisfies that branch.
 - `runTick` (and the `dsl.ts` interpreter signature) gains a `Rules` argument; `sim.ts` passes
@@ -211,18 +218,18 @@ bot's expression in a real fight.
 - Behavior-equivalence test: a bot gating on `rule("moves.kizami-zuki.reach")` chooses the same
   actions as the `210000`-inlined twin on `CANONICAL_RULES`; and on a deliberately retuned
   rules fixture the symbolic bot tracks the new value while the inlined twin diverges.
-**RED**: validator tests (valid paths accepted, unknown/typo paths rejected, optional-constant
-sentinel); interpreter equivalence + retune-tracking test through `runTick`. Mutator watch: the
-sentinel default (`?? 0`), and any path-resolution branch.
-**GREEN**: add the `RulePath` type + `RULE_READERS`, the validator `rule` case, the interpreter
-`rule` case, and thread `Rules` through `runTick`/`sim.ts`.
-**MUTATE**: Stryker on the new `dsl.ts` regions + the `runTick` signature change.
-**KILL MUTANTS**: cover the sentinel and representative path families (move stat, global scalar,
-nested `scoreByBand`).
-**REFACTOR**: assess generating `RULE_READERS` keys + the JSON-Schema/spec enumeration from one
-source to avoid drift (feeds slice 5).
-**Done when**: ACs met, interpreter 100%, `latency` confirmed expressible as
-`rule("perception.lAct")`, human approves commit.
+  **RED**: validator tests (valid paths accepted, unknown/typo paths rejected, optional-constant
+  sentinel); interpreter equivalence + retune-tracking test through `runTick`. Mutator watch: the
+  sentinel default (`?? 0`), and any path-resolution branch.
+  **GREEN**: add the `RulePath` type + `RULE_READERS`, the validator `rule` case, the interpreter
+  `rule` case, and thread `Rules` through `runTick`/`sim.ts`.
+  **MUTATE**: Stryker on the new `dsl.ts` regions + the `runTick` signature change.
+  **KILL MUTANTS**: cover the sentinel and representative path families (move stat, global scalar,
+  nested `scoreByBand`).
+  **REFACTOR**: assess generating `RULE_READERS` keys + the JSON-Schema/spec enumeration from one
+  source to avoid drift (feeds slice 5).
+  **Done when**: ACs met, interpreter 100%, `latency` confirmed expressible as
+  `rule("perception.lAct")`, human approves commit.
 
 ---
 
@@ -236,6 +243,7 @@ exposes it → a bot computes `scoreGap = sub(self.points, opponent.points)` and
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `typescript-strict`.
 **Acceptance criteria**:
+
 - `OpponentState.points: number` added to `types.ts`; `viewFor`/opponent-view construction sets
   it from the live opponent (zero perception delay — it is a scoreboard fact, consistent with
   `self.points` and `clock.tick` being live).
@@ -243,22 +251,22 @@ exposes it → a bot computes `scoreGap = sub(self.points, opponent.points)` and
 - A `runFight` test: a bot that switches strategy on `scoreGap` (e.g. turtles when ahead by ≥N)
   demonstrably behaves differently when ahead vs behind.
 - Absent any consumer ⇒ byte-identical (the field is additive; existing bots ignore it).
-**RED**: a reader test (`opponent.points` returns the live opponent score, not a delayed one)
-and a behavior test (scoreGap branch). Mutator watch: live-vs-delayed source selection, and the
-reader wiring.
-**GREEN**: extend `OpponentState`, the view construction, and `FIELD_READERS`.
-**MUTATE**: Stryker on the changed `sim.ts`/`dsl.ts` lines.
-**KILL MUTANTS**: assert the value is the *live* score (a test where delayed ≠ live would catch
-a wrong source).
-**REFACTOR**: none expected.
-**Done when**: ACs met, human approves commit.
+  **RED**: a reader test (`opponent.points` returns the live opponent score, not a delayed one)
+  and a behavior test (scoreGap branch). Mutator watch: live-vs-delayed source selection, and the
+  reader wiring.
+  **GREEN**: extend `OpponentState`, the view construction, and `FIELD_READERS`.
+  **MUTATE**: Stryker on the changed `sim.ts`/`dsl.ts` lines.
+  **KILL MUTANTS**: assert the value is the _live_ score (a test where delayed ≠ live would catch
+  a wrong source).
+  **REFACTOR**: none expected.
+  **Done when**: ACs met, human approves commit.
 
 ---
 
 ### Slice 5: Generate `spec.md` machine-truth sections + JSON Schema + drift test
 
-**Value**: An LLM (and the operator) gets an accurate, self-contained reference that *cannot
-lie* about the engine — the factual backbone of the benchmark instrument.
+**Value**: An LLM (and the operator) gets an accurate, self-contained reference that _cannot
+lie_ about the engine — the factual backbone of the benchmark instrument.
 **Path**: `npm run gen:spec` runs a generator (`src/cli/gen-spec.ts`) that reads `dsl.ts`
 allowlists + `LIMITS`, `CANONICAL_RULES`, the `RULE_READERS`/`FIELD_READERS` key sets, and the
 benchmark manifest → emits the factual sections of `spec.md` (grammar + action/op/field/move
@@ -267,6 +275,7 @@ catalog, benchmark rules: metric/seeds/maxTicks/gauntlet) → writes a committed
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `cli-design`; `docs-guardian` (agent) for the generated doc’s clarity.
 **Acceptance criteria**:
+
 - A generator produces a deterministic Markdown string from source; `npm run gen:spec` writes
   it to **`docs/spec.md`** (alongside `DESIGN.md`).
 - The embedded **JSON Schema** validates the same documents the `validate()` gate accepts
@@ -275,29 +284,29 @@ catalog, benchmark rules: metric/seeds/maxTicks/gauntlet) → writes a committed
 - A **drift test** regenerates the spec and asserts it byte-matches the committed `spec.md`
   (fails when an allowlist, `LIMITS`, the frame table, or the manifest changes until
   regenerated).
-- The frame table + benchmark-rules numbers are the *serialized* `CANONICAL_RULES` + manifest
+- The frame table + benchmark-rules numbers are the _serialized_ `CANONICAL_RULES` + manifest
   (no hand-typed literals).
 - `BENCHMARK_VERSION` (from the manifest) appears in the spec header.
 - `LIMITS` (maxNodes / maxDepth / maxRules / maxBytes / maxCells / int range) appear
   **prominently** with a one-line node-budget note for authors. LIMITS are **unchanged for v1**
   (generous for rule-based bots — eval is cheap integer ops); a real ceiling-hit during the
   slice-6 dogfood is an additive tuning bump carrying a `BENCHMARK_VERSION` note.
-**RED**: a generator unit test (key sections present, numbers sourced from `CANONICAL_RULES`),
-the schema↔validator agreement test, and the drift snapshot test. Mutator watch: any literal in
-the generator that should be sourced from `Rules`/allowlists.
-**GREEN**: implement the generator + `gen:spec` script + commit the first `spec.md`.
-**MUTATE**: Stryker on `gen-spec.ts`.
-**KILL MUTANTS**: ensure each generated section is asserted (not just presence but sourced
-content).
-**REFACTOR**: assess deriving the JSON Schema and the `rule`/`field` enumerations from the same
-allowlist source used by the validator (single source of truth).
-**Done when**: ACs met, drift test green, human approves commit.
+  **RED**: a generator unit test (key sections present, numbers sourced from `CANONICAL_RULES`),
+  the schema↔validator agreement test, and the drift snapshot test. Mutator watch: any literal in
+  the generator that should be sourced from `Rules`/allowlists.
+  **GREEN**: implement the generator + `gen:spec` script + commit the first `spec.md`.
+  **MUTATE**: Stryker on `gen-spec.ts`.
+  **KILL MUTANTS**: ensure each generated section is asserted (not just presence but sourced
+  content).
+  **REFACTOR**: assess deriving the JSON Schema and the `rule`/`field` enumerations from the same
+  allowlist source used by the validator (single source of truth).
+  **Done when**: ACs met, drift test green, human approves commit.
 
 ---
 
 ### Slice 6: `spec.md` strategic primer + validated worked examples (dogfood)
 
-**Value**: The spec becomes a true *one-shot* instrument — a model can derive optimal play, not
+**Value**: The spec becomes a true _one-shot_ instrument — a model can derive optimal play, not
 just legal syntax — and we prove it by authoring a bot cold from it.
 **Path**: the generator gains a hand-authored strategic primer (master inequalities, the
 `strike > throw > guard` triangle, okizeme, the gas economy) with **every number interpolated
@@ -306,6 +315,7 @@ regenerated → a dogfood bot authored from `spec.md` alone is scored via slice 
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `docs-guardian` (agent).
 **Acceptance criteria**:
+
 - The primer’s numbers are interpolated (e.g. "reactable iff `S ≥ lAct+1`, and
   `lAct = {perception.lAct}`") — a `CANONICAL_RULES` change updates the prose; a test asserts no
   bare magic numbers in the interpolated regions (or that interpolated values equal the rules).
@@ -322,30 +332,31 @@ regenerated → a dogfood bot authored from `spec.md` alone is scored via slice 
   full benchmark report are pasted into the PR description as evidence; the bot is committed as a
   fixture whose **validity** is asserted in CI. A miss is a **spec defect** — iterate the
   primer/examples until a competent author clears the bar, do not lower it.
-**RED**: the interpolation/no-magic-number test + the example-validation test. Mutator watch:
-interpolation falling back to a hardcoded literal.
-**GREEN**: author the primer template + wire example embedding + regenerate `spec.md`.
-**MUTATE**: Stryker on the new generator regions.
-**KILL MUTANTS**: cover the interpolation source + example embedding.
-**REFACTOR**: assess primer section ordering for LLM consumption (one artifact, front-loaded
-grammar + schema).
-**Done when**: ACs met, dogfood evidence captured, human approves commit.
+  **RED**: the interpolation/no-magic-number test + the example-validation test. Mutator watch:
+  interpolation falling back to a hardcoded literal.
+  **GREEN**: author the primer template + wire example embedding + regenerate `spec.md`.
+  **MUTATE**: Stryker on the new generator regions.
+  **KILL MUTANTS**: cover the interpolation source + example embedding.
+  **REFACTOR**: assess primer section ordering for LLM consumption (one artifact, front-loaded
+  grammar + schema).
+  **Done when**: ACs met, dogfood evidence captured, human approves commit.
 
 ---
 
 ### Slice 7: Harden the harness for real model output — lenient extraction + hard-zero-distinct invalid
 
-**Value**: The operator can feed a raw model reply (prose, ```json fences) and get a fair,
+**Value**: The operator can feed a raw model reply (prose, ``json fences) and get a fair,
 diagnostic result — including a clean, last-ranked "invalid" outcome with reasons.
 **Path**: `npm run benchmark -- --from-reply <reply.txt>` (or auto-detect) → lenient extraction
-(last fenced ```json block, else last top-level `{…}`) → `validate` → valid: run the gauntlet
+(last fenced ``json block, else last top-level `{…}`) → `validate` → valid: run the gauntlet
 (slice 1); invalid: emit a distinct **invalid** result ranked below every valid bot, carrying
 the structured `ValidationError` issues.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `cli-design`.
 **Acceptance criteria**:
+
 - A pure `extractBotJson(text): string | null` with a deterministic, documented algorithm,
-  identical for every model: (1) if the reply has fenced code blocks (```json or bare ```),
+  identical for every model: (1) if the reply has fenced code blocks (`json or bare `),
   return the content of the **last** one; (2) else return the **last** balanced top-level `{…}`
   object; (3) else return `null`. Covered by tests over fenced / prose-wrapped / multi-block /
   no-JSON inputs.
@@ -357,19 +368,19 @@ the structured `ValidationError` issues.
 - No automated repair loop (one-shot preserved).
 - Extraction is only applied in the `--from-reply` path; a direct `<bot.json>` still validates
   strictly (slice 1 behavior unchanged).
-**RED**: extraction tests (each input shape) + an invalid-ranking test. Mutator watch: the
-"last block" selection, the fenced-vs-bare fallback order, and the invalid-ranks-last comparison.
-**GREEN**: implement `extractBotJson` + wire the `--from-reply` path + the invalid result shape.
-**MUTATE**: Stryker on the extractor + ranking.
-**KILL MUTANTS**: cover fallback order + last-block selection + ranking boundary.
-**REFACTOR**: assess sharing the result/report types with slice 1.
-**Done when**: ACs met, human approves commit.
+  **RED**: extraction tests (each input shape) + an invalid-ranking test. Mutator watch: the
+  "last block" selection, the fenced-vs-bare fallback order, and the invalid-ranks-last comparison.
+  **GREEN**: implement `extractBotJson` + wire the `--from-reply` path + the invalid result shape.
+  **MUTATE**: Stryker on the extractor + ranking.
+  **KILL MUTANTS**: cover fallback order + last-block selection + ranking boundary.
+  **REFACTOR**: assess sharing the result/report types with slice 1.
+  **Done when**: ACs met, human approves commit.
 
 ---
 
 ### Slice 8: Typed degrade telemetry + CLI stamina/reason view
 
-**Value**: The human can see *why* a bot underperformed (a requested move that degraded to
+**Value**: The human can see _why_ a bot underperformed (a requested move that degraded to
 idle) and re-prompt the model effectively.
 **Path**: `intake` records a typed reason when a neutral fighter’s requested action does not
 take effect (`unaffordable` / `out-of-band` / `locked` / `inert` / `null`) → `FighterFrame`
@@ -378,6 +389,7 @@ marker (e.g. `idle ⟵ mawashi-geri: unaffordable`).
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `cli-design`.
 **Acceptance criteria**:
+
 - `intake` (or a thin wrapper) returns/records a typed degrade reason without changing any
   outcome (pure-additive telemetry; determinism + byte-identical fights preserved — only the
   recorded frame metadata grows).
@@ -386,16 +398,16 @@ marker (e.g. `idle ⟵ mawashi-geri: unaffordable`).
   modes; a formatter test asserts the rendering (incl. the gassed/unaffordable case from the
   session’s berserker trace).
 - The benchmark report (slice 1/7) is unaffected (telemetry is opt-in to the fight view).
-**RED**: an `intake`/sim test asserting the reason for each degrade class (unaffordable kick
-while gassed, out-of-band `mae-geri high`, locked during recovery, inert unconfigured `sweep`),
-and a formatter test. Mutator watch: the reason-classification branches and the
-"outcome unchanged" guarantee.
-**GREEN**: thread the reason out of `intake`, extend `FighterFrame`, extend the formatter.
-**MUTATE**: Stryker on the classification + formatter.
-**KILL MUTANTS**: cover each reason class + the no-outcome-change invariant.
-**REFACTOR**: assess a single `degradeReasonOf` predicate.
-**Done when**: ACs met, fights remain byte-identical (telemetry-only change), human approves
-commit.
+  **RED**: an `intake`/sim test asserting the reason for each degrade class (unaffordable kick
+  while gassed, out-of-band `mae-geri high`, locked during recovery, inert unconfigured `sweep`),
+  and a formatter test. Mutator watch: the reason-classification branches and the
+  "outcome unchanged" guarantee.
+  **GREEN**: thread the reason out of `intake`, extend `FighterFrame`, extend the formatter.
+  **MUTATE**: Stryker on the classification + formatter.
+  **KILL MUTANTS**: cover each reason class + the no-outcome-change invariant.
+  **REFACTOR**: assess a single `degradeReasonOf` predicate.
+  **Done when**: ACs met, fights remain byte-identical (telemetry-only change), human approves
+  commit.
 
 ## Pre-PR Quality Gate (every slice)
 
@@ -417,4 +429,5 @@ commit.
   before freezing the slice-1 manifest, or freeze against the pre-existing archetypes.
 
 ---
-*Delete this file when the plan is complete. If `plans/` is empty, delete the directory.*
+
+_Delete this file when the plan is complete. If `plans/` is empty, delete the directory._
