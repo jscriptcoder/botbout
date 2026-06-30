@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "name": "dogfood",
+  "rules": [
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.canAct" },
+              { "op": "const", "value": 0 }
+            ]
+          },
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "self.cancelWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "do": { "type": "idle" }
+    },
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "opponent.throwing" },
+          { "op": "const", "value": 1 }
+        ]
+      },
+      "do": { "type": "throw-break" }
+    },
+    {
+      "when": {
+        "op": "gt",
+        "args": [
+          { "op": "field", "path": "self.cancelWindow" },
+          { "op": "const", "value": 0 }
+        ]
+      },
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "mid" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              { "op": "field", "path": "opponent.knockdown" },
+              { "op": "const", "value": 1 }
+            ]
+          },
+          {
+            "op": "gt",
+            "args": [
+              { "op": "field", "path": "self.finishWindow" },
+              { "op": "const", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "mid" }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lte",
+            "args": [
+              { "op": "field", "path": "opponent.distance" },
+              { "op": "rule", "path": "moves.sweep.reach" }
+            ]
+          },
+          {
+            "op": "gte",
+            "args": [
+              { "op": "field", "path": "self.stamina" },
+              { "op": "rule", "path": "moves.sweep.staminaCost" }
+            ]
+          }
+        ]
+      },
+      "do": { "type": "sweep" }
+    },
+    {
+      "when": {
+        "op": "lte",
+        "args": [
+          { "op": "field", "path": "opponent.distance" },
+          { "op": "rule", "path": "moves.gyaku-zuki.reach" }
+        ]
+      },
+      "do": { "type": "attack", "move": "gyaku-zuki", "band": "mid" }
+    }
+  ],
+  "default": { "type": "move", "dir": 1 }
+}

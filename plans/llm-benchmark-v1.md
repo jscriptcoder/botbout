@@ -71,11 +71,15 @@ neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
       magic-number twin behave identically, and the symbolic one survives a `CANONICAL_RULES`
       retune that breaks the twin. _(Slice 3 — PR #81)_
 - [x] A bot can read **`opponent.points`** (live) and act on the score gap. _(Slice 4 — PR #82)_
-- [ ] `spec.md` is **generated from `dsl.ts` + `rules.ts`**, committed, drift-tested, embeds a
+- [x] `spec.md` is **generated from `dsl.ts` + `rules.ts`**, committed, drift-tested, embeds a
       JSON Schema, interpolates all numbers from `CANONICAL_RULES`, and embeds **validated**
-      example bots.
-- [ ] **Dogfood**: a bot authored cold from `spec.md` alone validates and scores competitively
-      against the gauntlet.
+      example bots. _(Slices 5a/5b + 6 — incl. the strategic primer, the three embedded examples,
+      and the `cancels into` frame-table column the dogfood surfaced.)_
+- [x] **Dogfood**: a bot authored cold from `spec.md` alone **validates** ✅ and runs the spec's
+      okizeme combo. It is **WKF-match-competitive** but a **documented near-miss** on "positive net
+      vs > half" (the residual miss is a Slice-1 gauntlet/metric limitation, not a spec defect — the
+      spec defect it found, missing cancel routes, was fixed). _(Slice 6 — see the Slice 6 dogfood
+      note + the follow-up.)_
 - [ ] A raw model reply (prose / ```json fences) is **leniently extracted**; a malformed or
       schema-invalid bot is reported as **invalid** (last-ranked) with structured errors.
 - [ ] A fight report can show per-tick **stamina** and **typed degrade reasons**
@@ -329,7 +333,7 @@ gauntlet) → a thin shell writes a committed **`docs/spec.md`**.
 
 ---
 
-#### Slice 5b: Embed the bot-doc JSON Schema + `validate()`↔schema agreement test
+#### Slice 5b: Embed the bot-doc JSON Schema + `validate()`↔schema agreement test — ✅ DONE (PR #84)
 
 **Value**: The spec carries a standard, machine-consumable JSON Schema for the bot document that
 provably agrees with the real `validate()` gate on the bot corpus — tooling/LLMs can lean on it.
@@ -393,24 +397,53 @@ from `CANONICAL_RULES`**, plus embedded **real example bots** from `bots/` → `
 regenerated → a dogfood bot authored from `spec.md` alone is scored via slice 1.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `docs-guardian` (agent).
+**Locked decisions (2026-06-30):** (a) embedded examples = **teach-first `jabber`, `vulture`,
+`rekka`** (a poke, a band-reading defender, a cancel-combo bot — spanning the axes; accepts that
+3 of 6 gauntlet opponents are shown, since the gauntlet is already public/versioned and beating
+known opponents with one perception-limited bot is still genuinely strategic); (b) **one PR**
+(the four deliverables are tightly coupled); (c) `docs/BOT-DSL.md` is **deleted** (not a pointer)
+and all live references repointed.
+
 **Acceptance criteria**:
 
-- The primer’s numbers are interpolated (e.g. "reactable iff `S ≥ lAct+1`, and
-  `lAct = {perception.lAct}`") — a `CANONICAL_RULES` change updates the prose; a test asserts no
-  bare magic numbers in the interpolated regions (or that interpolated values equal the rules).
-- Each embedded example bot is the verbatim content of a real `bots/*.json` and is run through
-  `validate()` in a test (a broken example fails CI).
-- The drift snapshot (slice 5) now covers the full `spec.md` incl. primer + examples.
-- **`docs/BOT-DSL.md` is retired**: deleted (or reduced to a one-line pointer to
-  `docs/spec.md`), since the generated, drift-tested `spec.md` is now the single DSL source of
-  truth. Any `docs/DESIGN.md` (§P7) references to `BOT-DSL.md` are repointed to `spec.md`.
-- **Dogfood gate** (checked at PR review, not CI — authoring a bot cold isn't reproducible in
-  CI): a bot authored from `spec.md` only (no engine source, no repair round) (a) **validates on
-  first generation** (recorded verbatim) AND (b) posts **positive net-points against a majority
-  (> half) of the gauntlet opponents** on the frozen seeds via slice 1. The dogfood bot + its
-  full benchmark report are pasted into the PR description as evidence; the bot is committed as a
-  fixture whose **validity** is asserted in CI. A miss is a **spec defect** — iterate the
-  primer/examples until a competent author clears the bar, do not lower it.
+- **`primerSection(rules)` is parameterized by `rules`** (exactly like `frameTableSection(rules)`)
+  so every number is interpolated, never typed. It covers the strategic spine: the perception
+  **master inequality** (`reactable iff S ≥ lAct+1`), the **`strike > throw > guard`** precedence
+  triangle, the **height/occupancy** read-game (crouch vacates `high`, airborne vacates `low`),
+  **parry → counter** + **on-contact cancel** windows, **okizeme** (finish window inside
+  knockdown), and the **stamina/gas** economy (gassed loses kicks, keeps punches). Placed after
+  the frame table, before benchmark rules.
+- **Interpolation is mutation-proven via retune-tracking** (the testable form of "no bare magic
+  numbers", mirroring Slice 3): `primerSection(rules)` run against a deliberately-**retuned** rules
+  fixture produces primer text whose interpolated claims track the new values — a hardcoded literal
+  diverges and fails; plus a positive assertion that key claims equal the `CANONICAL_RULES`-derived
+  values.
+- Each embedded example bot (`jabber`, `vulture`, `rekka`) is the **verbatim** content of its real
+  `bots/*.json` (read from disk at generation time) and is run through `validate()` in a test (a
+  broken example fails CI).
+- The drift snapshot (Slice 5a) now **transitively** covers the full `spec.md` incl. primer +
+  examples (no new drift test). Editing an embedded `bots/*.json` fails the drift test until
+  `spec.md` is regenerated (desirable).
+- **`docs/BOT-DSL.md` is deleted**: the generated, drift-tested `spec.md` is the single DSL source
+  of truth. **Live** references in `docs/DESIGN.md` (§P5/P6/P7) and `README.md` are repointed to
+  `docs/spec.md`; `.claude/CLAUDE.md`'s dated _Status_ log entries are left as the historical
+  record (only its top-of-file "source of truth" line is updated).
+- **Dogfood — DONE, documented near-miss + a spec defect FIXED** (decided 2026-06-30). A bot
+  (`bots/dogfood.json`) authored cold from `spec.md` alone (a) **validates on first generation** ✅
+  (CI-asserted in `src/cli/dogfood.test.ts`) and (b) runs the spec's **sweep→cancel→finish okizeme
+  combo** — WKF-match-competitive (wins/ties 200-tick matches vs jabber/grappler) but **does NOT
+  clear "positive net-points vs > half"** over the benchmark's **600 raw ticks** (net −2682; closest
+  jabber −20, zoner −40). **The dogfood surfaced a genuine spec defect — now fixed:** the frame
+  table omitted the **cancel routes** (`cancelInto`), so the dominant okizeme combo wasn't
+  authorable from the spec; a `cancels into` column was added (generated from `CANONICAL_RULES`,
+  drift-pinned, 100% mutation). **The residual miss is NOT a spec defect** but two **Slice-1**
+  properties: (i) the frozen gauntlet is dominated by a **100%-win `sweeper`** (even gauntlet member
+  `jabber` goes 0-wins), capping the achievable bar at ~4; (ii) `runFight` scores **raw cumulative
+  points over 600 ticks with no WKF match-cap**, rewarding relentless okizeme-looping over winning
+  the match. Per the user (2026-06-30), accept the spec deliverables and **log these as a follow-up**
+  (see Sequencing notes); the bot + full report go in the PR description; the bot is committed as a
+  CI-validated fixture. _(Caveat: the implementing agent has codebase knowledge, so its "cold"
+  authoring is an imperfect proxy; the operator may run the true dogfood against a fresh model.)_
   **RED**: the interpolation/no-magic-number test + the example-validation test. Mutator watch:
   interpolation falling back to a hardcoded literal.
   **GREEN**: author the primer template + wire example embedding + regenerate `spec.md`.
@@ -508,6 +541,21 @@ marker (e.g. `idle ⟵ mawashi-geri: unaffordable`).
 - 2, 3, 4 are mutually independent and could be authored/reviewed in parallel branches.
 - The gauntlet roster references `bots/` (incl. PR #77’s session bots) — ensure those are merged
   before freezing the slice-1 manifest, or freeze against the pre-existing archetypes.
+
+### Follow-up surfaced by the Slice 6 dogfood (NOT blocking Slice 6)
+
+The dogfood proved the spec sufficient (after the cancel-routes fix) but exposed two **Slice-1**
+issues that make "positive net vs > half" near-unreachable and limit the benchmark's discriminating
+power. Sequence these via `grill-me` → `planning` before relying on the v1 score as a model
+ranking (a `BENCHMARK_VERSION` bump):
+
+- **Gauntlet balance**: `sweeper` is a **100%-win wall** (+4664, beats every opponent incl. rekka);
+  `rekka` is +1303 (72%); `jabber` goes **0-wins**. A single dominant bot collapses the gauntlet's
+  spread — rebalance (nerf the okizeme loop / reconsider the roster) so no opponent is unbeatable.
+- **Metric vs match**: `runFight` scores **raw cumulative points over the full `maxTicks`** with **no
+  WKF match-cap** (first-to-8 / lead-at-time), so the score rewards relentless okizeme-looping over
+  _winning the match_. Decide whether the benchmark should score WKF match outcomes (the design's
+  "points-only scoring with _yame_ resets") rather than raw 600-tick point totals.
 
 ---
 

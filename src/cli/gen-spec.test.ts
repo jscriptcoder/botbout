@@ -12,6 +12,7 @@ import {
   LIMITS,
   MOVES,
   NUM_OPS,
+  validate,
 } from "../engine/dsl.js";
 import { CANONICAL_RULES } from "../engine/rules.js";
 import type { Rules } from "../engine/types.js";
@@ -41,6 +42,20 @@ const pairingLine = (
   spec
     .split("\n")
     .find((l) => l.includes(code(token)) && l.includes(String(value)));
+
+// The body of a `## heading` section, exclusive of the heading and the next
+// `## ` heading — so an assertion targets ONE section's prose (a value cited in
+// the primer is not confused with the same value in the frame table).
+const sectionOf = (spec: string, heading: string): string => {
+  const lines = spec.split("\n");
+  const start = lines.indexOf(heading);
+  if (start < 0) return "";
+
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l.startsWith("## "));
+
+  return (end < 0 ? rest : rest.slice(0, end)).join("\n");
+};
 
 describe("generateSpec — the factual machine-truth spec", () => {
   it("is pure: byte-stable across calls (no wall-clock)", () => {
@@ -119,6 +134,36 @@ describe("generateSpec — the factual machine-truth spec", () => {
       expect(pairingLine(spec, "perception.lPos", lPos)).toBeDefined();
     });
 
+    it("shows each move's cancel-into routes (the okizeme/rekka follow-ups)", () => {
+      const lines = generateSpec().split("\n");
+
+      for (const [id, move] of Object.entries(CANONICAL_RULES.moves)) {
+        const row = lines.find((l) => l.startsWith(`| ${code(id)} |`));
+        expect(row, `${id} row`).toBeDefined();
+
+        for (const target of move.cancelInto ?? []) {
+          expect(row, `${id} cancels into ${target}`).toContain(target);
+        }
+      }
+    });
+
+    it("renders `—` for a move with no cancel routes", () => {
+      const gyaku = { ...CANONICAL_RULES.moves["gyaku-zuki"] };
+
+      delete gyaku.cancelInto;
+
+      const rules: Rules = {
+        ...CANONICAL_RULES,
+        moves: { ...CANONICAL_RULES.moves, "gyaku-zuki": gyaku },
+      };
+
+      const row = generateSpec(rules)
+        .split("\n")
+        .find((l) => l.startsWith(`| ${code("gyaku-zuki")} |`));
+
+      expect(row?.endsWith("| — |")).toBe(true);
+    });
+
     it("lists only configured techniques — an unconfigured move gets no row", () => {
       const rulesNoSweep: Rules = {
         ...CANONICAL_RULES,
@@ -160,6 +205,119 @@ describe("generateSpec — the factual machine-truth spec", () => {
       expect(spec).toContain("not allowed");
       expect(spec).toContain("unknown move");
       expect(spec).toContain("undeclared cell");
+    });
+  });
+
+  describe("strategic primer (interpolated from the rules)", () => {
+    const HEADING = "## Strategy primer";
+    const lAct = CANONICAL_RULES.perception?.lAct ?? 0;
+    const gasThreshold = CANONICAL_RULES.stamina?.gasThreshold ?? 0;
+
+    // The primer line carrying a given claim — found by a stable concept phrase,
+    // so the asserted value is the one PAIRED with that claim (not a coincidental
+    // match elsewhere in the section).
+    const claimLine = (primer: string, phrase: string): string =>
+      primer.split("\n").find((l) => l.includes(phrase)) ?? "";
+
+    it("is its own section, placed after the frame table and before benchmark rules", () => {
+      const spec = generateSpec();
+      expect(sectionOf(spec, HEADING)).not.toBe("");
+      expect(spec.indexOf("## Frame table")).toBeLessThan(
+        spec.indexOf(HEADING),
+      );
+      expect(spec.indexOf(HEADING)).toBeLessThan(
+        spec.indexOf("## Benchmark rules"),
+      );
+    });
+
+    it("cites the canonical perception, okizeme, and gas constants", () => {
+      const primer = sectionOf(generateSpec(), HEADING);
+      const reactable = claimLine(primer, "reactable iff");
+      expect(reactable).toContain(code(String(lAct)));
+      expect(reactable).toContain(code(String(lAct + 1)));
+      expect(claimLine(primer, "FINISH")).toContain(
+        code(String(CANONICAL_RULES.finishScore)),
+      );
+      expect(claimLine(primer, "GASSED")).toContain(code(String(gasThreshold)));
+    });
+
+    it("interpolates from the rules — a retune updates the prose (no hardcoded literals)", () => {
+      const retuned: Rules = {
+        ...CANONICAL_RULES,
+        perception: { lPos: 2, lAct: 9, jitter: 1 },
+        finishScore: 5,
+        stamina: {
+          ...(CANONICAL_RULES.stamina ?? { max: 100 }),
+          gasThreshold: 25,
+        },
+      };
+
+      const primer = sectionOf(generateSpec(retuned), HEADING);
+      const reactable = claimLine(primer, "reactable iff");
+      expect(reactable).toContain(code("9")); // retuned lAct
+      expect(reactable).toContain(code("10")); // retuned lAct + 1
+      expect(claimLine(primer, "FINISH")).toContain(code("5")); // retuned finishScore
+      expect(claimLine(primer, "GASSED")).toContain(code("25")); // retuned gasThreshold
+    });
+
+    it("collapses absent optional constants to the sentinel `0` — never throws, never renders `undefined`", () => {
+      const bare: Rules = { ...CANONICAL_RULES };
+
+      delete bare.perception;
+      delete bare.throw;
+      delete bare.stamina;
+
+      const primer = sectionOf(generateSpec(bare), HEADING);
+      expect(primer).not.toContain("undefined");
+      expect(claimLine(primer, "reactable iff")).toContain(code("0")); // lAct sentinel
+      expect(claimLine(primer, "triangle")).toContain(code("0")); // throw.reach sentinel
+      expect(claimLine(primer, "GASSED")).toContain(code("0")); // stamina sentinel
+    });
+  });
+
+  describe("example bots (embedded verbatim + validated)", () => {
+    const EXAMPLES = ["jabber", "vulture", "rekka"];
+
+    // The committed (LF) content of a bot fixture — normalized so the assertion
+    // holds regardless of the working-tree EOL (bots/*.json are `i/lf w/crlf` on
+    // Windows; the embed and the LF-pinned spec.md are LF).
+    const readBot = (name: string): string =>
+      readFileSync(
+        fileURLToPath(new URL(`../../bots/${name}.json`, import.meta.url)),
+        "utf8",
+      )
+        .replace(/\r\n/g, "\n")
+        .trim();
+
+    // The ```json fenced blocks inside a markdown section.
+    const jsonBlocks = (md: string): string[] =>
+      md
+        .split("```json")
+        .slice(1)
+        .map((part) => part.slice(0, part.indexOf("```")).trim());
+
+    it("embeds exactly the three examples, each verbatim and validate()-accepted", () => {
+      const blocks = jsonBlocks(sectionOf(generateSpec(), "## Example bots"));
+
+      expect(blocks).toHaveLength(EXAMPLES.length);
+
+      for (const name of EXAMPLES) {
+        const verbatim = readBot(name);
+        expect(blocks, `${name} embedded verbatim`).toContain(verbatim);
+        expect(validate(JSON.parse(verbatim)).ok, `${name} validates`).toBe(
+          true,
+        );
+      }
+    });
+
+    it("places the examples after the strategy primer, before benchmark rules", () => {
+      const spec = generateSpec();
+      expect(spec.indexOf("## Strategy primer")).toBeLessThan(
+        spec.indexOf("## Example bots"),
+      );
+      expect(spec.indexOf("## Example bots")).toBeLessThan(
+        spec.indexOf("## Benchmark rules"),
+      );
     });
   });
 });
