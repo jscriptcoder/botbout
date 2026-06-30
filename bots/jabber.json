@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "jabber",
+  "rules": [
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "self.canAct" },
+          { "op": "const", "value": 0 }
+        ]
+      },
+      "do": { "type": "idle" }
+    },
+    {
+      "when": {
+        "op": "lte",
+        "args": [
+          { "op": "field", "path": "opponent.distance" },
+          { "op": "const", "value": 210000 }
+        ]
+      },
+      "do": { "type": "attack", "move": "kizami-zuki", "band": "mid" }
+    }
+  ],
+  "default": { "type": "move", "dir": 1 }
+}

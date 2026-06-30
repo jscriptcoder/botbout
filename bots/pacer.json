@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "name": "pacer",
+  "rules": [
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "self.canAct" },
+          { "op": "const", "value": 0 }
+        ]
+      },
+      "do": { "type": "idle" }
+    },
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "opponent.throwing" },
+          { "op": "const", "value": 1 }
+        ]
+      },
+      "do": { "type": "throw-break" }
+    },
+    {
+      "when": {
+        "op": "eq",
+        "args": [
+          { "op": "field", "path": "self.gassed" },
+          { "op": "const", "value": 1 }
+        ]
+      },
+      "do": { "type": "move", "dir": -1 }
+    },
+    {
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              { "op": "field", "path": "self.stamina" },
+              { "op": "const", "value": 60 }
+            ]
+          },
+          {
+            "op": "lte",
+            "args": [
+              { "op": "field", "path": "opponent.distance" },
+              { "op": "const", "value": 300000 }
+            ]
+          }
+        ]
+      },
+      "do": { "type": "attack", "move": "mawashi-geri", "band": "high" }
+    },
+    {
+      "when": {
+        "op": "lte",
+        "args": [
+          { "op": "field", "path": "opponent.distance" },
+          { "op": "const", "value": 210000 }
+        ]
+      },
+      "do": { "type": "attack", "move": "kizami-zuki", "band": "mid" }
+    }
+  ],
+  "default": { "type": "move", "dir": 1 }
+}
