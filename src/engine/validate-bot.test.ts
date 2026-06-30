@@ -818,6 +818,98 @@ describe("validate — bot intake gate", () => {
   });
 });
 
+describe("validate — arithmetic numeric ops", () => {
+  // Wrap a candidate numeric expression in an otherwise-valid document, in a
+  // numeric position (the first operand of a comparison).
+  const docWith = (expr: unknown) => ({
+    ...getMockBotDoc(),
+    rules: [
+      {
+        when: { op: "gt", args: [expr, { op: "const", value: 0 }] },
+        do: { type: "idle" },
+      },
+    ],
+  });
+
+  const C = { op: "const", value: 1 };
+
+  describe("acceptance", () => {
+    it.each(["add", "mul", "min", "max"])(
+      "accepts variadic %s with a single arg",
+      (op) => {
+        expect(validate(docWith({ op, args: [C] })).ok).toBe(true);
+      },
+    );
+
+    it.each(["add", "mul", "min", "max"])(
+      "accepts variadic %s with multiple args",
+      (op) => {
+        expect(validate(docWith({ op, args: [C, C, C] })).ok).toBe(true);
+      },
+    );
+
+    it.each(["sub", "div"])("accepts binary %s with exactly two args", (op) => {
+      expect(validate(docWith({ op, args: [C, C] })).ok).toBe(true);
+    });
+
+    it.each(["neg", "abs"])("accepts unary %s with one arg", (op) => {
+      expect(validate(docWith({ op, arg: C })).ok).toBe(true);
+    });
+
+    it("accepts a nested composition of arithmetic ops", () => {
+      const expr = {
+        op: "add",
+        args: [
+          { op: "mul", args: [{ op: "field", path: "self.x" }, C] },
+          { op: "neg", arg: { op: "abs", arg: C } },
+        ],
+      };
+
+      expect(validate(docWith(expr)).ok).toBe(true);
+    });
+  });
+
+  describe("rejection — arity and malformed shapes", () => {
+    it.each(["add", "mul", "min", "max"])(
+      "rejects variadic %s with zero args",
+      (op) => {
+        expect(validate(docWith({ op, args: [] })).ok).toBe(false);
+      },
+    );
+
+    it.each(["add", "mul", "min", "max"])(
+      "rejects variadic %s whose args is not an array",
+      (op) => {
+        expect(validate(docWith({ op, args: "nope" })).ok).toBe(false);
+      },
+    );
+
+    it.each(["sub", "div"])("rejects binary %s with only one arg", (op) => {
+      expect(validate(docWith({ op, args: [C] })).ok).toBe(false);
+    });
+
+    it.each(["sub", "div"])("rejects binary %s with three args", (op) => {
+      expect(validate(docWith({ op, args: [C, C, C] })).ok).toBe(false);
+    });
+
+    it.each(["neg", "abs"])("rejects unary %s with a missing arg", (op) => {
+      expect(validate(docWith({ op })).ok).toBe(false);
+    });
+
+    it("rejects an arithmetic op whose child is malformed (recursion)", () => {
+      // a disallowed field nested inside `add` must be caught by recursion
+      const expr = { op: "add", args: [{ op: "field", path: "self.hp" }] };
+      expect(validate(docWith(expr)).ok).toBe(false);
+    });
+
+    it("rejects an arithmetic expression nested past maxDepth", () => {
+      let expr: unknown = { op: "const", value: 1 };
+      for (let i = 0; i < 40; i++) expr = { op: "neg", arg: expr };
+      expect(validate(docWith(expr)).ok).toBe(false);
+    });
+  });
+});
+
 describe("safeParse — prototype-pollution-safe intake", () => {
   it("parses a valid JSON document", () => {
     const parsed = safeParse('{"version":1,"name":"ok"}');

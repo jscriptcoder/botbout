@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { runTick, type BotDoc, type BoolExpr, type FieldPath } from "./dsl.js";
+import {
+  runTick,
+  LIMITS,
+  type BotDoc,
+  type BoolExpr,
+  type FieldPath,
+  type NumExpr,
+} from "./dsl.js";
 import type {
   State,
   Action,
@@ -299,5 +306,166 @@ describe("runTick — boolean operators", () => {
   it("not inverts its operand", () => {
     expect(fires({ op: "not", arg: FALSE })).toBe(true);
     expect(fires({ op: "not", arg: TRUE })).toBe(false);
+  });
+});
+
+describe("runTick — arithmetic numeric operators", () => {
+  const { intMin, intMax } = LIMITS;
+  const c = (value: number): NumExpr => ({ op: "const", value });
+  // The new ops aren't in the NumExpr union until GREEN; build them as data and
+  // let the (post-GREEN) interpreter evaluate them through the public runTick.
+  const n = (e: unknown): NumExpr => e as NumExpr;
+
+  // Does `expr` evaluate to exactly `expected`? Compares via eq inside a rule.
+  const evalsTo = (
+    expr: NumExpr,
+    expected: number,
+    state: State = getMockState(),
+  ): boolean =>
+    runTick(
+      bot([{ when: { op: "eq", args: [expr, c(expected)] }, do: MOVE_IN }]),
+      state,
+      {},
+    ).type === "move";
+
+  // Does this raw boolean expression (possibly nesting new ops) fire?
+  const firesWhen = (when: unknown, state: State = getMockState()): boolean =>
+    runTick(bot([{ when: when as BoolExpr, do: MOVE_IN }]), state, {}).type ===
+    "move";
+
+  it.each<[string, unknown, number]>([
+    ["add two operands", { op: "add", args: [c(2), c(3)] }, 5],
+    ["add a single operand (identity)", { op: "add", args: [c(5)] }, 5],
+    ["add many operands", { op: "add", args: [c(1), c(2), c(3), c(4)] }, 10],
+    ["sub", { op: "sub", args: [c(10), c(3)] }, 7],
+    ["mul two operands", { op: "mul", args: [c(6), c(7)] }, 42],
+    ["mul with a negative operand", { op: "mul", args: [c(-3), c(4)] }, -12],
+    ["mul a single operand (identity)", { op: "mul", args: [c(9)] }, 9],
+    ["min two operands", { op: "min", args: [c(3), c(5)] }, 3],
+    ["min many operands", { op: "min", args: [c(4), c(2), c(9)] }, 2],
+    ["max two operands", { op: "max", args: [c(3), c(5)] }, 5],
+    ["max many operands", { op: "max", args: [c(4), c(2), c(9)] }, 9],
+    ["neg of a positive", { op: "neg", arg: c(5) }, -5],
+    ["neg of a negative", { op: "neg", arg: c(-5) }, 5],
+    ["abs of a negative", { op: "abs", arg: c(-5) }, 5],
+    ["abs of a positive", { op: "abs", arg: c(5) }, 5],
+  ])("evaluates %s", (_label, expr, expected) => {
+    expect(evalsTo(n(expr), expected)).toBe(true);
+  });
+
+  it.each<[number, number, number]>([
+    [7, 2, 3],
+    [-7, 2, -3],
+    [7, -2, -3],
+    [-7, -2, 3],
+    [6, 3, 2],
+    [5, 0, 0], // ÷0 := 0
+  ])(
+    "div(%i, %i) = %i (truncates toward zero; ÷0 yields 0)",
+    (a, b, expected) => {
+      expect(evalsTo(n({ op: "div", args: [c(a), c(b)] }), expected)).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each<[string, unknown, number]>([
+    [
+      "add overflow saturates to intMax",
+      { op: "add", args: [c(intMax), c(1)] },
+      intMax,
+    ],
+    [
+      "sub underflow saturates to intMin",
+      { op: "sub", args: [c(intMin), c(1)] },
+      intMin,
+    ],
+    [
+      "mul overflow saturates to intMax",
+      { op: "mul", args: [c(intMax), c(2)] },
+      intMax,
+    ],
+    [
+      "neg of intMin saturates to intMax",
+      { op: "neg", arg: c(intMin) },
+      intMax,
+    ],
+    [
+      "abs of intMin saturates to intMax",
+      { op: "abs", arg: c(intMin) },
+      intMax,
+    ],
+    [
+      "div intMin by -1 saturates to intMax",
+      { op: "div", args: [c(intMin), c(-1)] },
+      intMax,
+    ],
+  ])("%s", (_label, expr, expected) => {
+    expect(evalsTo(n(expr), expected)).toBe(true);
+  });
+
+  it("saturates each op's FINAL result, not a left-fold of per-step clamps", () => {
+    // True sum intMax + intMax + intMin = 2147483646, which is in range ⇒ no
+    // clamp. (A per-step-clamped left fold would give intMax, then + intMin = -1.)
+    expect(
+      evalsTo(
+        n({ op: "add", args: [c(intMax), c(intMax), c(intMin)] }),
+        2_147_483_646,
+      ),
+    ).toBe(true);
+  });
+
+  it("composes nested ops, each saturated", () => {
+    // mul(2,3)=6 ; neg(1)=-1 ; add(6,-1)=5
+    expect(
+      evalsTo(
+        n({
+          op: "add",
+          args: [
+            { op: "mul", args: [c(2), c(3)] },
+            { op: "neg", arg: c(1) },
+          ],
+        }),
+        5,
+      ),
+    ).toBe(true);
+  });
+
+  it.each<[number, number]>([
+    [0, 100],
+    [100, 0],
+  ])(
+    "computes |self.x - opponent.x| = 100 over fields (self.x=%i, opp.x=%i)",
+    (sx, ox) => {
+      const expr = n({
+        op: "abs",
+        arg: {
+          op: "sub",
+          args: [
+            { op: "field", path: "self.x" },
+            { op: "field", path: "opponent.x" },
+          ],
+        },
+      });
+
+      expect(
+        evalsTo(
+          expr,
+          100,
+          getMockState({ self: { x: sx }, opponent: { x: ox } }),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps a saturated overflow positive in a decision (intMax + 1 > 0)", () => {
+    // If add wrapped instead of saturating, intMax+1 would be negative and the
+    // rule would NOT fire.
+    expect(
+      firesWhen({
+        op: "gt",
+        args: [{ op: "add", args: [c(intMax), c(1)] }, c(0)],
+      }),
+    ).toBe(true);
   });
 });
