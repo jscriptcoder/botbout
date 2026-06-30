@@ -70,7 +70,7 @@ neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
 - [x] A bot can read any frozen-ruleset constant via **`rule(path)`**; a symbolic bot and its
       magic-number twin behave identically, and the symbolic one survives a `CANONICAL_RULES`
       retune that breaks the twin. _(Slice 3 — PR #81)_
-- [ ] A bot can read **`opponent.points`** (live) and act on the score gap.
+- [x] A bot can read **`opponent.points`** (live) and act on the score gap. _(Slice 4 — PR #82)_
 - [ ] `spec.md` is **generated from `dsl.ts` + `rules.ts`**, committed, drift-tested, embeds a
       JSON Schema, interpolates all numbers from `CANONICAL_RULES`, and embeds **validated**
       example bots.
@@ -234,7 +234,7 @@ bot's expression in a real fight.
 
 ---
 
-### Slice 4: Bots can read the scoreboard — live `opponent.points`
+### Slice 4: Bots can read the scoreboard — live `opponent.points` — ✅ DONE (PR #82)
 
 **Value**: A bot can tell whether it is ahead or behind and play an endgame (protect a lead as
 `clock.ticksRemaining → 0`, or gamble when behind) — directly relevant to the net-points metric.
@@ -266,42 +266,98 @@ exposes it → a bot computes `scoreGap = sub(self.points, opponent.points)` and
 
 ### Slice 5: Generate `spec.md` machine-truth sections + JSON Schema + drift test
 
+**Split into 5a + 5b** (decided 2026-06-30): 5a ships the factual Markdown backbone + drift
+test (a usable spec on its own); 5b embeds the JSON Schema + the `validate()`↔schema agreement
+test. Smaller, independently reviewable PRs. (The strategic primer + validated example bots +
+retiring `BOT-DSL.md` + the dogfood remain **Slice 6**.)
+
+---
+
+#### Slice 5a: Generate the factual `docs/spec.md` machine-truth sections + drift test
+
 **Value**: An LLM (and the operator) gets an accurate, self-contained reference that _cannot
-lie_ about the engine — the factual backbone of the benchmark instrument.
-**Path**: `npm run gen:spec` runs a generator (`src/cli/gen-spec.ts`) that reads `dsl.ts`
-allowlists + `LIMITS`, `CANONICAL_RULES`, the `RULE_READERS`/`FIELD_READERS` key sets, and the
-benchmark manifest → emits the factual sections of `spec.md` (grammar + action/op/field/move
-allowlists, `LIMITS`, frame table, **embedded JSON Schema** for the bot doc, validation-error
-catalog, benchmark rules: metric/seeds/maxTicks/gauntlet) → writes a committed `spec.md`.
+lie_ about the engine — the factual backbone of the benchmark instrument, byte-pinned so it can
+never silently drift from `dsl.ts` / `rules.ts` / the manifest.
+**Path**: `npm run gen:spec` runs a **pure** generator (`src/cli/gen-spec.ts`,
+`generateSpec(): string`, no wall-clock) that reads `dsl.ts` allowlists + `LIMITS`,
+`CANONICAL_RULES`, the `RULE_READERS`/`FIELD_READERS` key sets, and the benchmark manifest →
+emits the factual sections of `spec.md` (header, `LIMITS`, grammar + action/op/field/move/band
+allowlists, frame table, validation-error catalog, benchmark rules: metric/seeds/maxTicks/
+gauntlet) → a thin shell writes a committed **`docs/spec.md`**.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
 `cli-design`; `docs-guardian` (agent) for the generated doc’s clarity.
 **Acceptance criteria**:
 
-- A generator produces a deterministic Markdown string from source; `npm run gen:spec` writes
-  it to **`docs/spec.md`** (alongside `DESIGN.md`).
-- The embedded **JSON Schema** validates the same documents the `validate()` gate accepts
-  (cross-checked in a test: each `bots/*.json` that `validate()` accepts also passes the
-  schema; a known-bad doc fails both).
-- A **drift test** regenerates the spec and asserts it byte-matches the committed `spec.md`
+- A **pure** `generateSpec(): string` produces a deterministic Markdown string from the imported
+  source modules — **no `Date.now` / no wall-clock** (byte-stability is required for the drift
+  test). A thin shell + `npm run gen:spec` writes it to **`docs/spec.md`** (alongside
+  `DESIGN.md`).
+- A **drift test** regenerates the spec and asserts it byte-matches the committed `docs/spec.md`
   (fails when an allowlist, `LIMITS`, the frame table, or the manifest changes until
-  regenerated).
+  regenerated). `docs/spec.md` is added to `.prettierignore` (a generated artifact — its
+  generator is its formatter — so `format:check` and the drift test don’t conflict).
 - The frame table + benchmark-rules numbers are the _serialized_ `CANONICAL_RULES` + manifest
   (no hand-typed literals).
-- `BENCHMARK_VERSION` (from the manifest) appears in the spec header.
+- The action / op / field-path / rule-path / move / band **allowlists** are rendered from the
+  live `dsl.ts` allowlist sources (`FIELD_READERS`/`RULE_READERS` keys, `MOVES`, `BANDS`, the
+  op-set), never retyped.
+- The **validation-error catalog** enumerates the `ValidationIssue` reason families an author
+  hits (node budget, depth, unknown op/move/band, field/rule not allowed, undeclared cell).
+- `BENCHMARK_VERSION` + `INPUT_HASH` (from the manifest) appear in the spec header.
 - `LIMITS` (maxNodes / maxDepth / maxRules / maxBytes / maxCells / int range) appear
   **prominently** with a one-line node-budget note for authors. LIMITS are **unchanged for v1**
   (generous for rule-based bots — eval is cheap integer ops); a real ceiling-hit during the
   slice-6 dogfood is an additive tuning bump carrying a `BENCHMARK_VERSION` note.
-  **RED**: a generator unit test (key sections present, numbers sourced from `CANONICAL_RULES`),
-  the schema↔validator agreement test, and the drift snapshot test. Mutator watch: any literal in
-  the generator that should be sourced from `Rules`/allowlists.
-  **GREEN**: implement the generator + `gen:spec` script + commit the first `spec.md`.
+- No engine/TCB/outcome-path change — touches only `src/cli/`, `docs/`, `.prettierignore`, and
+  one npm script.
+  **RED**: a generator unit test (key sections present, numbers sourced from `CANONICAL_RULES`/
+  manifest, allowlists sourced from `dsl.ts`) + the drift snapshot test. Mutator watch: any
+  literal in the generator that should be sourced from `Rules`/allowlists.
+  **GREEN**: implement `generateSpec` + the `gen:spec` shell/script + commit the first
+  `docs/spec.md` + `.prettierignore` entry.
   **MUTATE**: Stryker on `gen-spec.ts`.
   **KILL MUTANTS**: ensure each generated section is asserted (not just presence but sourced
   content).
-  **REFACTOR**: assess deriving the JSON Schema and the `rule`/`field` enumerations from the same
-  allowlist source used by the validator (single source of truth).
+  **REFACTOR**: assess a single allowlist-enumeration source feeding both the Markdown lists and
+  (next slice) the JSON Schema enums.
   **Done when**: ACs met, drift test green, human approves commit.
+
+---
+
+#### Slice 5b: Embed the bot-doc JSON Schema + `validate()`↔schema agreement test
+
+**Value**: The spec carries a standard, machine-consumable JSON Schema for the bot document that
+provably agrees with the real `validate()` gate on the bot corpus — tooling/LLMs can lean on it.
+**Path**: `generateSpec` gains an **embedded JSON Schema** block whose `enum`s (moves, bands,
+field paths, rule paths, ops) are injected from the same allowlist source 5a renders → the spec
+is regenerated → a test validates the corpus against the embedded schema with **`ajv`**
+(devDependency; test-only, never in the engine/TCB — the no-runtime-deps rule for `src/engine`
+holds).
+**Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`;
+`api-design` for the schema shape.
+**Acceptance criteria**:
+
+- A JSON Schema for the bot document is **embedded** in `docs/spec.md`, recursive `NumExpr`/
+  `BoolExpr` via `$defs`/`$ref`, with `enum`s for moves/bands/field-paths/rule-paths/ops injected
+  from the **same allowlist source** the validator uses (single source of truth — no second
+  hand-maintained list).
+- **Agreement test (ajv)**: every `bots/*.json` that `validate()` **accepts** also passes the
+  embedded schema, and at least one **known-bad** doc fails **both**. Documented as a deliberate
+  **structural over-approximation**: the schema enforces shape + allowlists but **cannot** encode
+  the node-budget, max-depth, or declared-before-use cell scoping — `validate()` stays the
+  authority; the schema agrees on the corpus.
+- `ajv` added as a **devDependency** only; no `src/engine` import of it.
+- The drift test (5a) now also covers the embedded schema (regeneration is byte-stable).
+  **RED**: the schema↔validator agreement test (corpus accepted by both; a known-bad rejected by
+  both) + an updated drift assertion. Mutator watch: an enum hard-coded instead of sourced; a
+  `$ref` target typo silently widening the schema.
+  **GREEN**: build the schema object from the allowlist source, embed + regenerate the spec, wire
+  `ajv` into the test.
+  **MUTATE**: Stryker on the schema-builder region of `gen-spec.ts`.
+  **KILL MUTANTS**: cover each injected enum (a wrong/missing allowlist member fails agreement).
+  **REFACTOR**: assess deriving the schema enums and the 5a Markdown allowlist lists from one
+  shared enumeration.
+  **Done when**: ACs met, agreement + drift tests green, human approves commit.
 
 ---
 
@@ -421,10 +477,12 @@ marker (e.g. `idle ⟵ mawashi-geri: unaffordable`).
 
 ## Sequencing notes
 
-- **1 → (2,3,4) → 5 → 6 → 7 → 8.** Slice 1 is the walking skeleton (works with today’s DSL).
-  2–4 widen bot expressiveness (TCB changes) and must land before the spec so it documents the
-  final DSL. 5 then 6 build the spec instrument (6 depends on 5). 7 hardens the harness for real
-  model replies (depends on 1). 8 is the human analysis aid (independent; last, non-blocking).
+- **1 → (2,3,4) → 5a → 5b → 6 → 7 → 8.** Slice 1 is the walking skeleton (works with today’s
+  DSL). 2–4 widen bot expressiveness (TCB changes) and must land before the spec so it documents
+  the final DSL. 5a (factual Markdown + drift test) then 5b (embedded JSON Schema + agreement
+  test) then 6 build the spec instrument (5b depends on 5a; 6 depends on 5b). 7 hardens the
+  harness for real model replies (depends on 1). 8 is the human analysis aid (independent; last,
+  non-blocking).
 - 2, 3, 4 are mutually independent and could be authored/reviewed in parallel branches.
 - The gauntlet roster references `bots/` (incl. PR #77’s session bots) — ensure those are merged
   before freezing the slice-1 manifest, or freeze against the pre-existing archetypes.
