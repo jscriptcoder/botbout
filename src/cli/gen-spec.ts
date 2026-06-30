@@ -17,6 +17,7 @@ import {
   ALLOWED_RULES,
   BANDS,
   BOOL_OPS,
+  CELL_RE,
   LIMITS,
   MOVES,
   NUM_OPS,
@@ -207,6 +208,168 @@ const benchmarkSection = (): string =>
   ].join("\n");
 
 /**
+ * A JSON Schema (draft-07) for the bot document. A deliberate **permissive
+ * structural over-approximation** of `validate()`: it enforces shape, the
+ * allowlists (enum membership sourced from the same `dsl.ts` sets the markdown
+ * renders), and expression arities — but CANNOT encode the node budget, max
+ * nesting depth, the byte cap, or declared-before-use cells, so `validate()`
+ * stays the authority. `additionalProperties` is left open because the validator
+ * ignores extra keys ⇒ everything `validate()` accepts, the schema accepts.
+ */
+export function botDocSchema(): Record<string, unknown> {
+  const ref = (name: string): { $ref: string } => ({
+    $ref: `#/definitions/${name}`,
+  });
+
+  // a `NumExpr`/`BoolExpr`/`Action` variant: pin the discriminator, require its
+  // operand(s) — `oneOf` selects exactly one because the discriminators are
+  // disjoint consts/enums.
+  const variant = (
+    disc: string,
+    tag: Record<string, unknown>,
+    required: string[],
+    properties: Record<string, unknown>,
+  ): Record<string, unknown> => ({
+    type: "object",
+    required: [disc, ...required],
+    properties: { [disc]: tag, ...properties },
+  });
+
+  const dir = { enum: [-1, 0, 1] };
+
+  return {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    $ref: "#/definitions/BotDoc",
+    definitions: {
+      BotDoc: {
+        type: "object",
+        required: ["version", "name", "rules", "default"],
+        properties: {
+          version: { const: 1 },
+          name: { type: "string", minLength: 1, maxLength: 64 },
+          memory: {
+            type: "object",
+            maxProperties: LIMITS.maxCells,
+            propertyNames: { pattern: CELL_RE.source },
+            additionalProperties: { type: "integer" },
+          },
+          rules: {
+            type: "array",
+            maxItems: LIMITS.maxRules,
+            items: ref("Rule"),
+          },
+          default: ref("Action"),
+        },
+      },
+      Rule: {
+        type: "object",
+        required: ["when"],
+        properties: {
+          when: ref("BoolExpr"),
+          set: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["cell", "to"],
+              properties: { cell: { type: "string" }, to: ref("NumExpr") },
+            },
+          },
+          do: ref("Action"),
+        },
+      },
+      fieldPath: { type: "string", enum: [...ALLOWED_FIELDS] },
+      rulePath: { type: "string", enum: [...ALLOWED_RULES] },
+      move: { type: "string", enum: [...MOVES] },
+      band: { type: "string", enum: [...BANDS] },
+      NumExpr: {
+        oneOf: [
+          variant("op", { const: "const" }, ["value"], {
+            value: {
+              type: "integer",
+              minimum: LIMITS.intMin,
+              maximum: LIMITS.intMax,
+            },
+          }),
+          variant("op", { const: "field" }, ["path"], {
+            path: ref("fieldPath"),
+          }),
+          variant("op", { const: "mem" }, ["cell"], {
+            cell: { type: "string" },
+          }),
+          variant("op", { const: "rule" }, ["path"], { path: ref("rulePath") }),
+          variant("op", { enum: ["add", "mul", "min", "max"] }, ["args"], {
+            args: { type: "array", minItems: 1, items: ref("NumExpr") },
+          }),
+          variant("op", { enum: ["sub", "div"] }, ["args"], {
+            args: {
+              type: "array",
+              minItems: 2,
+              maxItems: 2,
+              items: ref("NumExpr"),
+            },
+          }),
+          variant("op", { enum: ["neg", "abs"] }, ["arg"], {
+            arg: ref("NumExpr"),
+          }),
+        ],
+      },
+      BoolExpr: {
+        oneOf: [
+          variant(
+            "op",
+            { enum: ["gt", "lt", "gte", "lte", "eq", "neq"] },
+            ["args"],
+            {
+              args: {
+                type: "array",
+                minItems: 2,
+                maxItems: 2,
+                items: ref("NumExpr"),
+              },
+            },
+          ),
+          variant("op", { enum: ["and", "or"] }, ["args"], {
+            args: { type: "array", minItems: 1, items: ref("BoolExpr") },
+          }),
+          variant("op", { const: "not" }, ["arg"], { arg: ref("BoolExpr") }),
+        ],
+      },
+      Action: {
+        oneOf: [
+          variant("type", { const: "idle" }, [], {}),
+          variant("type", { const: "move" }, ["dir"], { dir }),
+          variant("type", { const: "block" }, ["band"], { band: ref("band") }),
+          variant("type", { const: "crouch" }, [], {}),
+          variant("type", { const: "jump" }, ["dir"], { dir }),
+          variant("type", { const: "attack" }, ["move", "band"], {
+            move: ref("move"),
+            band: ref("band"),
+          }),
+          variant("type", { const: "sweep" }, [], {}),
+          variant("type", { const: "throw" }, [], {}),
+          variant("type", { const: "throw-break" }, [], {}),
+        ],
+      },
+    },
+  };
+}
+
+const jsonSchemaSection = (): string =>
+  [
+    "## JSON Schema",
+    "",
+    "A draft-07 JSON Schema for the bot document — a permissive structural",
+    "over-approximation of the validator (enum membership sourced from the same",
+    "allowlists above). It enforces shape, the allowlists, and expression arities,",
+    "but CANNOT encode the node budget, max nesting depth, the byte cap, or",
+    "declared-before-use cells — the `validate()` gate remains the authority.",
+    "",
+    "```json",
+    JSON.stringify(botDocSchema(), null, 2),
+    "```",
+  ].join("\n");
+
+/**
  * The committed `docs/spec.md` content — pure, deterministic, drift-tested.
  * `rules` defaults to `CANONICAL_RULES` (the frozen platform table); it is a
  * parameter only so the frame table can be exercised against an alternate
@@ -224,6 +387,7 @@ export function generateSpec(rules: Rules = CANONICAL_RULES): string {
       actionGrammarSection(),
       frameTableSection(rules),
       errorCatalogSection(),
+      jsonSchemaSection(),
       benchmarkSection(),
     ].join("\n\n") + "\n"
   );

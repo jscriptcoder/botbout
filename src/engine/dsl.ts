@@ -279,7 +279,7 @@ const ACTION_TYPE_TABLE: Record<Action["type"], true> = {
 };
 
 export const ACTION_TYPES: readonly string[] = Object.keys(ACTION_TYPE_TABLE);
-const CELL_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/;
+export const CELL_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/;
 
 const FORBIDDEN_KEYS: ReadonlySet<string> = new Set([
   "__proto__",

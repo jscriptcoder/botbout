@@ -273,7 +273,7 @@ retiring `BOT-DSL.md` + the dogfood remain **Slice 6**.)
 
 ---
 
-#### Slice 5a: Generate the factual `docs/spec.md` machine-truth sections + drift test
+#### Slice 5a: Generate the factual `docs/spec.md` machine-truth sections + drift test — ✅ DONE (PR #83)
 
 **Value**: An LLM (and the operator) gets an accurate, self-contained reference that _cannot
 lie_ about the engine — the factual backbone of the benchmark instrument, byte-pinned so it can
@@ -342,24 +342,41 @@ holds).
 `api-design` for the schema shape.
 **Acceptance criteria**:
 
-- A JSON Schema for the bot document is **embedded** in `docs/spec.md`, recursive `NumExpr`/
-  `BoolExpr` via `$defs`/`$ref`, with `enum`s for moves/bands/field-paths/rule-paths/ops injected
-  from the **same allowlist source** the validator uses (single source of truth — no second
-  hand-maintained list).
-- **Agreement test (ajv)**: every `bots/*.json` that `validate()` **accepts** also passes the
-  embedded schema, and at least one **known-bad** doc fails **both**. Documented as a deliberate
-  **structural over-approximation**: the schema enforces shape + allowlists but **cannot** encode
-  the node-budget, max-depth, or declared-before-use cell scoping — `validate()` stays the
-  authority; the schema agrees on the corpus.
-- `ajv` added as a **devDependency** only; no `src/engine` import of it.
-- The drift test (5a) now also covers the embedded schema (regeneration is byte-stable).
-  **RED**: the schema↔validator agreement test (corpus accepted by both; a known-bad rejected by
-  both) + an updated drift assertion. Mutator watch: an enum hard-coded instead of sourced; a
-  `$ref` target typo silently widening the schema.
-  **GREEN**: build the schema object from the allowlist source, embed + regenerate the spec, wire
+- A **`botDocSchema()`** (exported from `gen-spec.ts`) builds the bot-doc JSON Schema:
+  `version` const `1`, `name` 1..64, `memory` (`maxProperties` ← `LIMITS.maxCells`,
+  `propertyNames.pattern` ← the cell regex, integer values), `rules` (`maxItems` ←
+  `LIMITS.maxRules`) of `Rule`, `default` `Action`; reusable `$defs` (`NumExpr`/`BoolExpr`/
+  `Action`/`Rule`) with recursion via `$ref`.
+- **Tight, arity-precise** (decided 2026-06-30): discriminated `oneOf` variants per op-group with
+  correct arities (variadic `add/mul/min/max` ≥1 arg; binary `sub/div` exactly 2; unary
+  `neg/abs`; `const/field/mem/rule` leaves), `const` int32 bounds ← `LIMITS`. The **enum
+  membership** (field/rule/move/band/op/action) is injected from the live allowlists
+  (`ALLOWED_FIELDS`/`ALLOWED_RULES`/`MOVES`/`BANDS`/`NUM_OPS`/`BOOL_OPS`/`ACTION_TYPES`) — single
+  source of truth; the op→arity partition mirrors the validator's switch (a small, locked grammar
+  shape).
+- A **permissive over-approximation**: `additionalProperties` left OPEN (the validator ignores
+  extra keys) so _everything `validate()` accepts, the schema accepts_ — the agreement direction.
+- The schema is **embedded** in `docs/spec.md` as a fenced ```json block (= `JSON.stringify(
+  botDocSchema(), null, 2)`); the 5a drift test **transitively covers** it (no new drift test).
+- **Agreement test (`ajv`, test-only devDependency)**: (a) `ajv` compiles the schema without
+  error; (b) every `bots/*.json` that `validate()` **accepts** also passes the schema; (c) a
+  synthetic **kitchen-sink** valid doc exercising the corpus-missing features (`rule()`,
+  `crouch`, `jump`) passes **both** `validate()` and the schema; (d) ≥1 **known-bad** structural
+  doc (e.g. `version ≠ 1` / unknown move / wrong-typed field) is rejected by **both**.
+- **Enum-sourcing assertions**: the schema's field/rule/move/band/op/action enums **deep-equal**
+  the allowlist sources (kills a dropped/added enum mutant).
+- **Documented over-approximation**: the schema **cannot** encode the node-budget (`maxNodes`),
+  max-depth, `maxBytes`, or declared-before-use cell scoping ⇒ `validate()` stays the authority.
+- `ajv` added as a **devDependency** only; no `src/engine` import of it (the TCB / no-runtime-deps
+  rule holds); no engine behavior change.
+  **RED**: the agreement test (compile + corpus + kitchen-sink + known-bad) + the enum-equality
+  assertions. Mutator watch: an enum hard-coded instead of sourced; a `$ref` target typo silently
+  widening the schema; an arity bound (`minItems`/`maxItems`) dropped.
+  **GREEN**: build `botDocSchema()` from the allowlist source, embed + regenerate the spec, wire
   `ajv` into the test.
   **MUTATE**: Stryker on the schema-builder region of `gen-spec.ts`.
-  **KILL MUTANTS**: cover each injected enum (a wrong/missing allowlist member fails agreement).
+  **KILL MUTANTS**: cover each injected enum + each arity bound (a wrong/missing member or arity
+  fails agreement).
   **REFACTOR**: assess deriving the schema enums and the 5a Markdown allowlist lists from one
   shared enumeration.
   **Done when**: ACs met, agreement + drift tests green, human approves commit.

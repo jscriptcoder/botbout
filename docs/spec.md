@@ -234,6 +234,539 @@ families an author hits:
 - **undeclared cell** — a `mem` read or `set` write to a cell not declared in `memory`.
 - **unknown numeric/boolean op** — an unrecognised expression operator.
 
+## JSON Schema
+
+A draft-07 JSON Schema for the bot document — a permissive structural
+over-approximation of the validator (enum membership sourced from the same
+allowlists above). It enforces shape, the allowlists, and expression arities,
+but CANNOT encode the node budget, max nesting depth, the byte cap, or
+declared-before-use cells — the `validate()` gate remains the authority.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/BotDoc",
+  "definitions": {
+    "BotDoc": {
+      "type": "object",
+      "required": [
+        "version",
+        "name",
+        "rules",
+        "default"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "memory": {
+          "type": "object",
+          "maxProperties": 24,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,31}$"
+          },
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 96,
+          "items": {
+            "$ref": "#/definitions/Rule"
+          }
+        },
+        "default": {
+          "$ref": "#/definitions/Action"
+        }
+      }
+    },
+    "Rule": {
+      "type": "object",
+      "required": [
+        "when"
+      ],
+      "properties": {
+        "when": {
+          "$ref": "#/definitions/BoolExpr"
+        },
+        "set": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cell",
+              "to"
+            ],
+            "properties": {
+              "cell": {
+                "type": "string"
+              },
+              "to": {
+                "$ref": "#/definitions/NumExpr"
+              }
+            }
+          }
+        },
+        "do": {
+          "$ref": "#/definitions/Action"
+        }
+      }
+    },
+    "fieldPath": {
+      "type": "string",
+      "enum": [
+        "self.x",
+        "self.facing",
+        "self.points",
+        "self.canAct",
+        "self.phaseRemaining",
+        "self.counterWindow",
+        "self.cancelWindow",
+        "self.finishWindow",
+        "self.stamina",
+        "self.gassed",
+        "opponent.x",
+        "opponent.y",
+        "opponent.facing",
+        "opponent.distance",
+        "opponent.attacking",
+        "opponent.attackBand",
+        "opponent.posture",
+        "opponent.throwing",
+        "opponent.knockdown",
+        "opponent.vx",
+        "opponent.predictedDistance",
+        "opponent.stamina",
+        "opponent.gassed",
+        "opponent.points",
+        "ring.width",
+        "clock.tick",
+        "clock.ticksRemaining"
+      ]
+    },
+    "rulePath": {
+      "type": "string",
+      "enum": [
+        "tickRate",
+        "walkSpeed",
+        "ring.width",
+        "startGap",
+        "moves.gyaku-zuki.startup",
+        "moves.gyaku-zuki.active",
+        "moves.gyaku-zuki.recovery",
+        "moves.gyaku-zuki.score",
+        "moves.gyaku-zuki.reach",
+        "moves.gyaku-zuki.staminaCost",
+        "moves.sweep.startup",
+        "moves.sweep.active",
+        "moves.sweep.recovery",
+        "moves.sweep.score",
+        "moves.sweep.reach",
+        "moves.sweep.staminaCost",
+        "moves.kizami-zuki.startup",
+        "moves.kizami-zuki.active",
+        "moves.kizami-zuki.recovery",
+        "moves.kizami-zuki.score",
+        "moves.kizami-zuki.reach",
+        "moves.kizami-zuki.staminaCost",
+        "moves.mae-geri.startup",
+        "moves.mae-geri.active",
+        "moves.mae-geri.recovery",
+        "moves.mae-geri.score",
+        "moves.mae-geri.reach",
+        "moves.mae-geri.staminaCost",
+        "moves.mawashi-geri.startup",
+        "moves.mawashi-geri.active",
+        "moves.mawashi-geri.recovery",
+        "moves.mawashi-geri.score",
+        "moves.mawashi-geri.reach",
+        "moves.mawashi-geri.staminaCost",
+        "moves.mawashi-geri.scoreByBand.high",
+        "throw.startup",
+        "throw.active",
+        "throw.recovery",
+        "throw.reach",
+        "throw.score",
+        "throw.staminaCost",
+        "jumpImpulse",
+        "gravity",
+        "lowClearance",
+        "parryWindow",
+        "parryRecovery",
+        "counterWindow",
+        "counterBonus",
+        "cancelWindow",
+        "knockdownDuration",
+        "finishWindow",
+        "finishScore",
+        "perception.lPos",
+        "perception.lAct",
+        "perception.jitter",
+        "stamina.max",
+        "stamina.regen",
+        "stamina.blockChip",
+        "stamina.parryChip",
+        "stamina.gasThreshold",
+        "stamina.gasRecoveryPenalty"
+      ]
+    },
+    "move": {
+      "type": "string",
+      "enum": [
+        "kizami-zuki",
+        "gyaku-zuki",
+        "mae-geri",
+        "mawashi-geri"
+      ]
+    },
+    "band": {
+      "type": "string",
+      "enum": [
+        "high",
+        "mid",
+        "low"
+      ]
+    },
+    "NumExpr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "const"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "path"
+          ],
+          "properties": {
+            "op": {
+              "const": "field"
+            },
+            "path": {
+              "$ref": "#/definitions/fieldPath"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "cell"
+          ],
+          "properties": {
+            "op": {
+              "const": "mem"
+            },
+            "cell": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "path"
+          ],
+          "properties": {
+            "op": {
+              "const": "rule"
+            },
+            "path": {
+              "$ref": "#/definitions/rulePath"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "args"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "add",
+                "mul",
+                "min",
+                "max"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/NumExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "args"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "sub",
+                "div"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/definitions/NumExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "arg"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "neg",
+                "abs"
+              ]
+            },
+            "arg": {
+              "$ref": "#/definitions/NumExpr"
+            }
+          }
+        }
+      ]
+    },
+    "BoolExpr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "args"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "gt",
+                "lt",
+                "gte",
+                "lte",
+                "eq",
+                "neq"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/definitions/NumExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "args"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "and",
+                "or"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/BoolExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "arg"
+          ],
+          "properties": {
+            "op": {
+              "const": "not"
+            },
+            "arg": {
+              "$ref": "#/definitions/BoolExpr"
+            }
+          }
+        }
+      ]
+    },
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "idle"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "dir"
+          ],
+          "properties": {
+            "type": {
+              "const": "move"
+            },
+            "dir": {
+              "enum": [
+                -1,
+                0,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "band"
+          ],
+          "properties": {
+            "type": {
+              "const": "block"
+            },
+            "band": {
+              "$ref": "#/definitions/band"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "crouch"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "dir"
+          ],
+          "properties": {
+            "type": {
+              "const": "jump"
+            },
+            "dir": {
+              "enum": [
+                -1,
+                0,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "move",
+            "band"
+          ],
+          "properties": {
+            "type": {
+              "const": "attack"
+            },
+            "move": {
+              "$ref": "#/definitions/move"
+            },
+            "band": {
+              "$ref": "#/definitions/band"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "sweep"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "throw"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "throw-break"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
 ## Benchmark rules
 
 A submitted bot is scored deterministically against a frozen, versioned
