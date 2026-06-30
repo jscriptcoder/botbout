@@ -60,10 +60,10 @@ neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
 
 ## Acceptance Criteria (whole feature)
 
-- [ ] `npm run benchmark -- <bot.json>` scores a valid bot against the frozen gauntlet over
+- [x] `npm run benchmark -- <bot.json>` scores a valid bot against the frozen gauntlet over
       seeds `1..10` at `maxTicks 600`, **playing each (opponent × seed) twice (bot as A and as
       B)**, and prints a **deterministic** report: Σ net-points (primary), win-rate
-      (tiebreaker), and a per-opponent breakdown.
+      (tiebreaker), and a per-opponent breakdown. _(Slice 1 — PR #79)_
 - [ ] A bot can express integer **arithmetic** (`add/sub/mul/min/max/div/neg/abs`) with
       int32-saturating / div-trunc / ÷0:=0 semantics, validated and evaluated in a real fight.
 - [ ] A bot can read any frozen-ruleset constant via **`rule(path)`**; a symbolic bot and its
@@ -89,7 +89,7 @@ in v1).
 
 ---
 
-### Slice 1: Score a valid bot against the frozen gauntlet (walking skeleton)
+### Slice 1: Score a valid bot against the frozen gauntlet (walking skeleton) — ✅ DONE (PR #79)
 
 **Value**: The benchmark operator can score _any_ valid bot and get a deterministic ranking
 number — the core benchmark loop, proven end-to-end with today's DSL and existing bots.

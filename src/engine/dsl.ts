@@ -49,10 +49,15 @@ export type FieldPath =
   | "clock.ticksRemaining";
 
 // ─── Numeric expressions (values are fixed-point integers) ───────────────────
+// Arithmetic is int32-saturating: every op clamps its result to
+// [LIMITS.intMin, LIMITS.intMax]; `div` truncates toward zero and ÷0 := 0.
 export type NumExpr =
   | { op: "const"; value: number }
   | { op: "field"; path: FieldPath }
-  | { op: "mem"; cell: string };
+  | { op: "mem"; cell: string }
+  | { op: "add" | "mul" | "min" | "max"; args: NumExpr[] }
+  | { op: "sub" | "div"; args: [NumExpr, NumExpr] }
+  | { op: "neg" | "abs"; arg: NumExpr };
 
 // ─── Boolean expressions ─────────────────────────────────────────────────────
 export type BoolExpr =
@@ -239,6 +244,30 @@ export function validate(doc: unknown): ValidationResult {
         }
 
         break;
+      case "add":
+      case "mul":
+      case "min":
+      case "max":
+        if (!Array.isArray(e.args) || e.args.length < 1)
+          fail(path, `${String(e.op)} needs at least one operand`);
+        else
+          e.args.forEach((a, i) =>
+            num(a, `${path}.${String(e.op)}[${i}]`, depth + 1),
+          );
+        break;
+      case "sub":
+      case "div":
+        if (!Array.isArray(e.args) || e.args.length !== 2)
+          fail(path, `${String(e.op)} needs 2 operands`);
+        else
+          e.args.forEach((a, i) =>
+            num(a, `${path}.${String(e.op)}[${i}]`, depth + 1),
+          );
+        break;
+      case "neg":
+      case "abs":
+        num(e.arg, `${path}.${String(e.op)}`, depth + 1);
+        break;
       default:
         fail(path, `unknown numeric op: ${String(e.op)}`);
     }
@@ -363,6 +392,13 @@ export function validate(doc: unknown): ValidationResult {
 // ─── Interpreter ─────────────────────────────────────────────────────────────
 // Operates on an ALREADY-VALIDATED BotDoc. Pure w.r.t. (doc, state); the only
 // effect is writing the per-fighter `mem` the engine threads across ticks.
+
+// Saturate to the int32 range. Operands are always already-saturated int32s, so
+// sums/diffs stay exact in IEEE-double and products that exceed it already
+// exceed int32 (with correct sign) — the clamped integer is the exact result.
+const clampInt32 = (x: number): number =>
+  Math.max(LIMITS.intMin, Math.min(LIMITS.intMax, x));
+
 function evalNum(
   n: NumExpr,
   state: State,
@@ -375,6 +411,45 @@ function evalNum(
       return FIELD_READERS[n.path](state);
     case "mem":
       return mem[n.cell] ?? 0;
+    case "add":
+      return clampInt32(
+        n.args.reduce((acc, a) => acc + evalNum(a, state, mem), 0),
+      );
+    case "mul":
+      return clampInt32(
+        n.args.reduce((acc, a) => acc * evalNum(a, state, mem), 1),
+      );
+    case "min":
+      return clampInt32(
+        n.args.reduce(
+          (acc, a) => Math.min(acc, evalNum(a, state, mem)),
+          Infinity,
+        ),
+      );
+    case "max":
+      return clampInt32(
+        n.args.reduce(
+          (acc, a) => Math.max(acc, evalNum(a, state, mem)),
+          -Infinity,
+        ),
+      );
+    case "sub":
+      return clampInt32(
+        evalNum(n.args[0], state, mem) - evalNum(n.args[1], state, mem),
+      );
+
+    case "div": {
+      const divisor = evalNum(n.args[1], state, mem);
+
+      return divisor === 0
+        ? 0
+        : clampInt32(Math.trunc(evalNum(n.args[0], state, mem) / divisor));
+    }
+
+    case "neg":
+      return clampInt32(-evalNum(n.arg, state, mem));
+    case "abs":
+      return clampInt32(Math.abs(evalNum(n.arg, state, mem)));
   }
 }
 
