@@ -80,8 +80,9 @@ neg/abs`; int32-saturating, div truncates toward zero, ÷0:=0). No `let`.
       vs > half" (the residual miss is a Slice-1 gauntlet/metric limitation, not a spec defect — the
       spec defect it found, missing cancel routes, was fixed). _(Slice 6 — see the Slice 6 dogfood
       note + the follow-up.)_
-- [ ] A raw model reply (prose / ```json fences) is **leniently extracted**; a malformed or
+- [x] A raw model reply (prose / ```json fences) is **leniently extracted**; a malformed or
       schema-invalid bot is reported as **invalid** (last-ranked) with structured errors.
+      _(Slice 7 — PR #86)_
 - [ ] A fight report can show per-tick **stamina** and **typed degrade reasons**
       (`unaffordable` / `out-of-band` / `locked` / `inert`).
 
@@ -455,7 +456,7 @@ and all live references repointed.
 
 ---
 
-### Slice 7: Harden the harness for real model output — lenient extraction + hard-zero-distinct invalid
+### Slice 7: Harden the harness for real model output — lenient extraction + hard-zero-distinct invalid — ✅ DONE (PR #86)
 
 **Value**: The operator can feed a raw model reply (prose, ``json fences) and get a fair,
 diagnostic result — including a clean, last-ranked "invalid" outcome with reasons.
