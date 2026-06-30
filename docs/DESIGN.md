@@ -2,7 +2,7 @@
 
 > **Status:** The canonical combat + platform design. The **LOCKED** section is
 > decided; **PROPOSED** sections are recommendations not yet ratified. Paired with
-> `docs/BOT-DSL.md` (the bot API). **Last updated:** 2026-06-26
+> the generated `docs/spec.md` (the bot authoring API). **Last updated:** 2026-06-26
 >
 > The **non-negotiable invariants** in `.claude/CLAUDE.md` (determinism, DSL-as-data
 > TCB, integer math, same-snapshot resolution) hold throughout. Karate move design
@@ -453,7 +453,7 @@ fight bit-for-bit. **Why:** human-readable logs, cross-platform-identical.
 **Alternative:** power-of-two fixed-point (e.g. `1<<8`) — cheaper shifts, less
 readable.
 
-### P5/P6. DSL action grammar + state schema — ✓ RESOLVED → see `docs/BOT-DSL.md`
+### P5/P6. DSL action grammar + state schema — ✓ RESOLVED → see `docs/spec.md`
 
 Synthesized into a full spec: reactive one-action-per-tick; attacks parameterized
 by band; implicit on-contact cancels (combos via `canCancel` + memory);
@@ -462,7 +462,7 @@ cancel/knockdown state, points, scoreGap). The sketch below is retained for
 context.
 
 The bot still returns **one action per tick**; the engine is the loop. New shape
-(finalized in `docs/BOT-DSL.md`):
+(finalized in `docs/spec.md`):
 
 - **Attacks** are parameterized by **band**: `{ type: "strike", move: <punch|kick|...>, band: high|mid|low }`
   (the move's legal bands come from the frame table). Specials via the same form.
@@ -564,7 +564,7 @@ core footwork) rendered as the stick figure in Pixi. Resolved later via the
 ## Open-questions queue (what we grill next)
 
 - ✓ P1 Stamina · ✓ P2 Movement · ✓ P3 Physics · ✓ P4 Fixed-point — **resolved**
-- ✓ P5/P6 DSL synthesis — **resolved** → `docs/BOT-DSL.md`
+- ✓ P5/P6 DSL synthesis — **resolved** → `docs/spec.md`
 - ✓ P8 Platform/meta — **resolved** (all-TS · KotH+lineage · rich telemetry)
 - ✓ P7 Move schema — **resolved → C9 arsenal** (flat moveIds · per-move `bands[]` · band-dependent WKF score · 4-strike core)
 - ✓ P1 concretized → **C10 stamina** (on-commit costs · contact guard-chip · stepped gas · `L_act` opponent tell)
@@ -573,5 +573,5 @@ core footwork) rendered as the stick figure in Pixi. Resolved later via the
 - ✓ Combat design gap #1 (ordered resolution procedure) — **resolved** → **§11**
 
 **Design tree resolved.** Next: docs-alignment pass (CLAUDE.md / DESIGN.md /
-BOT-DSL.md / services-api / README reflect deep-karate + all-TS), then
+spec.md / services-api / README reflect deep-karate + all-TS), then
 `story-splitting` → `planning` → TDD build.

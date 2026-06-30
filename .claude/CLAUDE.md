@@ -11,8 +11,8 @@ The project is the **"go deep" karate** design. The canonical design lives in
 **`docs/DESIGN.md`** (combat + platform — 2D fixed-point space, 3 height bands +
 technique-specific *uke* defense, on-contact cancel combos, WKF **points-only**
 scoring with *yame* resets, king-of-the-hill ladder, all-TS platform) and
-**`docs/BOT-DSL.md`** (the bot API). All engine code is built **from the resolved
-design via TDD** under a single top-level **`src/`** (no `packages/` nesting). The
+the generated **`docs/spec.md`** (the bot API). All engine code is built **from the
+resolved design via TDD** under a single top-level **`src/`** (no `packages/` nesting). The
 **walking skeleton is done** (headless validate → fight → byte-identical replay,
 with 1D approach + one *mid* strike that can score / block / trade); combat depth
 now grows one capability slice at a time. See **Status** below.
@@ -62,7 +62,7 @@ generating code; flag any change that would.
 ## Status
 
 - DONE (design): the deep-karate combat tree + bot API resolved →
-  `docs/DESIGN.md`, `docs/BOT-DSL.md`.
+  `docs/DESIGN.md`, `docs/spec.md`.
 - DONE (walking skeleton — PRs #1–#5, all 6 ACs): the headless deterministic core.
   `src/engine/dsl.ts` (validator + interpreter — the TCB), `src/engine/types.ts`
   (`State`/`Action`/`Rules` contract), `src/engine/sim.ts` (fixed-timestep `runFight`
@@ -337,8 +337,8 @@ npm run lint       # eslint .  (lint:fix auto-fixes; inserts blank-line block sp
 ```
 
 **Design source of truth:** `docs/DESIGN.md` (combat + platform; control model,
-perception keystone + master inequalities, all locked decisions) and
-`docs/BOT-DSL.md` (bot API / LLM prompt context).
+perception keystone + master inequalities, all locked decisions) and the generated
+`docs/spec.md` (bot API / LLM prompt context — `npm run gen:spec`).
 
 ---
 

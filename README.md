@@ -9,7 +9,8 @@ replayed and watched.
 > **Design direction:** ModelKombat is building a **deep karate** combat model (2D
 > fixed-point space, three height bands + technique-specific _uke_ defense,
 > on-contact cancel combos, WKF points-only scoring, king-of-the-hill ladder).
-> Source of truth: **`docs/DESIGN.md`** + **`docs/BOT-DSL.md`**. The deterministic
+> Source of truth: **`docs/DESIGN.md`** (design) + the generated **`docs/spec.md`**
+> (the bot authoring API). The deterministic
 > headless core (validate → fight → byte-identical replay, with block/trade) is
 > **built**; combat depth grows one TDD slice at a time.
 
@@ -54,7 +55,7 @@ src/               TypeScript source (pure engine + CLI tooling)
     *.test.ts     ✅ vitest behaviour suites (validate / interpret / fight / perception / rules)
   cli/             ✅ headless fight runner — npm run fight (loads + validates bots, fights on the canonical table, prints the tick log)
 bots/              ✅ example bot documents (aggressor / counter / grappler / sweeper / turtle)
-docs/              DESIGN.md (combat + platform) + BOT-DSL.md (bot API)
+docs/              DESIGN.md (combat + platform) + spec.md (generated bot authoring API)
 (planned) api/     Vercel serverless functions (import the engine from src/engine/)
 (planned) viewer   Vite + Pixi + SolidJS replay/fight viewer
 ```
@@ -65,7 +66,7 @@ dropped Project Pixel Fist (render layer) when those slices land.
 ## Status
 
 **Design resolved** for the deep karate model + bot API (`docs/DESIGN.md`,
-`docs/BOT-DSL.md`). Shipped so far — each a TDD slice with its own PR:
+`docs/spec.md`). Shipped so far — each a TDD slice with its own PR:
 
 - **C1 walking skeleton** (PRs #1–#5): headless deterministic core — validate a JSON
   bot, run two bots N ticks, replay **byte-identically**, 1D approach + one strike that
