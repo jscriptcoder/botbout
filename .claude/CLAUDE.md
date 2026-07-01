@@ -292,8 +292,9 @@ generating code; flag any change that would.
   single-strike arsenal — re-tuned additively when C9 spreads costs across the 4-strike roster; the
   structural INEQUALITIES (basic < special; the gas band) survive C9. **C10 (the stamina economy) is
   COMPLETE** — both C10 plan files (`c10-canonical-stamina.md`, `c10-stamina-split.md`) deleted.
-- NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, *yame*/match
-  structure, telemetry object, Vercel API, or Pixi viewer.
+- NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, the rest of §7
+  (jogai / passivity / rounds, beyond the benchmark's yame + win condition), telemetry object, Vercel
+  API, or Pixi viewer.
 - DONE (**C9 multi-move "real karate" arsenal** — PRs #67–#76): the abstract `strike` is RETIRED into
   four named WKF techniques, shipped across **7 additive slices** (band-legality gate #67 → `kizami-zuki`
   jab #68 → `gyaku-zuki` reverse #70 → `mae-geri` front kick #71 → `mawashi-geri` roundhouse +
@@ -313,10 +314,39 @@ generating code; flag any change that would.
   `gyaku-zuki`, and reconciled `docs/BOT-DSL.md` + `docs/DESIGN.md` §P7. 468 tests; `dsl.ts` MOVES +
   `rules.ts` mutation 100%. The `sim.ts` resolver was **unchanged throughout** (generic
   `rules.moves[action.move]`). **C9 is COMPLETE** — both C9 plan files deleted.
-- ROADMAP (C9 + C10 COMPLETE): the still-unresolved **match structure** (*yame* resets / rounds / WKF
-  win conditions) and **air-actions** (air strikes / horizontal jump displacement) — `grill-me` →
-  `planning` → TDD. (C9, the multi-move arsenal, is now DONE — see the entry above; its per-move stamina
-  costs are wired into `CANONICAL_RULES`, provisional in magnitude but structurally locked.) The
+- DONE (**benchmark WKF match structure** — §7 partial, PRs #87–#93): the roadmap's deferred **match
+  structure**, pulled forward and scoped to *yame* + the win condition (NO jogai / passivity / rounds —
+  later) so the **LLM benchmark** scores match OUTCOMES, not raw 600-tick point farming. Realized as one
+  optional `runFight` `match?: { winGap }` cfg param (yame resets + the 8-point-gap early-stop together;
+  **NOT** in `Rules`/`CANONICAL_RULES` — match mode is a *scoring* concept, so `npm run fight` is
+  unaffected); absent ⇒ **byte-identical**, and **no DSL surface** (the `dsl.ts` TCB is untouched
+  throughout — the only outcome-path change is `sim.ts`'s `runFight` orchestration). 6 additive slices:
+  **S1** (#88) `winGap` 8-gap early-stop + additive `FightResult.endReason "gap"|"time"` + `ticks` =
+  executed; **S2** (#89) **yame** — after a *scored* exchange fully resolves (both `neutral`, no open
+  counter/cancel windows) both bodies reset to the neutral start (position / posture / guard / windows)
+  while **points, stamina, mem PERSIST**, the gap checked *at* the yame boundary (a combo is never
+  amputated; a scoreless stretch never resets; perception history is not reset); **S3** (#90) the
+  benchmark adopts match mode and ranks **win-rate primary / net-points tiebreak** (`compareSubmission`
+  keys swapped), `MATCH = { winGap: 8 }` folded into `INPUT_HASH`, `BENCHMARK_VERSION → v2`; **S6** (#91,
+  the conditional rebalance) `knockdownDuration 30→18` — de-walls the sweeper's
+  `sweep→knockdown→finish→sweep` okizeme loop that *starved* the both-neutral yame trigger (it farmed the
+  full cap; **legal DSL ⇒ a RULES fix, not a bot-swap**), the unique single-knob balance (sweeper
+  100→69%, 5/6 gauntlet members in `[25,75]`, keeps `finishWindow 10 < kd 18`), `BENCHMARK_VERSION → v3`;
+  **S4** (#92) post-fix validation — the dogfood re-characterized under match mode (15W/104L/1D) +
+  `docs/benchmark-gauntlet-v3.md`; **S5** (#93) `docs/spec.md` **teaches match mode** (the win condition
+  + yame + corrected win-rate-primary metric, all manifest-sourced) via a `generateSpec(rules, match)`
+  param. 733 tests; each engine slice proved byte-identical absent-`match` + match-mode replay-stability;
+  `gen-spec.ts` / `rules.ts` / `benchmark-config.ts` mutation 100% on changed regions. **Deferred:** the
+  rest of §7 (jogai / passivity / rounds); a two-sided yame-starvation fix (mutual okizeme-loop matchups
+  still farm the cap — but ranking is by the discriminating win-rate, not net); and the **`vulture`
+  gauntlet-rebalance follow-up story** (16% win-rate, out the low band — needs a deliberate parry→counter
+  redesign; a naive offense buff backfired 16→7%). The `plans/benchmark-match-structure.md` plan is
+  deleted (record in git / PRs #87–#93 + `docs/benchmark-gauntlet-v3.md`).
+- ROADMAP (C9 + C10 + benchmark match structure COMPLETE): the still-unresolved **air-actions** (air
+  strikes / horizontal jump displacement) and the **rest of §7 match structure** (jogai / passivity /
+  rounds, beyond the benchmark's yame + win condition) — `grill-me` → `planning` → TDD. (C9, the
+  multi-move arsenal, is DONE — see its entry above; its per-move stamina costs are wired into
+  `CANONICAL_RULES`, provisional in magnitude but structurally locked.) The
   spine is pinned in `docs/DESIGN.md` **§11 (Combat resolution order)**: two-phase compute-then-apply
   (live from C5, **strictly forced by C7's throws**), S1 posture → S2 intake → S3 compute → S4 apply →
   S5 advance, `strike > throw > guard` precedence, HIT/BLOCK/WHIFF gate. (Roadmap capabilities are
