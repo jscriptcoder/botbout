@@ -76,13 +76,15 @@ export type FightConfig = {
   botB: BotDoc;
   maxTicks: number;
   seed: number; // replay-identity key; seeds the PRNG that drives perception jitter
+  match?: { winGap: number }; // WKF match mode: end early once the point gap reaches winGap; absent ⇒ run to maxTicks
 };
 
 export type FightResult = {
   winner: "A" | "B" | "draw";
-  ticks: number;
+  ticks: number; // ticks actually executed (= maxTicks unless a match ended early)
   scores: { a: number; b: number };
   events: FightEvent[];
+  endReason: "gap" | "time"; // "gap" = ended on the winGap; "time" = ran to the cap (decided on points)
 };
 
 // A fighter is either free to act (neutral) or locked into a committed move —
@@ -762,7 +764,7 @@ const advance = (f: Fighter, rules: Rules): void => {
 };
 
 export function runFight(cfg: FightConfig): FightResult {
-  const { rules, botA, botB, maxTicks } = cfg;
+  const { rules, botA, botB, maxTicks, match } = cfg;
 
   const a: Fighter = {
     x: Math.trunc((rules.ring.width - rules.startGap) / 2),
@@ -808,6 +810,11 @@ export function runFight(cfg: FightConfig): FightResult {
 
   const jittered = (base: number): number =>
     jitter > 0 ? Math.max(0, base + (rng() % (2 * jitter + 1)) - jitter) : base;
+
+  // In match mode the loop can end early; without it these stay at their full-run
+  // values (the byte-identical absent-match path).
+  let ticks = maxTicks;
+  let endReason: FightResult["endReason"] = "time";
 
   for (let tick = 0; tick < maxTicks; tick++) {
     // 1. Auto-face from pre-tick positions.
@@ -954,14 +961,24 @@ export function runFight(cfg: FightConfig): FightResult {
         stamina: b.stamina,
       },
     });
+
+    // Match mode (Q7): end the fight the first tick the point gap reaches winGap.
+    // The check runs at the very end of the tick, after events.push, so the
+    // deciding tick is recorded; ticks counts the ticks actually executed.
+    if (match && Math.abs(a.points - b.points) >= match.winGap) {
+      ticks = tick + 1;
+      endReason = "gap";
+      break;
+    }
   }
 
   const winner = a.points > b.points ? "A" : b.points > a.points ? "B" : "draw";
 
   return {
     winner,
-    ticks: maxTicks,
+    ticks,
     scores: { a: a.points, b: b.points },
     events,
+    endReason,
   };
 }

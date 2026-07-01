@@ -27,6 +27,7 @@ const result = (
   ticks: events.length,
   scores: { a: 0, b: 0 },
   events,
+  endReason: "time",
   ...o,
 });
 

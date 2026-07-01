@@ -5048,3 +5048,131 @@ describe("runFight — rule(path) ruleset reads threaded through the sim", () =>
     expect(result.events[0].a.action).toEqual(ATTACK_MID);
   });
 });
+
+describe("runFight — match mode (winGap early-stop)", () => {
+  // A bot that strikes mid every tick (only the neutral-tick attack starts a move).
+  // Against an IDLE opponent within reach it scores +1 on each move's first active
+  // frame — at tick 4, then every 12 ticks (16, 28, …). So the running point gap
+  // reaches 8 at tick 88 (4 + 12·7), the tick a winGap-8 match should end.
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  it("ends the fight the tick one fighter leads by winGap, naming the leader the winner", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 200,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("gap");
+    expect(result.ticks).toBe(89); // stopped after executing tick 88 (index 88 ⇒ 89 ticks)
+    expect(result.ticks).toBeLessThan(200);
+    expect(result.scores).toEqual({ a: 8, b: 0 });
+    expect(result.scores.a - result.scores.b).toBe(8);
+    expect(result.events).toHaveLength(89);
+    // The gap was 7 at tick 76 and the fight CONTINUED (7 < 8), then stopped at gap 8.
+    expect(result.events[76].a.points).toBe(7);
+    expect(result.events[88].a.points).toBe(8);
+  });
+
+  it("stops on the gap regardless of which fighter leads (the gap is a magnitude)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: IDLE,
+        botB: ATTACKER,
+        maxTicks: 200,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("gap");
+    expect(result.ticks).toBe(89);
+    expect(result.scores).toEqual({ a: 0, b: 8 });
+  });
+
+  it("runs to the cap and decides on points when the gap is never reached", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 10, // A scores once (tick 4); gap 1 < 8 ⇒ no early stop
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(10);
+    expect(result.winner).toBe("A"); // most points at the cap
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+  });
+
+  it("runs to the cap and draws when neither fighter scores", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: IDLE,
+        botB: IDLE,
+        maxTicks: 10,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(10);
+    expect(result.winner).toBe("draw");
+  });
+
+  it("absent match runs the full distance and never early-stops (byte-identical simulation)", () => {
+    const cfg = getMockConfig({ botA: ATTACKER, botB: IDLE, maxTicks: 200 });
+    const noMatch = runFight(cfg);
+
+    // No match config ⇒ runs every tick even though the gap far exceeds 8.
+    expect(noMatch.endReason).toBe("time");
+    expect(noMatch.ticks).toBe(200);
+    expect(noMatch.events).toHaveLength(200);
+
+    // Match mode only TRUNCATES the same simulation: its events are the exact
+    // prefix of the absent-match run up to the stop tick (no perturbation).
+    const withMatch = runFight({ ...cfg, match: { winGap: 8 } });
+    expect(withMatch.events).toEqual(noMatch.events.slice(0, withMatch.ticks));
+  });
+
+  it("measures the gap as a difference, not a sum — an even trade never ends early", () => {
+    // Two mirror attackers trade: both score +1 on the same ticks, so the point
+    // GAP stays 0 and the match runs to the cap — even though the combined score
+    // (a + b) climbs well past winGap (5 + 5 = 10). This pins the win metric to
+    // |a − b|, not a.points + b.points.
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: ATTACKER,
+        maxTicks: 60,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(60);
+    expect(result.winner).toBe("draw");
+    expect(result.scores.a).toBe(result.scores.b); // gap 0 throughout
+    expect(result.scores).toEqual({ a: 5, b: 5 }); // sum 10 > winGap, yet no early stop
+  });
+
+  it("is replay-stable in match mode (same config ⇒ identical FightResult)", () => {
+    const cfg = getMockConfig({
+      botA: ATTACKER,
+      botB: IDLE,
+      maxTicks: 200,
+      match: { winGap: 8 },
+    });
+
+    const first = runFight(cfg);
+    const second = runFight(cfg);
+
+    expect(second).toEqual(first);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+});

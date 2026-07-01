@@ -26,17 +26,17 @@ under the new metric before deciding any rebalance.
 
 ## Resolved design decisions (grill-me, 2026-07-01)
 
-| # | Decision | Resolution |
-|---|----------|------------|
-| Q1 | Primary measure | **WKF match outcomes** (not raw point accumulation) |
-| Q2 | Scope | **Build §7 match structure** with yame resets (not a CLI-layer shim) |
-| Q3 | §7 boundary | **Yame + win condition only** — NO jogai / passivity (separate later slice) |
-| Q4 | Yame trigger | A score happened this exchange **AND** both fighters back to neutral: `state.kind==="neutral" && counterRemaining===0 && cancelRemaining===0` |
-| Q5 | Yame persistence | Only the **body** resets (position → start gap, `y=0`, state→neutral, posture→standing, clear guardBand/guardAge/counter/cancel windows). **points, stamina, mem all PERSIST** |
-| Q6 | Win condition | **gap 8 / cap 600** (design values); gap checked **at yame**; equal points at the cap = **draw** |
-| Q7 | Switch | One optional `runFight` cfg param **`match?: { winGap: number }`** enabling yame + early-stop together; absent ⇒ **byte-identical**; **NOT** in `Rules`/`CANONICAL_RULES` |
-| Q8 | Aggregation | **win-rate primary**, Σ net-points (now bounded) **tiebreaker**; swap `compareSubmission` keys + the report headline |
-| Q9 | Gauntlet | **Measure-then-decide** — re-measure under match mode, rebalance only if still lopsided, preferring **rules tuning over roster swap** |
+| #   | Decision         | Resolution                                                                                                                                                                     |
+| --- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q1  | Primary measure  | **WKF match outcomes** (not raw point accumulation)                                                                                                                            |
+| Q2  | Scope            | **Build §7 match structure** with yame resets (not a CLI-layer shim)                                                                                                           |
+| Q3  | §7 boundary      | **Yame + win condition only** — NO jogai / passivity (separate later slice)                                                                                                    |
+| Q4  | Yame trigger     | A score happened this exchange **AND** both fighters back to neutral: `state.kind==="neutral" && counterRemaining===0 && cancelRemaining===0`                                  |
+| Q5  | Yame persistence | Only the **body** resets (position → start gap, `y=0`, state→neutral, posture→standing, clear guardBand/guardAge/counter/cancel windows). **points, stamina, mem all PERSIST** |
+| Q6  | Win condition    | **gap 8 / cap 600** (design values); gap checked **at yame**; equal points at the cap = **draw**                                                                               |
+| Q7  | Switch           | One optional `runFight` cfg param **`match?: { winGap: number }`** enabling yame + early-stop together; absent ⇒ **byte-identical**; **NOT** in `Rules`/`CANONICAL_RULES`      |
+| Q8  | Aggregation      | **win-rate primary**, Σ net-points (now bounded) **tiebreaker**; swap `compareSubmission` keys + the report headline                                                           |
+| Q9  | Gauntlet         | **Measure-then-decide** — re-measure under match mode, rebalance only if still lopsided, preferring **rules tuning over roster swap**                                          |
 
 ### Flagged in-slice sub-decisions (resolve during TDD, not blocking)
 
@@ -45,7 +45,7 @@ under the new metric before deciding any rebalance.
   bounded, deterministic, symmetric "ghost" — avoiding special-case fallback in the perception
   path. Confirm with a behavior test in Slice 2.
 - **`FightResult.ticks`** = the **count of ticks executed** (a full fight = `maxTicks`; an early
-  stop after executing tick index *t* = `t+1`). Absent `match` ⇒ always `maxTicks`.
+  stop after executing tick index _t_ = `t+1`). Absent `match` ⇒ always `maxTicks`.
 - **`FightResult` gains `endReason: "gap" | "time"`** (additive). `"gap"` = ended early on the
   8-point gap; `"time"` = ran to the cap and decided by most-points (or `draw`). Robust even when
   the gap is reached on the final tick (not derived from `ticks`). Absent `match` ⇒ always
@@ -131,31 +131,32 @@ the gap at the **end of each tick** (after resolution/advance) and `break`s when
 the yame boundary there.)_
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`.
 **Acceptance criteria**:
+
 - With `match: { winGap: 8 }` and a fixture where A out-scores B, the fight ends the tick the gap
   first reaches 8: `winner === "A"`, `endReason === "gap"`, `ticks` < `maxTicks`,
   `scores.a − scores.b === 8` (or the first crossing value ≥ 8 if a single technique jumps it, e.g.
   a 3-point throw).
 - A symmetric/low-scoring fixture that never reaches the gap runs to `maxTicks`: `endReason ===
-  "time"`, `ticks === maxTicks`, `winner` = most-points-at-cap (existing rule), equal = `draw`.
+"time"`, `ticks === maxTicks`, `winner` = most-points-at-cap (existing rule), equal = `draw`.
 - **Absent `match`** ⇒ byte-identical: an existing replay/fight fixture produces identical
   `events`/`scores`/`ticks` (the determinism suite stays green unchanged).
 - **Match mode is replay-stable**: the same `(bot, opponent, seed, match)` produces an identical
   `FightResult` (`winner`/`ticks`/`endReason`/`scores`/`events`) across repeat runs — the
   pure-function property the benchmark depends on (early-termination + the gap check consume no
   PRNG draws; jitter still draws per-tick in the fixed A,B order up to the stop tick).
-**RED**: a `sim`/`runFight` test for (a) early-stop at the gap with correct winner + end tick, (b)
-no-gap → time-cap path, (c) a `match`-absent byte-identical assertion. Mutator watch: the gap
-comparison (`>=` vs `>`, the subtraction direction, `Math.abs` on the gap), the loop-`break`
-placement, and `ticks = tick` vs `maxTicks`.
-**GREEN**: add `match?` to `FightConfig`; compute `gap = Math.abs(a.points − b.points)`; after the
-per-tick advance, `if (match && gap >= match.winGap) break;`; set `ticks`/`winner` from the stop
-state.
-**MUTATE**: Stryker on the changed `sim.ts` lines (the gap check + winner/ticks).
-**KILL MUTANTS**: cover the boundary (gap exactly 8 ends; 7 does not), the winner direction, and
-the absent-match no-op.
-**REFACTOR**: assess a small `decideWinner(a, b)` helper (the winner expression is now used at the
-break and at the cap).
-**Done when**: ACs met, absent-match byte-identical proven, human approves commit.
+  **RED**: a `sim`/`runFight` test for (a) early-stop at the gap with correct winner + end tick, (b)
+  no-gap → time-cap path, (c) a `match`-absent byte-identical assertion. Mutator watch: the gap
+  comparison (`>=` vs `>`, the subtraction direction, `Math.abs` on the gap), the loop-`break`
+  placement, and `ticks = tick` vs `maxTicks`.
+  **GREEN**: add `match?` to `FightConfig`; compute `gap = Math.abs(a.points − b.points)`; after the
+  per-tick advance, `if (match && gap >= match.winGap) break;`; set `ticks`/`winner` from the stop
+  state.
+  **MUTATE**: Stryker on the changed `sim.ts` lines (the gap check + winner/ticks).
+  **KILL MUTANTS**: cover the boundary (gap exactly 8 ends; 7 does not), the winner direction, and
+  the absent-match no-op.
+  **REFACTOR**: assess a small `decideWinner(a, b)` helper (the winner expression is now used at the
+  break and at the cap).
+  **Done when**: ACs met, absent-match byte-identical proven, human approves commit.
 
 ---
 
@@ -197,6 +198,7 @@ their current positions, stamina, and windows — only a **scoring** exchange re
 scores the fight evolves continuously (this is the design's "yame after a scoring technique").
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`.
 **Acceptance criteria**:
+
 - After a fixture's first scored exchange resolves to both-neutral, the next tick's fighter
   positions equal the **start-gap** positions and move-state is neutral — i.e. a visible reset —
   while `points` carry the accumulated score.
@@ -211,22 +213,22 @@ scores the fight evolves continuously (this is the design's "yame after a scorin
 - **Bounded/terminating**: a fixture proves the fight always reaches a yame or the cap (no infinite
   exchange).
 - **Absent `match`** ⇒ byte-identical (no reset path executes).
-**RED**: tests for (a) the reset-to-neutral snapshot + persistence of points/stamina/mem, (b) the
-trigger predicate (open window / downed ⇒ no yame; both-neutral-after-score ⇒ yame), (c) combo-not-
-amputated (gap check at yame), (d) the perception "no-reset" ghost behavior (a post-reset
-perceived position reflects the continuous timeline), (e) absent-match byte-identical. Mutator
-watch: the `scored` flag set/clear, each conjunct of the neutral predicate (`counterRemaining===0`,
-`cancelRemaining===0`, `state.kind` check), the reset field values, and the persist-vs-reset choice
-for stamina/mem.
-**GREEN**: add the `scored` tracking + the end-of-tick yame block (predicate, gap check, body
-reset); relocate the gap check from Slice 1's per-tick spot into the yame block.
-**MUTATE**: Stryker on the yame block + the relocated gap check.
-**KILL MUTANTS**: cover each predicate conjunct, each reset field, and the persistence of
-stamina/mem.
-**REFACTOR**: assess a `resetToNeutral(f, rules, side)` helper reusing the `runFight` init values
-(DRY with the fighter construction at the top of `runFight`).
-**Done when**: ACs met, perception-ghost decision confirmed by a test, byte-identical absent path
-proven, human approves commit.
+  **RED**: tests for (a) the reset-to-neutral snapshot + persistence of points/stamina/mem, (b) the
+  trigger predicate (open window / downed ⇒ no yame; both-neutral-after-score ⇒ yame), (c) combo-not-
+  amputated (gap check at yame), (d) the perception "no-reset" ghost behavior (a post-reset
+  perceived position reflects the continuous timeline), (e) absent-match byte-identical. Mutator
+  watch: the `scored` flag set/clear, each conjunct of the neutral predicate (`counterRemaining===0`,
+  `cancelRemaining===0`, `state.kind` check), the reset field values, and the persist-vs-reset choice
+  for stamina/mem.
+  **GREEN**: add the `scored` tracking + the end-of-tick yame block (predicate, gap check, body
+  reset); relocate the gap check from Slice 1's per-tick spot into the yame block.
+  **MUTATE**: Stryker on the yame block + the relocated gap check.
+  **KILL MUTANTS**: cover each predicate conjunct, each reset field, and the persistence of
+  stamina/mem.
+  **REFACTOR**: assess a `resetToNeutral(f, rules, side)` helper reusing the `runFight` init values
+  (DRY with the fighter construction at the top of `runFight`).
+  **Done when**: ACs met, perception-ghost decision confirmed by a test, byte-identical absent path
+  proven, human approves commit.
 
 ---
 
@@ -246,6 +248,7 @@ config.
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`,
 `cli-design`.
 **Acceptance criteria**:
+
 - The aggregator runs each (opponent × seed × side) fight with `match: { winGap: 8 }`; a fixture
   shows fights ending early (per-opponent `fights` unchanged, but outcomes are now match
   win/loss/draw).
@@ -257,19 +260,19 @@ config.
 - `BENCHMARK_VERSION === "v2"`; the `INPUT_HASH` guard test recomputes to include `MATCH` and
   passes; the spec/header surfaces `v2`.
 - Determinism: repeat runs are byte-stable.
-**RED**: aggregator test (fights run in match mode; a known fixture yields known win-rate +
-bounded net); `compareSubmission` key-swap test (the sort-order proof updates); CLI headline
-exact-string test; the `INPUT_HASH`/version guard test. Mutator watch: the comparator key order,
-the win-rate-vs-net precedence, the manifest hash inputs, threading `match` into `runFight`.
-**GREEN**: add `MATCH` + new hash/version to the manifest; thread `match` through
-`BenchmarkConfig`/`playBothSides`; swap `compareSubmission` keys; reorder the report headline; pass
-`MATCH` in the CLI shell.
-**MUTATE**: Stryker on `benchmark-config.ts`, `submission.ts`, the changed `benchmark.ts` /
-`run-benchmark.ts` lines.
-**KILL MUTANTS**: cover the comparator order both ways, the hash-input inclusion of `MATCH`, and
-the headline ordering.
-**REFACTOR**: assess sharing the win-rate/net comparator between `benchmark.ts` and `submission.ts`.
-**Done when**: ACs met, version/hash bumped + guard green, human approves commit.
+  **RED**: aggregator test (fights run in match mode; a known fixture yields known win-rate +
+  bounded net); `compareSubmission` key-swap test (the sort-order proof updates); CLI headline
+  exact-string test; the `INPUT_HASH`/version guard test. Mutator watch: the comparator key order,
+  the win-rate-vs-net precedence, the manifest hash inputs, threading `match` into `runFight`.
+  **GREEN**: add `MATCH` + new hash/version to the manifest; thread `match` through
+  `BenchmarkConfig`/`playBothSides`; swap `compareSubmission` keys; reorder the report headline; pass
+  `MATCH` in the CLI shell.
+  **MUTATE**: Stryker on `benchmark-config.ts`, `submission.ts`, the changed `benchmark.ts` /
+  `run-benchmark.ts` lines.
+  **KILL MUTANTS**: cover the comparator order both ways, the hash-input inclusion of `MATCH`, and
+  the headline ordering.
+  **REFACTOR**: assess sharing the win-rate/net comparator between `benchmark.ts` and `submission.ts`.
+  **Done when**: ACs met, version/hash bumped + guard green, human approves commit.
 
 ---
 
@@ -287,6 +290,7 @@ update `src/cli/dogfood.test.ts` to assert the bot's **match-mode** result (pass
 **Required implementation skills**: `tdd`, `testing` (characterization), `mutation-testing` (for
 the dogfood test).
 **Acceptance criteria**:
+
 - `dogfood.test.ts` asserts the dogfood bot's outcome **under match mode** (the prior raw-600-tick
   `−2682` near-miss assertion is replaced by the match-mode win/loss/draw + bounded net); the test
   is green and documents the new behavior.
@@ -297,17 +301,17 @@ the dogfood test).
   concludes a **rebalance go/no-go** (skip Slice 6 iff every member is inside the band).
 - **No engine/aggregation production code changes** (pure measurement + a characterization-test
   update) — this slice does not alter outcomes.
-**RED**: the updated `dogfood.test.ts` asserting the match-mode result (fails against the old
-raw-points assertion until updated). Mutator watch: n/a beyond the dogfood assertion (no new prod
-logic).
-**GREEN**: regenerate the dogfood result under match mode; update the assertion; write the
-measurement note.
-**MUTATE**: Stryker scope limited (no new prod logic; the dogfood test's own assertions are the
-artifact).
-**KILL MUTANTS**: n/a (measurement slice).
-**REFACTOR**: none.
-**Done when**: dogfood re-characterized, per-member win-rates captured, a **rebalance go/no-go
-recommendation** written into the PR description (feeds Slice 6), human approves commit.
+  **RED**: the updated `dogfood.test.ts` asserting the match-mode result (fails against the old
+  raw-points assertion until updated). Mutator watch: n/a beyond the dogfood assertion (no new prod
+  logic).
+  **GREEN**: regenerate the dogfood result under match mode; update the assertion; write the
+  measurement note.
+  **MUTATE**: Stryker scope limited (no new prod logic; the dogfood test's own assertions are the
+  artifact).
+  **KILL MUTANTS**: n/a (measurement slice).
+  **REFACTOR**: none.
+  **Done when**: dogfood re-characterized, per-member win-rates captured, a **rebalance go/no-go
+  recommendation** written into the PR description (feeds Slice 6), human approves commit.
 
 ---
 
@@ -327,19 +331,20 @@ Slice-5a drift test transitively covers it. **Keep the existing `docs/spec.md` L
 **Required implementation skills**: `tdd`, `testing`, `mutation-testing`, `refactoring`,
 `docs-guardian` (agent) for clarity.
 **Acceptance criteria**:
+
 - The benchmark-rules section states the win condition with numbers **sourced from the manifest**
   (`winGap`, `MAX_TICKS`, `BENCHMARK_VERSION` `v2`) — not hand-typed literals; a retune-tracking
   test proves interpolation (a changed `winGap` changes the text).
 - The primer explains yame (reset-to-neutral; points/stamina/mem persist) and the
   win-rate-primary metric, consistent with Slice 3.
 - The drift test regenerates and byte-matches the committed `docs/spec.md`.
-**RED**: a generator test asserting the win-condition numbers are sourced (retune-tracking) + the
-drift snapshot. Mutator watch: a hardcoded `8`/`600` that should be interpolated from the manifest.
-**GREEN**: extend the benchmark-rules + primer generator sections; regenerate the spec.
-**MUTATE**: Stryker on the changed `gen-spec.ts` regions.
-**KILL MUTANTS**: cover the interpolated win-condition numbers.
-**REFACTOR**: assess sharing the manifest read with the existing benchmark-rules section.
-**Done when**: ACs met, drift test green, human approves commit.
+  **RED**: a generator test asserting the win-condition numbers are sourced (retune-tracking) + the
+  drift snapshot. Mutator watch: a hardcoded `8`/`600` that should be interpolated from the manifest.
+  **GREEN**: extend the benchmark-rules + primer generator sections; regenerate the spec.
+  **MUTATE**: Stryker on the changed `gen-spec.ts` regions.
+  **KILL MUTANTS**: cover the interpolated win-condition numbers.
+  **REFACTOR**: assess sharing the manifest read with the existing benchmark-rules section.
+  **Done when**: ACs met, drift test green, human approves commit.
 
 ---
 
@@ -363,15 +368,16 @@ punching bag (a member < LOW, like today's `jabber` ~0%) — both collapse the g
 discriminating power. The band is confirmed against the observed spread in Slice 4 (the number may
 move; the both-tails shape does not).
 **Acceptance criteria** _(numbers set after Slice 4's data)_:
+
 - After the rebalance, **every** member's round-robin win-rate lies within the confirmed band, by
   re-running Slice 4's measurement; the rebalance is justified by a `runFight` relationship test in
   `rules.test.ts`, not a literal tweak.
 - Version/hash bumped; `docs/spec.md` regenerated.
-**RED/GREEN/MUTATE/KILL/REFACTOR**: per the rules-tuning convention (each tuned number proven by a
-behavioral `runFight` test in `rules.test.ts`).
-**Done when**: the measured spread is acceptable, version bumped, human approves commit — **or
-this slice is skipped** if Slice 4 shows the metric already fixed the spread (delete it from the
-plan with a note).
+  **RED/GREEN/MUTATE/KILL/REFACTOR**: per the rules-tuning convention (each tuned number proven by a
+  behavioral `runFight` test in `rules.test.ts`).
+  **Done when**: the measured spread is acceptable, version bumped, human approves commit — **or
+  this slice is skipped** if Slice 4 shows the metric already fixed the spread (delete it from the
+  plan with a note).
 
 ## Pre-PR Quality Gate (every slice)
 
@@ -400,4 +406,5 @@ plan with a note).
   update `.claude/CLAUDE.md` Status, then delete this plan file.
 
 ---
-*Delete this file when the plan is complete. If `plans/` is empty, delete the directory.*
+
+_Delete this file when the plan is complete. If `plans/` is empty, delete the directory._
