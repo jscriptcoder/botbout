@@ -1,8 +1,9 @@
 # Plan: WKF match structure for the benchmark (§7 — yame + win condition)
 
 **Branch**: one branch per slice (`feat/match-*`). This plan file + the Slice-7-done edit
-to `plans/llm-benchmark-v1.md` land via `feat/benchmark-match-structure`.
-**Status**: Active
+to `plans/llm-benchmark-v1.md` landed via `feat/benchmark-match-structure` (PR #87, merged).
+**Status**: Active — **Slice 1 ✅ (PR #88, merged), Slice 2 ✅ (PR #89). NEXT: Slice 3** (benchmark
+adopts match mode + win-rate aggregation + `v2`/hash).
 
 ## Goal
 
@@ -74,14 +75,15 @@ under the new metric before deciding any rebalance.
 
 ## Acceptance Criteria (whole feature)
 
-- [ ] `runFight({ ..., match: { winGap: 8 } })` ends a fight the moment `|a.points − b.points| ≥ 8`
-      with the leader as `winner` and `ticks` = the actual end tick; absent `match` ⇒
-      **byte-identical** (runs all `maxTicks`, `ticks === maxTicks`).
-- [ ] In match mode, after a scored exchange fully resolves (both fighters neutral, no open
+- [x] `runFight({ ..., match: { winGap: 8 } })` ends a fight when `|a.points − b.points| ≥ 8` with the
+      leader as `winner` and `ticks` = the actual end tick; absent `match` ⇒ **byte-identical** (runs
+      all `maxTicks`, `ticks === maxTicks`). _(Slice 1 — PR #88; Slice 2 moved the gap check to the
+      yame boundary.)_
+- [x] In match mode, after a scored exchange fully resolves (both fighters neutral, no open
       windows) the engine performs **yame**: bodies reset to the neutral start (positions, state,
       posture, guard, windows) while **points, stamina, and mem persist**; a fight can run multiple
       exchanges, and the 8-gap check fires **at the yame boundary** (an in-progress combo is never
-      amputated).
+      amputated). _(Slice 2 — PR #89.)_
 - [ ] `npm run benchmark -- <bot.json>` fights **WKF matches** against the gauntlet, ranks by
       **win-rate (primary) then Σ net-points (tiebreaker)**, leads the report headline with
       win-rate, and reports `BENCHMARK_VERSION` `v2` with a matching `INPUT_HASH`.
@@ -115,7 +117,12 @@ specifically about canonical behavior (Slice 3 manifest wiring, Slice 4 measurem
 
 ---
 
-### Slice 1: A fight ends at an 8-point gap — `match.winGap` early-stop (walking skeleton)
+### Slice 1: A fight ends at an 8-point gap — `match.winGap` early-stop (walking skeleton) — ✅ DONE (PR #88, merged)
+
+_Shipped `FightConfig.match?: { winGap }` + `FightResult.endReason: "gap"|"time"` + `ticks` = executed;
+`Math.abs` gap so either fighter triggers; even trade → gap 0 → runs to cap. Absent `match` ⇒
+byte-identical. 718 tests; changed-line mutation 100% (22/22 — a trade fixture killed the `a−b`→`a+b`
+survivor)._
 
 **Value**: The benchmark operator / fight runner gets a fight that **ends when someone is ahead by
 the win gap** — the thinnest end-to-end match outcome, and on its own it already bounds the
@@ -160,7 +167,16 @@ the yame boundary there.)_
 
 ---
 
-### Slice 2: Exchanges reset to neutral — yame, with the gap checked at the yame boundary
+### Slice 2: Exchanges reset to neutral — yame, with the gap checked at the yame boundary — ✅ DONE (PR #89)
+
+_Shipped the end-of-tick yame block: `scored` flag + `isNeutral(a)&&isNeutral(b)` predicate → gap check
+at that boundary (relocated from Slice 1's per-tick stop ⇒ combo not amputated) → `resetToNeutral` both
+bodies + clear `scored`. points/stamina/mem persist; perception history not reset; scoreless stretch ⇒
+no reset. Slice-1 gap tests moved 89→96. Feat + a refactor sharing the start-gap layout between spawn &
+reset (killed an equivalent `"A"|"B"` string mutant + DRY). 724 tests; changed-line mutation 100%
+(26/26). The `counterRemaining`/`cancelRemaining` conjuncts are killed by their `=== 0`→`!== 0` mutants
+(isNeutral never fires ⇒ visible-reset fails); the perception-ghost (`L>0`) characterization rides a
+later slice (fixtures here keep perception OFF for hand-predictability)._
 
 **Value**: The fight becomes a **sequence of clean exchanges** — after a scored exchange fully
 resolves, both fighters reset to the neutral start (points/stamina/mem persist) and re-engage —
