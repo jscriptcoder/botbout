@@ -5576,3 +5576,228 @@ describe("runFight — degrade telemetry (why a requested action didn't take eff
     expect(idler.events[0].a.degrade).toBe(null);
   });
 });
+
+describe("runFight — jogai (out-zone resets, story A1)", () => {
+  // Ring width 600000, startGap 200000 ⇒ aStartX 200000, bStartX 400000, walkSpeed 4000.
+  // With margin 100000 the legal region is [100000, 500000]; both start well inside it.
+  // A (RETREATER) backs left toward 0; it lands exactly on the margin (100000) at tick 24
+  // and steps into the out-zone (96000) at tick 25 — the crossing. B (AGGRESSOR) chases
+  // left, drifting from 400000, so its reset is visible too. Neither ever attacks ⇒ the
+  // exchange is scoreless ⇒ yame never fires ⇒ any mid-fight reset can only be jogai.
+  it("a fighter crossing into the out-zone resets BOTH fighters to the start gap", () => {
+    const rules = getMockRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: RETREATER,
+        botB: AGGRESSOR,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    // At tick 24 A sits exactly on the margin (100000) — in-bounds (inclusive), no reset —
+    // so at tick 25 it steps THROUGH to 96000 (the out-zone), recorded pre-reset.
+    expect(result.events[24].a.x).toBe(100000);
+    expect(result.events[25].a.x).toBe(96000);
+    // The jogai reset (from tick 25's crossing) is visible next tick: both snap to their
+    // start x, then take one step — A retreats to 196000, B advances to 396000.
+    expect(result.events[26].a.x).toBe(196000);
+    expect(result.events[26].b.x).toBe(396000);
+    // No score was involved — the reset is jogai, not yame.
+    expect(result.events[26].a.points).toBe(0);
+    expect(result.events[26].b.points).toBe(0);
+  });
+
+  // Mirror of the primary case on the HIGH edge — pins the `width − margin` threshold and
+  // the high-side comparison. B (RETREATER) backs right toward the wall; it sits exactly
+  // on width−margin (500000) at tick 24 and steps out (504000) at tick 25. A (AGGRESSOR)
+  // chases right, drifting from 200000, so its reset is visible.
+  it("a crossing at the HIGH edge (width − margin) also resets both", () => {
+    const rules = getMockRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: AGGRESSOR,
+        botB: RETREATER,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[24].b.x).toBe(500000); // exactly width − margin ⇒ in-bounds
+    expect(result.events[25].b.x).toBe(504000); // stepped out ⇒ pre-reset frame
+    expect(result.events[26].b.x).toBe(404000); // reset to 400000, one step right
+    expect(result.events[26].a.x).toBe(204000); // reset to 200000, one step right
+  });
+
+  // S2: both fighters cross into their (opposite) out-zones on the SAME tick — A backs left
+  // past 100000, B backs right past 500000, both at tick 25. It resolves as a single
+  // reset-both (each crossing evaluated independently), swap-symmetric about the ring centre.
+  it("resets once when BOTH fighters cross out on the same tick (swap-symmetric)", () => {
+    const rules = getMockRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: RETREATER,
+        botB: RETREATER,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[25].a.x).toBe(96000); // A out (low), pre-reset
+    expect(result.events[25].b.x).toBe(504000); // B out (high), same tick
+    expect(result.events[26].a.x).toBe(196000); // both reset + one step
+    expect(result.events[26].b.x).toBe(404000);
+    // Mirror images about the centre — the same-tick double crossing is swap-symmetric.
+    expect(result.events[26].a.x + result.events[26].b.x).toBe(rules.ring.width);
+  });
+
+  // The tracker re-arms after a reset: A crosses out at tick 25 (reset visible tick 26),
+  // walks back out, and crosses AGAIN at tick 51 (reset visible tick 52). Were the tracker
+  // left "out" after the first reset, the second crossing would go undetected and A would
+  // keep drifting past the margin instead of snapping back.
+  it("re-arms after a reset — a later crossing fires again", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 55,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[26].a.x).toBe(196000); // first reset + one step
+    expect(result.events[52].a.x).toBe(196000); // second reset + one step (re-armed)
+  });
+
+  // B1 robustness: a margin so large that a start position begins in the out-zone. The
+  // tracker is initialised from the start position, so both fighters are "already out" and
+  // never spurious-fire — A retreats into the wall and CLAMPS at 0 exactly as it would with
+  // no jogai. A hardcoded-`true` tracker would infinite-reset A and it would never reach 0.
+  it("does not spurious-fire when a fighter starts in the out-zone (no infinite reset)", () => {
+    const rules = getMockRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 60,
+        match: { winGap: 99, jogai: { margin: 250000 } }, // legal [250000,350000] ⇒ both start out
+      }),
+    );
+
+    expect(result.events[59].a.x).toBe(0); // clamped at the wall, never reset
+  });
+
+  // The tracker detects a genuine in-bounds→out TRANSITION, not mere presence in the
+  // out-zone. A (AGGRESSOR) starts in the out-zone (margin 250000 ⇒ legal [250000,350000],
+  // aStartX 200000 is out), advances IN (crossing 250000 around tick 12 — an out→in
+  // transition that must NOT fire), keeps going, then exits the HIGH edge (352000 > 350000)
+  // at tick 37 — the in→out crossing that DOES fire. Only fires because the tracker flipped
+  // to in-bounds on entry; a stale "out" tracker would suppress the exit.
+  it("fires on a genuine in→out crossing after re-entering, not on mere out-zone presence", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: AGGRESSOR,
+        botB: IDLE,
+        maxTicks: 45,
+        match: { winGap: 99, jogai: { margin: 250000 } },
+      }),
+    );
+
+    expect(result.events[36].a.x).toBe(348000); // advanced in-bounds, no premature reset
+    expect(result.events[37].a.x).toBe(352000); // stepped out the high edge (pre-reset)
+    expect(result.events[38].a.x).toBe(204000); // reset fired on the exit ⇒ tracker had re-armed
+  });
+
+  // Absent jogai the movement clamp is untouched (byte-identical), and the officiating step
+  // is gated on `match?.jogai` — NOT on `match` — so a winGap-only match is identical too (N2).
+  it("is byte-identical with jogai absent, even when winGap is present (N2)", () => {
+    const rules = getMockRules();
+
+    const base = getMockConfig({
+      rules,
+      botA: RETREATER,
+      botB: IDLE,
+      maxTicks: 60,
+    });
+
+    const noMatch = runFight(base);
+    const winGapOnly = runFight({ ...base, match: { winGap: 99 } });
+
+    const withJogai = runFight({
+      ...base,
+      match: { winGap: 99, jogai: { margin: 100000 } },
+    });
+
+    expect(noMatch.events[59].a.x).toBe(0); // no jogai ⇒ A clamps at the wall
+    expect(winGapOnly.events).toEqual(noMatch.events); // winGap present, jogai absent ⇒ identical
+    expect(withJogai.events[59].a.x).not.toBe(0); // adding jogai changes the outcome (reset)
+  });
+
+  it("is replay-stable under jogai (identical event logs for the same config)", () => {
+    const cfg = getMockConfig({
+      botA: RETREATER,
+      botB: AGGRESSOR,
+      maxTicks: 30,
+      match: { winGap: 99, jogai: { margin: 100000 } },
+    });
+
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  // Swap-symmetry: mirroring the setup (A retreats to the LEFT edge vs B retreats to the
+  // RIGHT edge) mirrors every frame across the ring centre (x ↔ width − x).
+  it("resolves jogai swap-symmetrically", () => {
+    const rules = getMockRules();
+    const w = rules.ring.width;
+
+    const cfg = {
+      maxTicks: 30,
+      match: { winGap: 99, jogai: { margin: 100000 } },
+    } as const;
+
+    const left = runFight(
+      getMockConfig({ rules, botA: RETREATER, botB: IDLE, ...cfg }),
+    );
+
+    const right = runFight(
+      getMockConfig({ rules, botA: IDLE, botB: RETREATER, ...cfg }),
+    );
+
+    expect(right.events.map((e) => e.b.x)).toEqual(
+      left.events.map((e) => w - e.a.x),
+    );
+    expect(right.events.map((e) => e.a.x)).toEqual(
+      left.events.map((e) => w - e.b.x),
+    );
+  });
+
+  // B2: jogai fires independently mid-exchange (the scorer is still committed, so yame's
+  // both-neutral condition is not met) and a point scored earlier STANDS through the reset.
+  it("fires while a point scored earlier in the exchange stands (B2)", () => {
+    const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+    // margin 180000 ⇒ legal [180000,420000]; both start in-bounds. B hits A at tick 4
+    // (gap 220000 ≤ reach 250000), scoring 1 while B enters recovery. A steps out at tick 5
+    // (176000 < 180000); B is still committed ⇒ no yame ⇒ jogai fires. Reset visible tick 6.
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: ATTACKER,
+        maxTicks: 10,
+        match: { winGap: 99, jogai: { margin: 180000 } },
+      }),
+    );
+
+    expect(result.events[4].b.points).toBe(1); // B scored before the crossing
+    expect(result.events[6].a.x).toBe(196000); // jogai reset A (fired despite B mid-attack)
+    expect(result.events[6].b.points).toBe(1); // the point stands through the jogai reset
+  });
+});
