@@ -770,15 +770,12 @@ const isNeutral = (f: Fighter): boolean =>
   f.counterRemaining === 0 &&
   f.cancelRemaining === 0;
 
-// Yame reset: snap a fighter's BODY back to its neutral start — canonical opening x
-// (A left / B right, regardless of which side it drifted to), grounded, standing,
-// no move, guard, or windows. points, stamina, mem, and facing are untouched (score
-// and conditioning persist across the exchange; facing is auto-recomputed next tick).
-const resetToNeutral = (f: Fighter, rules: Rules, side: "A" | "B"): void => {
-  f.x =
-    side === "A"
-      ? Math.trunc((rules.ring.width - rules.startGap) / 2)
-      : Math.trunc((rules.ring.width + rules.startGap) / 2);
+// Yame reset: snap a fighter's BODY back to its neutral start — its canonical opening
+// x (regardless of which side it drifted to), grounded, standing, no move, guard, or
+// windows. points, stamina, mem, and facing are untouched (score and conditioning
+// persist across the exchange; facing is auto-recomputed next tick).
+const resetToNeutral = (f: Fighter, startX: number): void => {
+  f.x = startX;
   f.y = 0;
   f.state = { kind: "neutral" };
   f.posture = "standing";
@@ -791,8 +788,13 @@ const resetToNeutral = (f: Fighter, rules: Rules, side: "A" | "B"): void => {
 export function runFight(cfg: FightConfig): FightResult {
   const { rules, botA, botB, maxTicks, match } = cfg;
 
+  // The canonical opening positions (A left of centre, B right), computed once and
+  // reused by the initial spawn AND the yame reset — the single source of the layout.
+  const aStartX = Math.trunc((rules.ring.width - rules.startGap) / 2);
+  const bStartX = Math.trunc((rules.ring.width + rules.startGap) / 2);
+
   const a: Fighter = {
-    x: Math.trunc((rules.ring.width - rules.startGap) / 2),
+    x: aStartX,
     y: 0,
     facing: 1,
     mem: initMem(botA),
@@ -807,7 +809,7 @@ export function runFight(cfg: FightConfig): FightResult {
   };
 
   const b: Fighter = {
-    x: Math.trunc((rules.ring.width + rules.startGap) / 2),
+    x: bStartX,
     y: 0,
     facing: 1,
     mem: initMem(botB),
@@ -1009,8 +1011,8 @@ export function runFight(cfg: FightConfig): FightResult {
         break;
       }
 
-      resetToNeutral(a, rules, "A");
-      resetToNeutral(b, rules, "B");
+      resetToNeutral(a, aStartX);
+      resetToNeutral(b, bStartX);
       scored = false;
     }
   }
