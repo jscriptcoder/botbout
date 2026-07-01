@@ -98,4 +98,26 @@ describe("benchmark — aggregation over both sides × seeds", () => {
   it("is deterministic — the same config scores byte-identically twice", () => {
     expect(benchmark(config())).toEqual(benchmark(config()));
   });
+
+  it("threads match mode into every fight — fights end at the win gap, bounding net-points", () => {
+    // Over 300 ticks the bot out-scores the idle LOSER many times; match mode
+    // ends each fight the moment the bot leads by 8, so net is EXACTLY the gap.
+    const matched = config({
+      gauntlet: [LOSER],
+      seeds: [1],
+      maxTicks: 300,
+      match: { winGap: 8 },
+    });
+
+    const result = benchmark(matched);
+
+    // 1 seed × 2 sides = 2 fights, each ending at a +8 gap ⇒ net 16, both wins.
+    expect(result.perOpponent[0].netPoints).toBe(16);
+    expect(result.perOpponent[0].wins).toBe(2);
+    expect(result.winRate).toBe(1);
+
+    // Without match the bot keeps farming past the gap to the cap ⇒ strictly more.
+    const unmatched = benchmark({ ...matched, match: undefined });
+    expect(unmatched.perOpponent[0].netPoints).toBeGreaterThan(16);
+  });
 });

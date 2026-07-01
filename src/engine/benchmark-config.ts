@@ -13,12 +13,18 @@
 // determinism/replay tests catch.
 // ============================================================================
 
-export const BENCHMARK_VERSION = "v1";
+export const BENCHMARK_VERSION = "v2";
 
 // The seeded perception jitter draws differ per seed; ten seeds average it out.
 export const SEEDS: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export const MAX_TICKS = 600;
+
+// WKF match mode: a fight ends the moment the point gap reaches winGap (else it
+// runs to MAX_TICKS and is decided on points). This makes a benchmark fight a
+// real match — ranking who WINS, not who farms the most raw points over the cap.
+// A scoring input ⇒ folded into INPUT_HASH; changing it forces a version bump.
+export const MATCH = { winGap: 8 } as const;
 
 // The 6 locked archetypes (bots/<name>.json), spanning the strategic axes —
 // pressure (jabber poke + rekka cancel-combo), zoner, grappler, sweeper/okizeme,
@@ -34,8 +40,8 @@ export const GAUNTLET_NAMES: readonly string[] = [
   "vulture",
 ];
 
-// sha256 of { rules: CANONICAL_RULES, seeds, maxTicks, gauntlet: [<file text>] }.
+// sha256 of { rules: CANONICAL_RULES, seeds, maxTicks, match, gauntlet: [<file text>] }.
 // Recompute and bump (with BENCHMARK_VERSION) whenever a scoring input changes —
 // the guard test in benchmark-config.test.ts prints the expected value on drift.
 export const INPUT_HASH =
-  "32418ed2718cc084f8e912928cf7172105597281c5422a93bff7ce81e6a84e0a";
+  "093e03b2fff0dc3ab6ac1a5124e4fd3403a34f71f189d9a921d00e2fdb930bb5";
