@@ -293,8 +293,9 @@ generating code; flag any change that would.
   structural INEQUALITIES (basic < special; the gas band) survive C9. **C10 (the stamina economy) is
   COMPLETE** — both C10 plan files (`c10-canonical-stamina.md`, `c10-stamina-split.md`) deleted.
 - NOT YET BUILT (later slices): no horizontal jump displacement or air-actions, the rest of §7
-  (jogai / passivity / rounds, beyond the benchmark's yame + win condition), telemetry object, Vercel
-  API, or Pixi viewer.
+  (jogai / passivity / rounds, beyond the benchmark's yame + win condition), the platform-level telemetry
+  object / Vercel API / Pixi viewer (the benchmark's per-frame degrade telemetry IS built — see the LLM
+  benchmark v1 entry).
 - DONE (**C9 multi-move "real karate" arsenal** — PRs #67–#76): the abstract `strike` is RETIRED into
   four named WKF techniques, shipped across **7 additive slices** (band-legality gate #67 → `kizami-zuki`
   jab #68 → `gyaku-zuki` reverse #70 → `mae-geri` front kick #71 → `mawashi-geri` roundhouse +
@@ -342,7 +343,42 @@ generating code; flag any change that would.
   gauntlet-rebalance follow-up story** (16% win-rate, out the low band — needs a deliberate parry→counter
   redesign; a naive offense buff backfired 16→7%). The `plans/benchmark-match-structure.md` plan is
   deleted (record in git / PRs #87–#93 + `docs/benchmark-gauntlet-v3.md`).
-- ROADMAP (C9 + C10 + benchmark match structure COMPLETE): the still-unresolved **air-actions** (air
+- DONE (**LLM one-shot bot-authoring benchmark v1** — the offline CLI, PRs #79–#86 + #95): the platform's
+  headline capability — score an LLM-authored bot deterministically against a **frozen, versioned gauntlet**,
+  so the spec is the measuring instrument and the DSL isolates strategy from transcription noise. `npm run
+  benchmark -- <bot.json>` (or `--from-reply <reply.txt>`) loads a bot through the validator gate and fights
+  it over the frozen 6-bot gauntlet (`jabber/rekka/zoner/grappler/sweeper/vulture`, spanning the strategic
+  axes), seeds `1..10`, `maxTicks 600`, **each matchup twice (bot as A and as B)** to cancel start-side /
+  PRNG-draw-order bias, then ranks **win-rate primary / Σ net-points tiebreak** (post match-structure). Built
+  across 8 additive slices: **S1** (#79) the scoring walking skeleton + a versioned `benchmark-config.ts`
+  manifest (`BENCHMARK_VERSION` + an `INPUT_HASH` guard test failing CI on any scoring-input change); the
+  three mutually-independent **DSL-expressiveness** slices (additive to the `dsl.ts` TCB) — **S2** (#80)
+  integer arithmetic (`add/sub/mul/min/max/div/neg/abs`, int32-saturating / div-trunc / ÷0:=0), **S3** (#81)
+  unified **`rule(path)`** symbolic ruleset reads (`RULE_READERS` over every numeric `Rules` leaf;
+  unconfigured ⇒ sentinel `0`; validator rules-agnostic by SHAPE ⇒ validate-once-run-on-any-rules), **S4**
+  (#82) live **`opponent.points`** (a zero-delay scoreboard read, NOT the perception ring buffer); the **spec
+  instrument** — **S5a** (#83) the pure `generateSpec()` → committed **`docs/spec.md`** + a byte-match drift
+  test (`.prettierignore`d, LF-pinned), **S5b** (#84) the embedded arity-precise JSON Schema + an `ajv`
+  agreement test (test-only devDep, never in the engine/TCB), **S6** (#85) the interpolated strategic primer +
+  three validated example bots + the dogfood (which surfaced & FIXED a real spec defect — the frame table's
+  missing `cancels into` cancel routes); **S7** (#86) lenient `extractBotJson` (`--from-reply`) +
+  hard-zero-distinct invalid ranking (an invalid bot never fights — ranked below every valid one, carrying its
+  structured `ValidationError` issues; one-shot, no repair loop); **S8** (#95) typed **degrade telemetry** — a
+  per-frame `FighterFrame.degrade` (`unaffordable`/`out-of-band`/`locked`/`inert`, threaded out of `intake` as
+  a by-product of the outcome-deciding control flow ⇒ can't drift from the physics) + a CLI stamina/reason view
+  (`move +1 (locked)`), pure-additive ⇒ **byte-identical outcomes**. 751 tests; the changed
+  `gen-spec.ts`/`benchmark`/`submission`/`dsl.ts`-interpreter regions at ~100% mutation, and for S8 `format.ts`
+  100% / `sim.ts` 96% (the 4 survivors on pre-existing verbatim lines — 3 equivalent, 1 the sweep-branch
+  gas-recovery reachable only under a non-canonical config, its attack twin killed). **No DSL op touches host /
+  network / filesystem / time / randomness** (the TCB boundary held throughout; `ajv` is test-only). The
+  gauntlet-balance + metric-vs-match follow-ups the S6 dogfood surfaced became the separate **benchmark match
+  structure** feature (entry above — win-rate metric + *yame* + the sweeper de-wall). **LLM benchmark v1 is
+  COMPLETE** — `plans/llm-benchmark-v1.md` deleted (record in git / the PRs / `docs/spec.md` +
+  `docs/benchmark-gauntlet-v3.md`). Still-deferred: the **KotH ladder** (a separate later feature, not this
+  fixed gauntlet), the **HTTP API** (`/spec` / `/validate` / `/fight`), the `vulture` parry→counter
+  gauntlet-rebalance story (carried by the match-structure entry), and a true cold-model dogfood (the
+  implementing agent has codebase knowledge, so its "cold" authoring is an imperfect proxy).
+- ROADMAP (C9 + C10 + LLM benchmark v1 + benchmark match structure COMPLETE): the still-unresolved **air-actions** (air
   strikes / horizontal jump displacement) and the **rest of §7 match structure** (jogai / passivity /
   rounds, beyond the benchmark's yame + win condition) — `grill-me` → `planning` → TDD. (C9, the
   multi-move arsenal, is DONE — see its entry above; its per-move stamina costs are wired into
