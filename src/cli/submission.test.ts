@@ -7,7 +7,7 @@ import type { ValidationIssue } from "../engine/dsl.js";
 // (it never fought — extraction/parse/validation rejected it). `compareSubmission`
 // is the best-first ordering encoding the benchmark's hard-zero-distinct policy:
 // every valid bot outranks every invalid one, no matter how badly the valid bot
-// scored; valid bots order by net-points then win-rate; invalids don't discriminate.
+// scored; valid bots order by win-rate then net-points; invalids don't discriminate.
 const scored = (netPoints: number, wins = 0, totalFights = 0): Submission => ({
   kind: "scored",
   result: {
@@ -30,8 +30,8 @@ describe("compareSubmission — hard-zero-distinct ranking", () => {
   it("sorts every valid bot above every invalid one — even a deeply-negative valid bot", () => {
     const ranked = [
       invalid(),
-      scored(-9999, 0, 20),
-      scored(50, 18, 20),
+      scored(-9999, 0, 20), // win-rate 0
+      scored(50, 18, 20), // win-rate 0.9
       invalid(),
     ]
       .sort(compareSubmission)
@@ -40,20 +40,23 @@ describe("compareSubmission — hard-zero-distinct ranking", () => {
     expect(ranked).toEqual([50, -9999, "invalid", "invalid"]);
   });
 
-  it("orders two valid bots by net-points, best first", () => {
-    expect(compareSubmission(scored(100), scored(40))).toBeLessThan(0);
-    expect(compareSubmission(scored(40), scored(100))).toBeGreaterThan(0);
+  it("orders two valid bots by win-rate first — a higher-win-rate / lower-net bot outranks a lower-win-rate / higher-net one", () => {
+    const winsMore = scored(10, 16, 20); // win-rate 0.8, net +10
+    const farmsMore = scored(90, 4, 20); // win-rate 0.2, net +90
+
+    expect(compareSubmission(winsMore, farmsMore)).toBeLessThan(0);
+    expect(compareSubmission(farmsMore, winsMore)).toBeGreaterThan(0);
   });
 
-  it("breaks a net-points tie by win-rate, best first", () => {
-    const higher = scored(10, 16, 20); // win-rate 0.8
-    const lower = scored(10, 4, 20); // win-rate 0.2
+  it("breaks a win-rate tie by net-points, best first", () => {
+    const higher = scored(100, 5, 20); // same win-rate 0.25, net +100
+    const lower = scored(40, 5, 20); // same win-rate 0.25, net +40
 
     expect(compareSubmission(higher, lower)).toBeLessThan(0);
     expect(compareSubmission(lower, higher)).toBeGreaterThan(0);
   });
 
-  it("reports a genuine tie (0) when two valid bots match on both net-points and win-rate", () => {
+  it("reports a genuine tie (0) when two valid bots match on both win-rate and net-points", () => {
     expect(compareSubmission(scored(10, 5, 20), scored(10, 5, 20))).toBe(0);
   });
 

@@ -18,6 +18,7 @@ import {
   BENCHMARK_VERSION,
   SEEDS,
   MAX_TICKS,
+  MATCH,
   GAUNTLET_NAMES,
 } from "../engine/benchmark-config.js";
 
@@ -55,6 +56,7 @@ const deps: BenchmarkDeps = {
   rules: CANONICAL_RULES,
   seeds: SEEDS,
   maxTicks: MAX_TICKS,
+  match: MATCH,
   version: BENCHMARK_VERSION,
 };
 

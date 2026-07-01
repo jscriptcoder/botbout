@@ -6,6 +6,7 @@ import {
   BENCHMARK_VERSION,
   SEEDS,
   MAX_TICKS,
+  MATCH,
   GAUNTLET_NAMES,
   INPUT_HASH,
 } from "./benchmark-config.js";
@@ -29,6 +30,7 @@ const computeInputHash = (): string => {
     rules: CANONICAL_RULES,
     seeds: SEEDS,
     maxTicks: MAX_TICKS,
+    match: MATCH,
     gauntlet,
   });
 
@@ -47,14 +49,14 @@ describe("benchmark config — the frozen, versioned manifest", () => {
     ]);
   });
 
-  it("freezes the run parameters: seeds 1..10 at 600 ticks", () => {
+  it("freezes the run parameters: seeds 1..10 at 600 ticks, WKF match at an 8-point gap", () => {
     expect(SEEDS).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(MAX_TICKS).toBe(600);
+    expect(MATCH).toEqual({ winGap: 8 });
   });
 
-  it("carries a non-empty BENCHMARK_VERSION string", () => {
-    expect(typeof BENCHMARK_VERSION).toBe("string");
-    expect(BENCHMARK_VERSION.length).toBeGreaterThan(0);
+  it("carries BENCHMARK_VERSION v2 (match-mode scoring)", () => {
+    expect(BENCHMARK_VERSION).toBe("v2");
   });
 
   it("every gauntlet bot loads + validates through the real gate (roster integrity)", () => {

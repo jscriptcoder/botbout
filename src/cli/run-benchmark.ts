@@ -32,6 +32,7 @@ export type BenchmarkDeps = {
   rules: Rules;
   seeds: readonly number[];
   maxTicks: number;
+  match?: { winGap: number }; // WKF match mode; absent ⇒ fights run to maxTicks
   version: string;
 };
 
@@ -93,8 +94,8 @@ const formatReport = (
   const totalLosses = result.totalFights - result.wins - result.draws;
 
   const summary =
-    `net-points ${signed(result.netPoints)}   ` +
     `win-rate ${(result.winRate * 100).toFixed(1)}%   ` +
+    `net-points ${signed(result.netPoints)}   ` +
     `(${result.wins}W ${totalLosses}L ${result.draws}D of ${result.totalFights})`;
 
   return `${header}\n\n${table}\n\n${summary}`;
@@ -108,6 +109,7 @@ const scoredOutput = (bot: BotDoc, deps: BenchmarkDeps): CliOutput => {
     seeds: deps.seeds,
     maxTicks: deps.maxTicks,
     rules: deps.rules,
+    match: deps.match,
   });
 
   return {

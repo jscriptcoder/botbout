@@ -1,10 +1,10 @@
 // ============================================================================
 // Benchmark aggregator — the pure scoring core of the one-shot LLM bot-authoring
 // benchmark. Given a submitted bot, a frozen gauntlet, the seed set, a tick cap,
-// and the frame table, it runs every (opponent × seed × side) fight through the
-// real deterministic engine (`runFight`) and reduces them to a ranking number:
-// Σ net-points (primary) and win-rate (tiebreaker), with a per-opponent
-// breakdown.
+// the frame table, and (in WKF match mode) the win gap, it runs every
+// (opponent × seed × side) fight through the real deterministic engine
+// (`runFight`) and reduces them to the ranking figures — win-rate (primary) and
+// Σ net-points (tiebreaker) — with a per-opponent breakdown.
 //
 // PURE + deterministic: no I/O, no clock, no randomness of its own — the only
 // entropy is each fight's seed, which threads `runFight`'s PRNG. Each
@@ -29,8 +29,8 @@ export type OpponentScore = {
 };
 
 export type BenchmarkResult = {
-  netPoints: number; // primary ranking key
-  winRate: number; // wins / totalFights (tiebreaker); 0 when no fights ran
+  netPoints: number; // Σ (botScore − oppScore) — the tiebreaker ranking key
+  winRate: number; // wins / totalFights — the primary ranking key; 0 when no fights ran
   wins: number;
   draws: number;
   totalFights: number;
@@ -43,6 +43,7 @@ export type BenchmarkConfig = {
   seeds: readonly number[];
   maxTicks: number;
   rules: Rules;
+  match?: { winGap: number }; // WKF match mode; absent ⇒ every fight runs to maxTicks
 };
 
 // One fight reduced to the submitted bot's perspective.
@@ -65,9 +66,10 @@ const playBothSides = (
   seed: number,
   maxTicks: number,
   rules: Rules,
+  match: BenchmarkConfig["match"],
 ): Outcome[] => {
-  const asA = runFight({ rules, botA: bot, botB: opp, maxTicks, seed });
-  const asB = runFight({ rules, botA: opp, botB: bot, maxTicks, seed });
+  const asA = runFight({ rules, botA: bot, botB: opp, maxTicks, seed, match });
+  const asB = runFight({ rules, botA: opp, botB: bot, maxTicks, seed, match });
 
   return [
     {
@@ -89,9 +91,10 @@ const scoreAgainst = (
   seeds: readonly number[],
   maxTicks: number,
   rules: Rules,
+  match: BenchmarkConfig["match"],
 ): OpponentScore => {
   const outcomes = seeds.flatMap((seed) =>
-    playBothSides(bot, opp, seed, maxTicks, rules),
+    playBothSides(bot, opp, seed, maxTicks, rules, match),
   );
 
   return {
@@ -104,11 +107,11 @@ const scoreAgainst = (
 };
 
 export const benchmark = (cfg: BenchmarkConfig): BenchmarkResult => {
-  const { bot, gauntlet, seeds, maxTicks, rules } = cfg;
+  const { bot, gauntlet, seeds, maxTicks, rules, match } = cfg;
 
   const perOpponent = gauntlet
     .filter((opp) => !sameDoc(opp, bot)) // no mirror
-    .map((opp) => scoreAgainst(bot, opp, seeds, maxTicks, rules));
+    .map((opp) => scoreAgainst(bot, opp, seeds, maxTicks, rules, match));
 
   const netPoints = perOpponent.reduce((sum, o) => sum + o.netPoints, 0);
   const wins = perOpponent.reduce((sum, o) => sum + o.wins, 0);

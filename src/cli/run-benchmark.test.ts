@@ -53,14 +53,15 @@ const reply = (botJson: string): string =>
   `Here is my submission:\n${FENCE}json\n${botJson}\n${FENCE}\nGood luck!`;
 
 describe("runBenchmarkCli — report on stdout", () => {
-  it("prints the full report: version header, bot name, per-opponent table, and headline net-points + win-rate", () => {
+  it("prints the full report: version header, bot name, per-opponent table, and headline leading with win-rate", () => {
     const out = runBenchmarkCli(["bots/sub.json"], deps());
 
     expect(out.code).toBe(0);
     expect(out.stderr).toBe("");
     // The exact layout: net-points and win/draw counts per opponent, then the
-    // headline. vs LOSER the bot wins all 4 (net +4); vs TRADER it draws all 4
-    // (net 0); 4 wins of 8 ⇒ 50.0%. The names are left-aligned, numbers right.
+    // headline LEADING with win-rate (the primary ranking figure). vs LOSER the
+    // bot wins all 4 (net +4); vs TRADER it draws all 4 (net 0); 4 wins of 8 ⇒
+    // 50.0%. The names are left-aligned, numbers right.
     expect(out.stdout).toBe(
       [
         "ModelKombat benchmark vtest",
@@ -71,7 +72,7 @@ describe("runBenchmarkCli — report on stdout", () => {
         "loser      +4  4  0  0       4",
         "trader      0  0  0  4       4",
         "",
-        "net-points +4   win-rate 50.0%   (4W 0L 4D of 8)",
+        "win-rate 50.0%   net-points +4   (4W 0L 4D of 8)",
         "",
       ].join("\n"),
     );
@@ -81,6 +82,20 @@ describe("runBenchmarkCli — report on stdout", () => {
     expect(runBenchmarkCli(["bots/sub.json"], deps()).stdout).toBe(
       runBenchmarkCli(["bots/sub.json"], deps()).stdout,
     );
+  });
+
+  it("fights WKF matches when deps.match is set — fights end at the win gap, bounding net-points", () => {
+    // Over 300 ticks the bot out-scores the idle LOSER on every seed × side;
+    // match mode ends each fight at a +8 gap ⇒ net exactly +8 per fight (4 fights
+    // ⇒ +32, 100% win-rate) rather than the unbounded farmed total.
+    const out = runBenchmarkCli(
+      ["bots/sub.json"],
+      deps({ gauntlet: [LOSER], maxTicks: 300, match: { winGap: 8 } }),
+    );
+
+    expect(out.code).toBe(0);
+    expect(out.stdout).toContain("win-rate 100.0%");
+    expect(out.stdout).toContain("net-points +32");
   });
 });
 
@@ -160,7 +175,7 @@ describe("runBenchmarkCli — --from-reply (lenient extraction)", () => {
         "loser      +4  4  0  0       4",
         "trader      0  0  0  4       4",
         "",
-        "net-points +4   win-rate 50.0%   (4W 0L 4D of 8)",
+        "win-rate 50.0%   net-points +4   (4W 0L 4D of 8)",
         "",
       ].join("\n"),
     );
