@@ -5053,7 +5053,7 @@ describe("runFight — match mode (winGap early-stop)", () => {
   // A bot that strikes mid every tick (only the neutral-tick attack starts a move).
   // Against an IDLE opponent within reach it scores +1 on each move's first active
   // frame — at tick 4, then every 12 ticks (16, 28, …). So the running point gap
-  // reaches 8 at tick 88 (4 + 12·7), the tick a winGap-8 match should end.
+  // reaches 8 at tick 88 (4 + 12·7); the match ends at the yame that follows (tick 95).
   const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
 
   it("ends the fight the tick one fighter leads by winGap, naming the leader the winner", () => {
@@ -5068,12 +5068,15 @@ describe("runFight — match mode (winGap early-stop)", () => {
 
     expect(result.winner).toBe("A");
     expect(result.endReason).toBe("gap");
-    expect(result.ticks).toBe(89); // stopped after executing tick 88 (index 88 ⇒ 89 ticks)
+    // The gap reaches 8 at tick 88 (mid-recovery), but the match ends at the YAME
+    // that follows the 8th exchange (tick 95) — the combo is not amputated.
+    expect(result.ticks).toBe(96);
     expect(result.ticks).toBeLessThan(200);
     expect(result.scores).toEqual({ a: 8, b: 0 });
     expect(result.scores.a - result.scores.b).toBe(8);
-    expect(result.events).toHaveLength(89);
-    // The gap was 7 at tick 76 and the fight CONTINUED (7 < 8), then stopped at gap 8.
+    expect(result.events).toHaveLength(96);
+    // The gap was 7 at tick 76 and the fight CONTINUED (7 < 8); it reached 8 at tick
+    // 88 yet ran on to the yame — so the deciding gap is checked at the exchange end.
     expect(result.events[76].a.points).toBe(7);
     expect(result.events[88].a.points).toBe(8);
   });
@@ -5090,7 +5093,7 @@ describe("runFight — match mode (winGap early-stop)", () => {
 
     expect(result.winner).toBe("B");
     expect(result.endReason).toBe("gap");
-    expect(result.ticks).toBe(89);
+    expect(result.ticks).toBe(96); // yame after B's 8th score
     expect(result.scores).toEqual({ a: 0, b: 8 });
   });
 
@@ -5174,5 +5177,176 @@ describe("runFight — match mode (winGap early-stop)", () => {
 
     expect(second).toEqual(first);
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+});
+
+describe("runFight — yame (match-mode exchange resets)", () => {
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  // A bot that commits once, scores once, then idles forever: it writes mem.fought=1
+  // the first tick it is committed (canAct==0) and idles thereafter (fought>=1). Used
+  // to prove mem survives yame (it keeps idling) and that `scored` is cleared at yame
+  // (no further score ⇒ no further reset).
+  const SCORE_ONCE: BotDoc = {
+    version: 1,
+    name: "score-once",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move: "gyaku-zuki", band: "mid" },
+  };
+
+  it("resets both fighters to the start gap after a scored exchange, keeping points", () => {
+    const r = getMockRules();
+
+    // A scores from a standstill (tick 4); B (AGGRESSOR) advances toward A, drifting
+    // left from its start. The exchange resolves to both-neutral at tick 11 → yame →
+    // bodies snap back to the start gap. B moved, so its reset is visible; A never
+    // moved, but a wrong-SIDE reset would still teleport it, so both are asserted.
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: AGGRESSOR,
+        maxTicks: 20,
+        match: { winGap: 8 },
+      }),
+    );
+
+    // Just before yame (tick 11) B has drifted 12 steps left from its start.
+    expect(result.events[11].b.x).toBe(bStartX(r) - 12 * 4000);
+    // The tick after yame both are back at the start gap; B then takes one step.
+    expect(result.events[12].a.x).toBe(aStartX(r)); // A never moved and stays put
+    expect(result.events[12].b.x).toBe(bStartX(r) - 4000); // B snapped back, one step
+    // Points survive the reset.
+    expect(result.events[12].a.points).toBe(1);
+  });
+
+  it("does not reset on a scoreless exchange — a mover keeps drifting (no yame without a score)", () => {
+    const r = getMockRules();
+
+    // A (AGGRESSOR) advances toward B every tick and never scores; B idles. No point
+    // is scored, so `scored` stays false and yame never fires — A drifts the whole way.
+    const result = runFight(
+      getMockConfig({
+        botA: AGGRESSOR,
+        botB: IDLE,
+        maxTicks: 20,
+        match: { winGap: 8 },
+      }),
+    );
+
+    // 20 ticks of unbroken movement — no reset ever snapped A back to the start.
+    expect(result.events[19].a.x).toBe(aStartX(r) + 20 * 4000);
+    expect(result.endReason).toBe("time");
+  });
+
+  it("persists stamina across yame — the meter is not refilled at the reset", () => {
+    const staminaRules = getMockRules({
+      stamina: { max: 100, regen: 0 },
+      moves: {
+        "gyaku-zuki": {
+          startup: 4,
+          active: 2,
+          recovery: 6,
+          score: 1,
+          reach: 250000,
+          staminaCost: 20,
+        },
+      },
+    });
+
+    const result = runFight(
+      getMockConfig({
+        rules: staminaRules,
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 20,
+        match: { winGap: 8 },
+      }),
+    );
+
+    // A spends 20 on its first commit (100 → 80), holds through the exchange; the
+    // tick-11 yame does NOT refill; the second commit spends another 20 (80 → 60).
+    expect(result.events[0].a.stamina).toBe(80);
+    expect(result.events[11].a.stamina).toBe(80);
+    expect(result.events[12].a.stamina).toBe(60); // 60, not 80 — the meter persisted
+  });
+
+  it("persists mem across yame — a memory cell set before the reset still reads after it", () => {
+    // SCORE_ONCE writes mem.fought=1 while committed, then idles once fought>=1. If the
+    // yame reset wiped mem, `fought` would clear (canAct==1 at the neutral reset can't
+    // re-set it) and the bot would attack again — so persistence shows as "scores once".
+    const result = runFight(
+      getMockConfig({
+        botA: SCORE_ONCE,
+        botB: IDLE,
+        maxTicks: 30,
+        match: { winGap: 8 },
+      }),
+    );
+
+    // It committed once (tick 0), scored once (tick 4), then — because mem.fought
+    // survived the tick-11 yame — idled for the rest of the fight.
+    expect(result.scores.a).toBe(1);
+    expect(result.events[12].a.action).toEqual({ type: "idle" });
+    expect(result.events[29].a.action).toEqual({ type: "idle" });
+    expect(result.endReason).toBe("time");
+  });
+
+  it("clears the scored flag at yame — a later scoreless neutral stretch does not re-reset", () => {
+    const r = getMockRules();
+
+    // SCORE_ONCE scores exactly once (tick 4) then idles; B (AGGRESSOR) keeps advancing.
+    // The tick-11 yame clears `scored`, so the ensuing scoreless-but-both-neutral stretch
+    // triggers NO further yame — B drifts freely from the reset. Were `scored` left set,
+    // yame would fire every neutral tick and peg B at its start.
+    const result = runFight(
+      getMockConfig({
+        botA: SCORE_ONCE,
+        botB: AGGRESSOR,
+        maxTicks: 40,
+        match: { winGap: 8 },
+      }),
+    );
+
+    // B was reset to its start at the tick-11 yame, then advanced 28 unbroken steps.
+    expect(result.events[39].b.x).toBe(bStartX(r) - 28 * 4000);
+  });
+
+  it("is always bounded — a score whose exchange resolves after the cap runs to the cap", () => {
+    // A scores at tick 4 but the exchange doesn't resolve to both-neutral until tick
+    // 11; with the cap at 8 the yame never fires, so the fight ends by time, not gap.
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 8,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(8);
+    expect(result.events).toHaveLength(8);
   });
 });

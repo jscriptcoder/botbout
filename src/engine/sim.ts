@@ -763,6 +763,31 @@ const advance = (f: Fighter, rules: Rules): void => {
   }
 };
 
+// A fighter is at a clean neutral — free to act, with no open counter or cancel
+// window — one half of the yame trigger (the other is that a point was scored).
+const isNeutral = (f: Fighter): boolean =>
+  f.state.kind === "neutral" &&
+  f.counterRemaining === 0 &&
+  f.cancelRemaining === 0;
+
+// Yame reset: snap a fighter's BODY back to its neutral start — canonical opening x
+// (A left / B right, regardless of which side it drifted to), grounded, standing,
+// no move, guard, or windows. points, stamina, mem, and facing are untouched (score
+// and conditioning persist across the exchange; facing is auto-recomputed next tick).
+const resetToNeutral = (f: Fighter, rules: Rules, side: "A" | "B"): void => {
+  f.x =
+    side === "A"
+      ? Math.trunc((rules.ring.width - rules.startGap) / 2)
+      : Math.trunc((rules.ring.width + rules.startGap) / 2);
+  f.y = 0;
+  f.state = { kind: "neutral" };
+  f.posture = "standing";
+  f.guardBand = null;
+  f.guardAge = 0;
+  f.counterRemaining = 0;
+  f.cancelRemaining = 0;
+};
+
 export function runFight(cfg: FightConfig): FightResult {
   const { rules, botA, botB, maxTicks, match } = cfg;
 
@@ -815,8 +840,15 @@ export function runFight(cfg: FightConfig): FightResult {
   // values (the byte-identical absent-match path).
   let ticks = maxTicks;
   let endReason: FightResult["endReason"] = "time";
+  // Match mode (Q4): true once a point has been scored in the current exchange —
+  // one input to the yame trigger. Cleared at each yame.
+  let scored = false;
 
   for (let tick = 0; tick < maxTicks; tick++) {
+    // Snapshot the scoreboard so a point scored THIS tick arms the yame trigger.
+    const aPointsBefore = a.points;
+    const bPointsBefore = b.points;
+
     // 1. Auto-face from pre-tick positions.
     a.facing = facingToward(a.x, b.x);
     b.facing = facingToward(b.x, a.x);
@@ -962,13 +994,24 @@ export function runFight(cfg: FightConfig): FightResult {
       },
     });
 
-    // Match mode (Q7): end the fight the first tick the point gap reaches winGap.
-    // The check runs at the very end of the tick, after events.push, so the
-    // deciding tick is recorded; ticks counts the ticks actually executed.
-    if (match && Math.abs(a.points - b.points) >= match.winGap) {
-      ticks = tick + 1;
-      endReason = "gap";
-      break;
+    // Arm the yame trigger if either fighter's score rose this tick.
+    if (a.points > aPointsBefore || b.points > bPointsBefore) scored = true;
+
+    // Match mode: yame. After the exchange fully resolves — a point was scored and
+    // both fighters are back to a clean neutral (no committed move, no open counter
+    // or cancel window) — check the win gap at THIS boundary (so an in-progress combo
+    // is never amputated), then reset both bodies to the neutral start and re-engage.
+    // Runs after events.push, so the yame tick's frame shows the resolved positions.
+    if (match && scored && isNeutral(a) && isNeutral(b)) {
+      if (Math.abs(a.points - b.points) >= match.winGap) {
+        ticks = tick + 1;
+        endReason = "gap";
+        break;
+      }
+
+      resetToNeutral(a, rules, "A");
+      resetToNeutral(b, rules, "B");
+      scored = false;
     }
   }
 
