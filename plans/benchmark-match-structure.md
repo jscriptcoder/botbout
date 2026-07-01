@@ -2,15 +2,12 @@
 
 **Branch**: one branch per slice (`feat/match-*`). This plan file + the Slice-7-done edit
 to `plans/llm-benchmark-v1.md` landed via `feat/benchmark-match-structure` (PR #87, merged).
-**Status**: Active — **Slices 1 ✅ (PR #88) · 2 ✅ (PR #89) · 3 ✅ (PR #90), all merged.**
-**Slice 4 measurement DONE** (analytically — see "## LIVE STATE" at the bottom). **Slice 6 RE-SCOPED to the
-sweeper fix (`knockdownDuration 30→18`); vulture split to a follow-up story.** **Slice 6 (scoped) DONE — built
-via TDD on branch `feat/match-remeasure`, AWAITING COMMIT APPROVAL** (`kd 30→18` in `rules.ts`; de-wall
-relationship test in `rules.test.ts` — the okizeme loop vs a passive foe now ends the match on the point gap
-instead of farming the cap, reverting to 30 fails it; cascade: `BENCHMARK_VERSION v2→v3` + `INPUT_HASH`,
-`interpret-tick.test.ts` reader row 30→18, one okizeme boundary test 3-vs-0 → 3-vs-1 as the woken foe now
-takes a base poke, `docs/spec.md` regen; 727 tests, `rules.ts` + `benchmark-config.ts` mutation 100%;
-`sim.ts`/`dsl.ts` untouched). NEXT after merge: Slice 5 (spec teaches match mode) + the vulture follow-up story.
+**Status**: Active — **Slices 1 ✅ (PR #88) · 2 ✅ (PR #89) · 3 ✅ (PR #90) · 6 ✅ (PR #91, the scoped sweeper
+de-wall `knockdownDuration 30→18`), all merged.** Slice 6 shipped **ahead of** 4/5 (the measurement, done
+analytically in "## LIVE STATE", drove the go decision and the fix executed). **Slice 4 ✅ DONE (branch
+`feat/match-measure`, awaiting commit approval)** — dogfood match-mode characterization + the
+`docs/benchmark-gauntlet-v3.md` note (5/6 in-band; `vulture` out-low → follow-up). **Remaining: Slice 5 (spec
+teaches match mode) → the vulture follow-up story.**
 
 ## Goal
 
@@ -96,12 +93,16 @@ under the new metric before deciding any rebalance.
       win-rate, and reports `BENCHMARK_VERSION` `v2` with a matching `INPUT_HASH`. _(Slice 3 — PR #90.)_
 - [x] `compareSubmission` ranks scored submissions by **win-rate then net-points** (invalids still
       hard-zero-distinct, last). _(Slice 3 — PR #90.)_
-- [ ] The gauntlet is **re-measured under match mode** (per-member win-rates captured) and the
+- [x] The gauntlet is **re-measured under match mode** (per-member win-rates captured) and the
       dogfood bot is **re-evaluated** under match mode, with the result characterized in a test.
+      _(Slice 4 — this branch: `docs/benchmark-gauntlet-v3.md` note; `dogfood.test.ts` pins the
+      match-mode record 15W/104L/1D. 5/6 members in-band; `vulture` 16% out-low → follow-up story.)_
 - [ ] `docs/spec.md` **teaches match mode** (the 8-gap/time win condition + yame), generated from
       the manifest/rules, drift-tested.
-- [ ] _(Conditional)_ If measurement still shows a bot too dominant, a **data-driven rebalance**
-      (rules tuning preferred) lands with its own version bump.
+- [x] _(Conditional)_ If measurement still shows a bot too dominant, a **data-driven rebalance**
+      (rules tuning preferred) lands with its own version bump. _(Triggered by the `sweeper` (100%) —
+      Slice 6, PR #91: `knockdownDuration 30→18` de-walls the okizeme loop; `BENCHMARK_VERSION v3`.
+      The low-tail `vulture` (16%) is split to a **follow-up story**, not this feature.)_
 - [ ] **Feature success metric** (definition of done): the benchmark score ranks by **match wins**
       — a bot can no longer out-rank by farming raw points (proven by bounded net-points + the
       re-dogfood in Slice 4) — **and** every gauntlet member's round-robin win-rate sits within the
@@ -310,7 +311,17 @@ config.
 
 ---
 
-### Slice 4: Re-measure the gauntlet under match mode + re-dogfood
+### Slice 4: Re-measure the gauntlet under match mode + re-dogfood — ✅ DONE (branch `feat/match-measure`, awaiting commit approval)
+
+_Re-scoped as a post-fix validation (Slice 6 already shipped the go decision). Delivered: (a)
+`src/cli/dogfood.test.ts` gains a **match-mode characterization** — runs the real `benchmark()` over the
+frozen v3 gauntlet and pins the dogfood's record **15W/104L/1D of 120** (12.5% win-rate; RED proved wiring
+with a wrong `wins:0` → observed 15); the validity test stays; the stale "100%-win sweeper" comment is
+corrected. (b) `docs/benchmark-gauntlet-v3.md` — the post-fix round-robin (rekka 70 / sweeper 69 / grappler
+61 / zoner 27 / jabber 25 / vulture 16), **5/6 in `[25,75]`**, `vulture` out-low → follow-up; go/no-go
+(high-tail fixed, low-tail deferred); the honest "net still loop-inflated in mutual-loop matchups, but
+win-rate is the primary/discriminating metric" note. **No engine/aggregation prod code** (`sim.ts`/`dsl.ts`/
+`benchmark.ts`/`rules.ts` untouched) ⇒ mutation N/A; 728 tests green; typecheck/lint/format clean._
 
 **Value**: We learn whether the metric change **already fixed** the gauntlet spread (the +4664
 evidence is stale), producing the data that drives the conditional rebalance — and the dogfood bot
@@ -382,7 +393,15 @@ Slice-5a drift test transitively covers it. **Keep the existing `docs/spec.md` L
 
 ---
 
-### Slice 6 _(conditional)_: Data-driven gauntlet rebalance
+### Slice 6 _(conditional)_: Data-driven gauntlet rebalance — ✅ DONE (PR #91, merged)
+
+_Triggered by the `sweeper` (100%, out the high tail). Shipped the scoped sweeper de-wall
+`knockdownDuration 30→18` — the okizeme loop can no longer keep a foe perpetually downed, so the
+both-neutral yame boundary arrives and a match ends on the point gap instead of farming the cap.
+Proven by a `runFight` relationship test in `rules.test.ts` (endReason `gap`@kd18 vs `time`@kd30, 10/10
+seeds); `BENCHMARK_VERSION v2→v3` + `INPUT_HASH`; `sim.ts`/`dsl.ts` untouched. Sweeper 100→69%, 5/6
+members in `[25,75]`. The low-tail `vulture` (16%) is deferred to a **follow-up story** (a naive offense
+buff backfired — it needs a careful parry→counter redesign, out of scope for this feature)._
 
 **Value**: _Only if_ Slice 4's measurement still shows a bot too dominant — restore the gauntlet's
 discriminating spread so the score ranks models, not "did you beat the one unbeatable bot."
@@ -493,7 +512,7 @@ refresh only — `src/cli/dogfood.test.ts` asserts validity, not a net, so it's 
 4. **Scope = SHIP the sweeper fix now (`kd 30→18`), vulture as a FOLLOW-UP.** Slice 6 narrows to the
    sweeper de-wall; rekka stays in-band at 70% under `kd=18` so no rekka nerf is needed.
 
-### Slice 6 (SCOPED) — de-wall the sweeper via `knockdownDuration 30→18` — ✅ BUILT (AWAITING COMMIT APPROVAL)
+### Slice 6 (SCOPED) — de-wall the sweeper via `knockdownDuration 30→18` — ✅ DONE (PR #91, merged `main`@`aa0b91b`)
 
 **Value**: closes the okizeme sweep-lock exploit (sweeper 100→69%, in-band) so the win-rate metric can't be
 gamed by a legal loop. 5/6 members in `[25,75]`.
@@ -534,10 +553,16 @@ Slice 5's spec strategic match-mode primer; the dogfood re-run narrative (validi
 
 ### Immediate NEXT on resume
 
-Slice 6 (scoped) is **built and green, awaiting commit approval** on `feat/match-remeasure`. On approval →
-commit → push → open PR → merge. Then remaining plan work: **Slice 5** (spec teaches match mode — the
-strategic match-mode primer) + the **vulture parry→counter follow-up story**. (Slices 1–3 merged; Slice 4 =
-the measurement above; Slice 6 = the scoped sweeper de-wall, now built.)
+Slices 1–3 + 6 are **merged** (PRs #88/#89/#90/#91); **Slice 4 built** on `feat/match-measure` (awaiting
+commit approval — dogfood characterization + `docs/benchmark-gauntlet-v3.md`). Remaining, in order: **Slice 5**
+→ the **vulture follow-up story** (separate).
+
+**Slice 5 (next)** — `docs/spec.md` **teaches match mode**: extend `gen-spec.ts` so the benchmark-rules section
+states the win condition (gap 8 / cap 600, sourced from the manifest, not literals) + a yame description, plus a
+strategic primer (play to the gap/clock; exchanges reset to neutral with points/stamina/mem persisting;
+win-rate is the metric). RED = a generator retune-tracking test (a changed `winGap` changes the text) + the
+drift snapshot; regenerate `docs/spec.md` (keep the LF pin). Then the feature's in-scope work is complete
+(vulture in-band requirement carried by the follow-up story).
 
 ---
 
