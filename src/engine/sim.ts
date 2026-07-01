@@ -85,7 +85,12 @@ export type FightConfig = {
   botB: BotDoc;
   maxTicks: number;
   seed: number; // replay-identity key; seeds the PRNG that drives perception jitter
-  match?: { winGap: number }; // WKF match mode: end early once the point gap reaches winGap; absent ⇒ run to maxTicks
+  // WKF match mode. `winGap`: end early once the point gap reaches it; absent match ⇒
+  // run to maxTicks. `jogai` (ring-out, A1): the legal region is `[margin, width−margin]`
+  // (sub-units) over the UNCHANGED movement clamp; a fighter that crosses from in-bounds
+  // into an outer `margin` strip triggers a yame-style reset of both fighters (no penalty
+  // yet). Absent `jogai` ⇒ no ring-out ⇒ byte-identical.
+  match?: { winGap: number; jogai?: { margin: number } };
 };
 
 export type FightResult = {
@@ -883,6 +888,20 @@ export function runFight(cfg: FightConfig): FightResult {
   // one input to the yame trigger. Cleared at each yame.
   let scored = false;
 
+  // Jogai (A1): the legal region is `[margin, width−margin]`; the outer strips are the
+  // out-zone. `inBounds` is a pure integer read of position (the movement clamp is
+  // unchanged). The per-fighter trackers are initialised from the ACTUAL start position
+  // (so a fighter that begins in the out-zone under a misconfigured margin is "already
+  // out" — no spurious tick-1 fire), and re-armed to in-bounds after any reset.
+  const jogaiMargin = match?.jogai?.margin;
+
+  const inBounds = (x: number): boolean =>
+    jogaiMargin === undefined ||
+    (x >= jogaiMargin && x <= rules.ring.width - jogaiMargin);
+
+  let aWasIn = inBounds(aStartX);
+  let bWasIn = inBounds(bStartX);
+
   for (let tick = 0; tick < maxTicks; tick++) {
     // Snapshot the scoreboard so a point scored THIS tick arms the yame trigger.
     const aPointsBefore = a.points;
@@ -1053,6 +1072,32 @@ export function runFight(cfg: FightConfig): FightResult {
       resetToNeutral(a, aStartX);
       resetToNeutral(b, bStartX);
       scored = false;
+    }
+
+    // Match mode: jogai (ring-out, A1). A fighter that crosses from in-bounds into the
+    // out-zone triggers a yame-style reset of BOTH fighters (no penalty yet). Runs AFTER
+    // the yame block, so a score's yame reset — which has already snapped the offender
+    // back in-bounds — naturally pre-empts jogai this tick (no double reset). Edge-detected
+    // per fighter; trackers re-armed to in-bounds after the reset so a later crossing fires
+    // again. A jogai reset adds no points, so it runs no winGap check.
+    if (match?.jogai) {
+      const aNowIn = inBounds(a.x);
+      const bNowIn = inBounds(b.x);
+
+      if ((aWasIn && !aNowIn) || (bWasIn && !bNowIn)) {
+        resetToNeutral(a, aStartX);
+        resetToNeutral(b, bStartX);
+        // Jogai ends the exchange (a fresh neutral engagement), so clear the yame
+        // trigger too — a point scored in the now-ended exchange must not fire a
+        // spurious yame the next both-neutral tick. Points persist (resetToNeutral
+        // leaves them); only the exchange-scoped flag resets.
+        scored = false;
+        aWasIn = inBounds(aStartX);
+        bWasIn = inBounds(bStartX);
+      } else {
+        aWasIn = aNowIn;
+        bWasIn = bNowIn;
+      }
     }
   }
 

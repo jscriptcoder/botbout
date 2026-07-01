@@ -165,6 +165,94 @@ exchanges.
 
 > See **#10** below — confirmed: no HP bar, points only.
 
+#### 7a. Resolved §7 remainder — jogai · passivity · tie-resolution (grill 2026-07-01)
+
+**Already built** (benchmark match-structure, PRs #87–#93): _yame_ resets + the
+**8-point `winGap`** early-stop + the time-limit fallback, all as an optional
+`runFight` `match?: { winGap }` **scoring-layer** param (NOT in `Rules`/`CANONICAL_RULES`
+— match mode is a scoring concept; `npm run fight` is unaffected). Absent ⇒ byte-identical,
+**no DSL surface** (the `dsl.ts` TCB untouched). The three capabilities below extend the
+SAME `match` param and reuse `resetToNeutral` + the yame boundary check; each is
+byte-identical when its config key is absent.
+
+**Boundary fact that shapes jogai:** the ring edge is a **hard positional clamp**
+(`sim.ts`: `f.x = clamp(f.x + …, 0, ring.width)`) — fighters cannot leave. There is **no
+knockback/pushout** anywhere, and `move` requires neutral, so the ONLY way to the boundary
+is a fighter **voluntarily walking there** (a retreating zoner). jogai therefore penalizes
+**retreat**, not "got pushed out" — a cap on the zoning/turtle escape space (also the
+anti-stall motive behind passivity). Combat resolves before officiating each tick, so a
+legit score always lands before any reset — no free-escape exploit.
+
+**Jogai (ring-out penalty).**
+
+| Decision | Resolution |
+| --- | --- |
+| Boundary | **Out-zone over the hard clamp**: legal region `[margin, width−margin]`, outer strips = jogai zone. A pure scoring-layer READ (`self.x` vs `margin`) — no movement-physics change. |
+| Config | `match.jogai?: { margin }` (sub-units). Officiating layer, not `Rules`. |
+| Penalty | **Warning ladder** on the shared per-fighter `penaltyCount` (below): 1st foul free, each subsequent ⇒ **opponent +1 point**, feeding the existing `winGap`. No DQ / instant loss. |
+| Trigger | **On-entry transition** (in-bounds → out-zone edge-detect); one jogai per crossing, re-arms on return. The margin is the grace — no dwell counter. |
+| Consequence | **Full yame reset** (`resetToNeutral` both) + `winGap` re-check (endReason `"gap"`) + jogai `FightEvent`. Offender lands at center ⇒ no re-trigger. |
+
+**Passivity (non-engagement penalty)** — the anti-stall lever (bots were farming the 600-tick cap).
+
+| Decision | Resolution |
+| --- | --- |
+| Metric | **Per-fighter no-offense clock** `ticksSinceOffense`; exceed `match.passivity.limit` ⇒ passive. |
+| Reset | **Making contact only** (hit/block/parry/grab/sweep-connect) — a whiff at air does NOT reset. This is what breaks the far-apart stall; reuses the union's computed outcomes. |
+| Ladder | **Shared category-2 ladder with jogai**: one `penaltyCount`/fighter, both fouls feed it (1st free, 2+ ⇒ opponent +1 → `winGap`), sharing the free first warning. WKF-faithful pooling. |
+| Consequence | Full yame reset (restores `startGap` engaging distance), reset both clocks, `winGap` re-check, event. |
+
+**Tie resolution (the reframed "rounds")** — WKF is single-round; the real §7 gap is breaking a
+level bout (equal points at the time limit → today `"draw"`). Best-of-N is a non-WKF import, dropped.
+
+| Decision | Resolution |
+| --- | --- |
+| Scheme | **Overtime → senshu fallback.** Level at cap ⇒ sudden-death OT; OT decides ⇒ win; OT scoreless ⇒ senshu-holder; never-scored ⇒ draw. |
+| Overtime | Reset both to neutral start (points/stamina/mem persist); **first fighter to hold a lead (gap ≥ 1) wins immediately**; a same-tick trade stays level; fixed `match.overtimeTicks` cap ⇒ senshu fallback; jogai/passivity stay live in OT (their points can BE the sudden-death score). |
+| Senshu | **First-blood latch**: the first fighter to score ANY point holds senshu for the bout (never lost); simultaneous first score ⇒ none. |
+| endReason | `"gap" \| "time" \| "overtime" \| "senshu"` (a true no-senshu draw reports via the tie path with winner `"draw"`). |
+
+**New DSL read surface** (all additive `FIELD_READERS`, config-gated values, static entries ⇒
+`dsl.ts` interpreter stays 100% — the C10 pattern). jogai `margin` is **spec-taught**, not a field.
+
+- `self.penalties` / `opponent.penalties` — shared category-2 warning count (live scoreboard, like `opponent.points`).
+- `self.passivityRemaining` (live) / `opponent.passivityRemaining` (`L_act`-delayed — bait the forced commit).
+- `self.senshu` / `opponent.senshu` (live 1/0, public scoreboard fact).
+- `clock.overtime` (live 1/0 — sudden-death on).
+
+**Per-tick officiating order** (determinism / swap-symmetry): resolve combat (union) → update
+clocks (passivity `++`, reset-on-contact; jogai edge-detect) → `events.push` → officiating: apply
+ALL triggered penalties (each on its own per-fighter counter — commutative), then **at most one
+`resetToNeutral(both)`** if any yame/jogai/passivity fired, then one `winGap` check. **Ordering
+(refined A1/B2):** the yame block runs first but fires only on `scored ∧ both-neutral`, which is
+almost never true when a fighter is out mid-exchange (the scorer is still in recovery) — so **jogai
+fires independently**, and a point scored earlier in the exchange **stands** (already applied in
+combat; a retreating defender can end an exchange after eating a hit — WKF-consistent). Only in the
+rare both-neutral+scored+out tick does the yame reset pre-empt jogai (single reset, no double-fire).
+Both-out / both-passive same tick ⇒ each evaluated independently, net-symmetric.
+
+**Config shape** (all optional; absent key ⇒ byte-identical):
+
+```ts
+match?: {
+  winGap: number;                 // built
+  jogai?: { margin: number };     // sub-units
+  passivity?: { limit: number };  // ticks
+  overtimeTicks?: number;         // enables OT + senshu tie-break
+};
+```
+
+Ladder constants (1 free warning, +1 pt/foul) are fixed for the first pass (parameterize later if
+tuning needs it).
+
+**Downstream** (per capability, like the match-structure feature): fold the new `match` config into
+the benchmark's `MATCH` constant + `INPUT_HASH` (bump `BENCHMARK_VERSION`), re-characterize the
+gauntlet, and extend `generateSpec(rules, match)` to teach the new rules. §P6 already sketches the
+`Ring`/`Match`/penalty state this realizes.
+
+**Sequencing (recommended):** jogai → passivity (shares the ladder) → tie-resolution. Full slicing
+goes to `story-splitting` → `planning`.
+
 ### 10. Outcome — pure WKF points, no HP
 
 **No health bar, no KO.** The outcome is the **score**. "Damage" in the old frame
