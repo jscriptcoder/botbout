@@ -649,20 +649,140 @@ holder's jogai/passivity foul cancels senshu (co-configured jogai/passivity fixt
 identical-absent + replay-stable + swap-symmetric, with scoped mutation on the changed `sim.ts`
 officiating regions.
 
+## C2 — resolved decisions (grill 2026-07-02)
+
+Confirmed before find-gaps/planning C2 (sudden-death overtime). Feeds `find-gaps` → `planning`
+directly. **WKF encho-sen-faithful.** Extends the same `FightConfig.match` scoring-layer seam and
+**folds in C4** (the `clock.overtime` live perception). NOT in `Rules`/`CANONICAL_RULES`
+(`npm run fight` unaffected). Absent `match.overtime` ⇒ byte-identical.
+
+**Config:** nested `FightConfig.match.overtime?: { ticks: number }` (mirrors `jogai?: { margin }` /
+`passivity?: { limit }`). Absent ⇒ no OT ⇒ byte-identical; `ticks: 0` ⇒ `cap` unchanged ⇒ no OT (falls
+straight to the fallback). Test-fixture-only until Capability D.
+
+**Trigger (Model X — OT-first, senshu-fallback):** on a bout that is LEVEL at the regulation cap
+(`a.points === b.points` at the end of the last regulation tick, evaluated AFTER that tick's
+officiating blocks), extend the single `runFight` loop by `overtime.ticks`. A senshu holder does NOT
+short-circuit OT — OT runs on ANY level bout; senshu decides only if OT exhausts level (WKF
+encho-sen-era authentic, and reuses C1's terminal senshu override UNTOUCHED — it just runs after the
+extended loop, no reordering). Loop bound: `maxTicks + (level ? overtime.ticks : 0)`.
+
+**OT entry:** `resetToNeutral` both fighters (fresh *encho-sen* "yoi" — bodies/posture/guard/windows/
+clocks reset; points, stamina, penaltyCount, mem, `senshuHolder` PERSIST); clear the `scored` yame
+flag.
+
+**Win condition (sudden death):** during OT the winGap threshold is effectively `1`
+(`gap = inOT ? 1 : match.winGap`), applied at the EXISTING yame/jogai/passivity check-sites (no new
+check-site). First fighter to a gap ≥ 1 wins at the next boundary → `endReason "overtime"`. A same-tick
+mutual trade (both +1) ⇒ gap 0 ⇒ OT continues. Penalties are FULLY LIVE in OT — a 2nd+ jogai/passivity
+foul's +1 is gap-1 ⇒ decides OT (`"overtime"`).
+
+**Fallback cascade & `endReason`:** `endReason` gains only the union member `"overtime"`. Decider-named
+terminal cascade on a level bout at the cap: gap-1 during OT → `"overtime"`; OT exhausts still level +
+senshu holder → `"senshu"` (the existing terminal override, now after OT); OT exhausts still level + no
+senshu → `"time"` (winner `"draw"`, unchanged); OT unconfigured → senshu/`"time"` as C1. NO `"draw"`
+endReason value. `FightResult.ticks` counts executed ticks INCLUDING OT (gap-in-OT ⇒ `tick+1`;
+OT-exhausted ⇒ `maxTicks + overtime.ticks`).
+
+**Perception (C4 folded in):** `ClockState` gains `overtime: number` (view-only ⇒ NO `FightResult` byte
+change ⇒ outcome replay still byte-identical absent OT). New DSL FIELD_READER `clock.overtime` (live
+1/0, zero-delay public match fact like `opponent.points` — NOT the ring buffer; config-gated value ⇒
+`dsl.ts` interpreter stays 100%). During OT `clock.ticksRemaining` counts down the OT budget
+(`effectiveCap − tick`, never negative); absent OT config ⇒ `inOT` never true ⇒ `overtime` reads `0`
+and `ticksRemaining` is unchanged (`maxTicks − tick`).
+
+**Invariants:** integer-only outcome math (ticks/points/gap); the seeded PRNG threads OT unchanged;
+same pre-tick snapshot per OT tick; `clock.overtime` is the story's ONLY new TCB surface (one static
+reader, no host/net/fs/time/randomness). Byte-identical + replay-stable + swap-symmetric when
+`match.overtime` absent.
+
+**Recommended slicing (for `planning`):** two PR-sized slices — **C2a** the officiating (level-at-cap
+OT entry + `resetToNeutral` + gap-1 sudden death + penalties-live + the fallback cascade + `endReason
+"overtime"` + `ticks` accounting; overtime-only + co-configured senshu fixtures; byte-identical absent)
+→ **C2b** the perception fold-in (`ClockState.overtime` + the `clock.overtime` reader + OT-budget
+`ticksRemaining`; DSL-read + drift-clean fixtures). Each byte-identical-absent + replay-stable +
+swap-symmetric, with scoped mutation on the changed `sim.ts` officiating regions (+ the `dsl.ts` reader
+region for C2b).
+
+**find-gaps resolutions (2026-07-02):** (1) a degenerate `overtime.ticks <= 0` leaves the loop cap
+unchanged ⇒ no OT ⇒ byte-identical — NO validation (`match` is trusted engine config, like
+`jogai.margin` / `passivity.limit`, neither validated). (2) A senshu HOLDER's OT foul (incl. the free
+1st warning) revokes senshu, forfeiting the OT-exhausted fallback — KEPT (pure C1-revocation × Q4-
+penalties-live composition; WKF-faithful; zero extra code — the revocation block already runs in the
+continued loop). (3) C2b's `clock.overtime` reader forces a MECHANICAL `docs/spec.md` regen (the field-
+whitelist bullet + JSON Schema enum gain `clock.overtime`, bare, like `clock.tick`) — the OT semantic
+prose stays deferred to Capability D. **OT-entry timing mirrors yame:** the `resetToNeutral` fires at
+the end of the last regulation tick's body (after its frame push, so that frame shows final regulation
+positions), and `clock.overtime` flips `1` on the NEXT tick = the first OT tick (no extra boundary
+frame). "Level at cap" = `a.points === b.points` evaluated after that tick's officiating blocks; a
+mid-exchange combo at the cap is truncated by OT entry exactly as the regulation cap already truncates.
+
+**Acceptance criteria (find-gaps 2026-07-02):**
+
+- **AC-1 — OT entry on level.** Given `match.overtime.ticks = K > 0` and a bout LEVEL at the regulation
+  cap, Then the fight runs additional ticks (both bodies `resetToNeutral` at entry — fresh neutral
+  start; points, stamina, penaltyCount, mem, `senshuHolder` PERSIST) and does not decide on regulation
+  points alone.
+- **AC-2 — not level ⇒ no OT.** Given a NON-level bout at the cap (a leader by `1 ≤ gap < winGap`),
+  Then no OT ticks execute; the leader wins, `endReason "time"`, `ticks = maxTicks` (byte-identical to
+  the no-OT path).
+- **AC-3 — sudden death, solo score wins.** Given OT in progress and A lands a scored technique (B does
+  not the same tick), Then at the resolving yame boundary `|a−b| ≥ 1` ⇒ A wins, `endReason "overtime"`,
+  `ticks = tick + 1`.
+- **AC-4 — mutual trade stays level.** Given OT in progress and both score on the same tick (mutual
+  +1), Then `|a−b| = 0` ⇒ OT continues (no win); the yame reset re-engages.
+- **AC-5 — 0-0 scoreless regulation ⇒ OT decides.** Given a bout 0-0 through all of regulation
+  (`senshuHolder` `undecided`), level at the cap, OT configured, and A scores first in OT, Then A wins,
+  `endReason "overtime"` (the OT score also latches senshu to A, but the gap decides ⇒ moot).
+- **AC-6 — penalty decides OT.** Given OT in progress and a fighter commits its 2nd+ jogai/passivity
+  foul (opponent +1), Then `|a−b| ≥ 1` at the jogai/passivity check-site ⇒ the opponent wins,
+  `endReason "overtime"`.
+- **AC-7 — OT exhausts ⇒ senshu fallback.** Given OT elapses all `K` ticks still level and a senshu
+  holder exists, Then the holder wins, `endReason "senshu"`, `ticks = maxTicks + K`.
+- **AC-8 — OT exhausts ⇒ draw.** Given OT elapses still level with NO senshu holder (0-0 / `none`, or
+  `match.senshu` unconfigured), Then winner `"draw"`, `endReason "time"`, `ticks = maxTicks + K`.
+- **AC-9 — holder's OT foul forfeits senshu.** Given A holds senshu entering OT and A commits any
+  jogai/passivity foul during OT (incl. the free 1st warning), Then senshu → `none`; if OT then
+  exhausts level, winner `"draw"`, `endReason "time"` (A does NOT win the fallback). A NON-holder's OT
+  foul leaves senshu intact.
+- **AC-10 — winGap in regulation unaffected.** Given the gap reaches `winGap` during regulation, Then
+  `endReason "gap"`, the leader wins, and no OT ticks execute (a `"gap"` bout is never level).
+- **AC-11 — degenerate overtime.ticks.** Given `match.overtime.ticks ≤ 0`, Then the loop cap is
+  unchanged ⇒ no OT ⇒ byte-identical to no-OT (`0` and absent are equivalent; no validation error).
+- **AC-12 — clock.overtime perception.** Given OT configured, Then a bot reading `clock.overtime` in
+  the DSL sees `0` on every regulation tick and `1` from the first OT tick onward (zero-delay public
+  fact). Given `match.overtime` absent / `ticks ≤ 0`, Then `clock.overtime` reads `0` all bout.
+- **AC-13 — ticksRemaining never negative.** Given OT in progress, Then `clock.ticksRemaining =
+  (maxTicks + K) − tick` (counts the OT budget down, ≥ 1 within OT): `1` on the last regulation tick,
+  `K` on the first OT tick. Given `match.overtime` absent, Then `ticksRemaining = maxTicks − tick`
+  (unchanged, byte-identical).
+- **AC-14 — byte-identical absent + replay-stable + swap-symmetric.** Given `match.overtime` absent (or
+  `ticks ≤ 0`), replay is byte-identical to pre-C2 (no extra ticks, `endReason` never `"overtime"`,
+  `clock.overtime` always `0`, `FightResult` bytes unchanged). Given present, replay is stable and
+  swap-symmetric (the OT winner A↔B mirrors under a fighter swap).
+- **AC-15 — C2b spec drift-clean + interpreter 100%.** Given the `clock.overtime` reader is added, Then
+  `docs/spec.md` is regenerated (the field-whitelist bullet + JSON Schema enum gain `clock.overtime`,
+  bare — NO OT semantic prose, deferred to Capability D) and the drift test re-pins it byte-for-byte;
+  the `dsl.ts` interpreter stays 100% (static reader, value config-gated).
+
+**AC → slice map:** **C2a** (officiating) owns AC-1…AC-11 + AC-14; **C2b** (perception) owns AC-12,
+AC-13, AC-15 + AC-14's perception half.
+
 ## Next Step
 
 **Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B (passivity) COMPLETE**
 (B1 clock #100, B2 shared penalty ladder #101, B3 self read #102, B4 opponent read #103). **Capability
 C, story C1 (senshu) COMPLETE** (C1a latch #104, C1b revocation #105) — see Progress. `main`@`170a9e1`.
 
-**Next: C2 — sudden-death overtime** (the second Capability-C tie-resolution story; find-gaps NOT yet
-run — do it before planning). The still-open design questions (from §7a / the C1 grill): OT is a
-scoring-layer extension of the same `FightConfig.match` seam (a `match.overtimeTicks?: number`-style
-key, byte-identical absent; NOT in `Rules`/`CANONICAL_RULES`), entered when the bout is LEVEL at the
-tick cap (senshu is the fallback if OT is unconfigured / stays level), first score wins
-(`endReason "overtime"`?). Pin down: the OT trigger vs the senshu fallback ordering, whether OT resets
-bodies (a fresh neutral engagement) or continues, its own cap + what happens if OT also ends level,
-and whether penalties/gap still apply during OT. **C4 may fold into C2** (expose `clock.overtime`).
+**Next: C2 — sudden-death overtime** (the second Capability-C tie-resolution story). **`grill-me` DONE
+(2026-07-02)** — the OT decision tree is resolved and captured in the **C2 — resolved decisions**
+section above: Model X trigger (OT-first, senshu-fallback); `resetToNeutral` at OT entry; nested
+`match.overtime?: { ticks }` config; gap-1 sudden death reusing the existing yame/jogai/passivity
+check-sites; penalties fully live in OT; `endReason "overtime"`; **C4 folded in** as `clock.overtime` +
+OT-budget `ticksRemaining`. **`find-gaps` DONE (2026-07-02)** — AC-1…AC-15 + the AC→slice map are in
+the C2 section (3 gaps resolved: no-validation degenerate `ticks`; a holder's-OT-foul-forfeits-senshu;
+mechanical C2b spec regen). **Next: `planning`** — turn C2 into the two PR-sized slices (C2a
+officiating → C2b perception), then per-slice RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR.
 
 After C2: **C3/C4** (senshu/overtime perception — `self`/`opponent.senshu`, `clock.overtime`) → **D**
 (benchmark `MATCH`/`INPUT_HASH` + `BENCHMARK_VERSION` adoption; `generateSpec` teaches

@@ -7487,3 +7487,469 @@ describe("runFight — senshu revocation on passivity foul (story C1b)", () => {
     expect(result.endReason).toBe("senshu");
   });
 });
+
+describe("runFight — sudden-death overtime (story C2a, officiating skeleton)", () => {
+  // Reuse the C1a offset-level geometry: A (gyaku-zuki, startup 4) draws first blood at tick 4,
+  // B (kizami-zuki, startup 8) evens at tick 8 ⇒ 1-1 LEVEL at the cap, A holds senshu. Each bot
+  // scores exactly once then idles forever, so with `overtime` configured the OT period runs and,
+  // since neither re-scores, exhausts LEVEL ⇒ the senshu/draw fallback decides — but the fight
+  // ran `maxTicks + ticks` (the extension is observable via `FightResult.ticks`).
+  const scoreOnce = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-once",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  const twoMoveRules = getMockRules({
+    moves: {
+      "gyaku-zuki": { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+      "kizami-zuki": { startup: 8, active: 2, recovery: 6, score: 1, reach: 250000 },
+    },
+  });
+
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  // A (gyaku, tick 4) vs B (kizami, tick 8) ⇒ 1-1 level at the cap, A holds senshu. 20-tick OT.
+  const levelCfg = (o: Partial<FightConfig> = {}): FightConfig => ({
+    rules: twoMoveRules,
+    botA: scoreOnce("gyaku-zuki"),
+    botB: scoreOnce("kizami-zuki"),
+    maxTicks: 40,
+    seed: 1,
+    match: { winGap: 8, senshu: true, overtime: { ticks: 20 } },
+    ...o,
+  });
+
+  // AC-1 + AC-7: a level bout at the cap RUNS overtime (extends the fight by `ticks`); since
+  // neither fighter re-scores, OT exhausts LEVEL ⇒ the senshu holder (A) wins the fallback.
+  it("runs overtime on a level bout and, exhausting level, falls to the senshu holder (AC-1, AC-7)", () => {
+    const result = runFight(levelCfg());
+
+    expect(result.scores).toEqual({ a: 1, b: 1 }); // still level after OT (no re-score)
+    expect(result.winner).toBe("A"); // senshu holder
+    expect(result.endReason).toBe("senshu");
+    expect(result.ticks).toBe(60); // 40 regulation + 20 overtime, run to exhaustion
+  });
+
+  // AC-8: a level bout with NO senshu holder exhausts overtime ⇒ draw, endReason "time".
+  it("exhausts overtime to a draw when the bout is level with no senshu holder (AC-8)", () => {
+    const result = runFight({
+      rules: getMockRules(),
+      botA: IDLE,
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, overtime: { ticks: 12 } },
+    });
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(22); // 10 + 12, OT ran but 0-0 stayed level
+  });
+
+  // AC-2: a NON-level bout at the cap never enters overtime — decided on points, ticks = maxTicks.
+  it("does not enter overtime when the bout is not level at the cap (AC-2)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 10,
+        match: { winGap: 8, overtime: { ticks: 20 } },
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(10); // decided on points at the cap — no OT tail
+  });
+
+  // AC-10: a winGap early-stop in regulation pre-empts overtime (a "gap" bout is never level).
+  it("never enters overtime after a winGap early-stop (AC-10)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 200,
+        match: { winGap: 8, overtime: { ticks: 20 } },
+      }),
+    );
+
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("gap");
+    expect(result.scores).toEqual({ a: 8, b: 0 });
+    expect(result.ticks).toBeLessThan(200); // ended on the gap, no OT
+  });
+
+  // AC-11: a degenerate overtime.ticks <= 0 is a no-op ⇒ byte-identical to no overtime.
+  it("treats overtime.ticks <= 0 as no overtime — byte-identical (AC-11)", () => {
+    const zero = runFight(
+      levelCfg({ match: { winGap: 8, senshu: true, overtime: { ticks: 0 } } }),
+    );
+
+    const absent = runFight(levelCfg({ match: { winGap: 8, senshu: true } }));
+
+    expect(JSON.stringify(zero)).toBe(JSON.stringify(absent));
+    expect(zero.ticks).toBe(40); // no OT ran
+    expect(zero.endReason).toBe("senshu");
+  });
+
+  // AC-14: overtime present but never ENTERED (a points-decided bout) is byte-identical to the
+  // same config without the overtime key — the OT code path is fully gated on level-at-cap.
+  it("is byte-identical when overtime is present but never entered (AC-14)", () => {
+    const withOT = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 200,
+        match: { winGap: 8, overtime: { ticks: 20 } },
+      }),
+    );
+
+    const withoutOT = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 200,
+        match: { winGap: 8 },
+      }),
+    );
+
+    expect(JSON.stringify(withOT)).toBe(JSON.stringify(withoutOT));
+  });
+
+  // AC-14: replay-stable in overtime mode.
+  it("is replay-stable in overtime mode (AC-14)", () => {
+    const first = runFight(levelCfg());
+    const second = runFight(levelCfg());
+
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+
+  // ── first-gap sudden-death win (AC-3, AC-4, AC-5) ──────────────────────────
+  // A bot that scores once in regulation, then throws exactly ONE more attack on the first OT tick
+  // (clock.tick == otStart, when it is neutral just after the OT reset) and idles thereafter — so a
+  // yame boundary resolves the OT exchange and the gap-1 sudden-death check can fire. otStart is the
+  // first OT tick (= maxTicks).
+  const scoreThenOneInOT = (move: MoveId, otStart: number): BotDoc => ({
+    version: 1,
+    name: "score-then-one-in-ot",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: otStart },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  // A bot that idles all regulation (stays 0-0) then attacks once on the first OT tick.
+  const attackAtOTStart = (move: MoveId, otStart: number): BotDoc => ({
+    version: 1,
+    name: "attack-at-ot-start",
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: otStart },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  });
+
+  // AC-3: level at the cap, then A alone scores in OT ⇒ A wins immediately on the 1-point gap.
+  it("ends overtime the moment one fighter opens a 1-point gap (AC-3)", () => {
+    const result = runFight(levelCfg({ botA: scoreThenOneInOT("gyaku-zuki", 40) }));
+
+    expect(result.scores).toEqual({ a: 2, b: 1 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(40); // entered OT
+    expect(result.ticks).toBeLessThan(60); // and ended before the OT cap
+  });
+
+  // AC-4: both score on the SAME OT tick ⇒ gap 0 ⇒ OT continues (stays level to exhaustion).
+  it("keeps overtime level when both fighters trade on the same tick (AC-4)", () => {
+    const result = runFight(
+      levelCfg({
+        botA: scoreThenOneInOT("gyaku-zuki", 40),
+        botB: scoreThenOneInOT("gyaku-zuki", 40),
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 2, b: 2 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(60); // a same-tick trade never opens a gap ⇒ OT exhausts
+  });
+
+  // AC-5: a 0-0 scoreless regulation, decided by the first score struck in overtime.
+  it("decides a scoreless (0-0) bout on the first score in overtime (AC-5)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: attackAtOTStart("gyaku-zuki", 10),
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, senshu: true, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(10); // regulation was scoreless ⇒ entered OT
+    expect(result.ticks).toBeLessThan(30);
+  });
+
+  // AC-14: swap-symmetric — mirror AC-3 with the fighters swapped ⇒ the overtime winner flips.
+  it("is swap-symmetric — swapping the fighters flips the overtime winner (AC-14)", () => {
+    const result = runFight(
+      levelCfg({
+        botA: scoreOnce("kizami-zuki"),
+        botB: scoreThenOneInOT("gyaku-zuki", 40),
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 2 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("overtime");
+  });
+
+  // ── penalties & senshu live in overtime (AC-6, AC-9) ───────────────────────
+  // A bot that scores once in regulation, then in OT (clock.tick >= otStart) RETREATS out of the
+  // ring until it has drawn `stopPenalties` jogai fouls, then idles. Retreat is dir -1 (away from
+  // the opponent) so either fighter exits its OWN edge. `self.penalties` gates the stop, so the
+  // foul count is exact regardless of walk timing.
+  const scoreThenRetreatUntil = (
+    move: MoveId,
+    otStart: number,
+    stopPenalties: number,
+  ): BotDoc => ({
+    version: 1,
+    name: "score-then-retreat-until",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "field", path: "self.penalties" },
+            { op: "const", value: stopPenalties },
+          ],
+        },
+        do: { type: "idle" },
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "field", path: "clock.tick" },
+            { op: "const", value: otStart },
+          ],
+        },
+        do: { type: "move", dir: -1 },
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  // AC-6: a penalty's +1 opens the 1-point gap in OT ⇒ the fouler's opponent wins on "overtime".
+  // A (holds senshu) retreats out of the ring in OT: the 1st jogai foul is a free warning (which
+  // also revokes A's senshu), the 2nd awards B +1 ⇒ gap 1 at the jogai check ⇒ B wins "overtime".
+  it("lets a jogai penalty decide overtime on the 1-point gap (AC-6)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreThenRetreatUntil("gyaku-zuki", 40, 2),
+      botB: scoreOnce("kizami-zuki"),
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 }, overtime: { ticks: 60 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 2 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(40); // decided during OT
+    expect(result.ticks).toBeLessThan(100); // before the OT cap
+  });
+
+  // AC-9: the senshu HOLDER's own OT foul (incl. the free 1st warning) revokes senshu ⇒ when OT then
+  // exhausts level, the bout is a DRAW, not the ex-holder's senshu win.
+  it("forfeits senshu when the holder fouls in overtime, exhausting to a draw (AC-9)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreThenRetreatUntil("gyaku-zuki", 40, 1), // A holds senshu, fouls once in OT
+      botB: scoreOnce("kizami-zuki"),
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 }, overtime: { ticks: 60 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 }); // a free warning awards no point
+    expect(result.winner).toBe("draw"); // senshu revoked ⇒ no holder ⇒ draw
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(100); // OT exhausted level (40 + 60)
+  });
+
+  // AC-9 (control): a NON-holder's OT foul leaves senshu intact ⇒ the holder still wins the fallback.
+  it("keeps senshu when the NON-holder fouls in overtime (AC-9)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreOnce("gyaku-zuki"), // A holds senshu, idles
+      botB: scoreThenRetreatUntil("kizami-zuki", 40, 1), // B (non-holder) fouls once in OT
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 }, overtime: { ticks: 60 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("A"); // senshu intact
+    expect(result.endReason).toBe("senshu");
+    expect(result.ticks).toBe(100);
+  });
+
+  // Guard: a mid-regulation 1-point LEAD must NOT trigger sudden death — OT is entered ONLY at the
+  // cap on a LEVEL bout. (Pins the OT-entry condition: an early/looser entry would end this bout on
+  // the 1-point gap as "overtime" instead of running to the cap on points.)
+  it("does not enter overtime early on a mid-regulation lead (AC-2 guard)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreOnce("gyaku-zuki"), // scores 1-0 at tick 4, then idles (goes neutral)
+      botB: IDLE,
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 8, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("time"); // decided on points at the cap — never entered OT
+    expect(result.ticks).toBe(40);
+  });
+
+  // AC-6 (passivity): a PASSIVITY penalty's +1 decides OT on the 1-point gap. A (ATTACKER) holds
+  // senshu and attacks into B's guard (no re-score, clock stays alive); B (scoreThenBlock) evens to
+  // 1-1 then guards forever ⇒ B is the sole passivity fouler. Level 1-1 at the cap ⇒ OT; in OT B's
+  // paid (2nd) passivity foul awards A +1 ⇒ gap 1 at the passivity check ⇒ A wins "overtime".
+  const scoreThenBlock = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-then-block",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  it("lets a passivity penalty decide overtime on the 1-point gap (AC-6, passivity)", () => {
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: ATTACKER, // attacks mid every neutral tick; B blocks ⇒ A never re-scores
+      botB: scoreThenBlock("kizami-zuki"), // evens to 1-1, then guards ⇒ sole passivity fouler
+      maxTicks: 50,
+      seed: 1,
+      match: { winGap: 99, senshu: true, passivity: { limit: 15 }, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 2, b: 1 }); // B's OT passivity foul awards A +1
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(50); // decided during OT
+    expect(result.ticks).toBeLessThan(70); // before the OT cap
+  });
+});

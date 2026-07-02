@@ -94,12 +94,16 @@ export type FightConfig = {
   // yame-style reset re-engages both (no penalty yet). Absent `passivity` ⇒ byte-identical.
   // `senshu` (first-blood tie-break, C1): a LEVEL bout at the cap is won by the first fighter
   // to score a TECHNIQUE point (penalty points never confer), `endReason "senshu"`; absent ⇒
-  // a level cap stays a `"draw"` ⇒ byte-identical.
+  // a level cap stays a `"draw"` ⇒ byte-identical. `overtime` (sudden death, C2): a LEVEL bout
+  // at the cap plays one extra period of `ticks` sudden-death ticks (first to a 1-point gap wins,
+  // `endReason "overtime"`); it exhausts to the senshu/draw fallback. Absent / `ticks <= 0` ⇒ no
+  // overtime ⇒ byte-identical.
   match?: {
     winGap: number;
     jogai?: { margin: number };
     passivity?: { limit: number };
     senshu?: boolean;
+    overtime?: { ticks: number };
   };
 };
 
@@ -108,7 +112,7 @@ export type FightResult = {
   ticks: number; // ticks actually executed (= maxTicks unless a match ended early)
   scores: { a: number; b: number };
   events: FightEvent[];
-  endReason: "gap" | "time" | "senshu"; // "gap" = ended on the winGap; "time" = ran to the cap (decided on points); "senshu" = level at the cap, decided by first-blood (C1)
+  endReason: "gap" | "time" | "senshu" | "overtime"; // "gap" = ended on the winGap; "time" = ran to the cap (decided on points); "senshu" = level at the cap, decided by first-blood (C1); "overtime" = a 1-point gap opened during sudden death (C2)
 };
 
 // A fighter is either free to act (neutral) or locked into a committed move —
@@ -942,6 +946,12 @@ export function runFight(cfg: FightConfig): FightResult {
   // In match mode the loop can end early; without it these stay at their full-run
   // values (the byte-identical absent-match path).
   let ticks = maxTicks;
+  // Overtime (C2): the loop cap is dynamic — extended by one sudden-death period the moment the
+  // bout is found LEVEL at the regulation cap. `otTicks <= 0` (absent config, or a degenerate
+  // value) ⇒ never extended ⇒ byte-identical to the pre-overtime engine.
+  const otTicks = match?.overtime?.ticks ?? 0;
+  let cap = maxTicks;
+  let inOT = false;
   let endReason: FightResult["endReason"] = "time";
   // Match mode: senshu (C1) first-blood latch. `undecided` until the first tick a fighter's
   // TECHNIQUE points rise (read below, BEFORE the penalty blocks ⇒ penalty points never confer):
@@ -966,7 +976,7 @@ export function runFight(cfg: FightConfig): FightResult {
   let aWasIn = inBounds(aStartX);
   let bWasIn = inBounds(bStartX);
 
-  for (let tick = 0; tick < maxTicks; tick++) {
+  for (let tick = 0; tick < cap; tick++) {
     // Snapshot the scoreboard so a point scored THIS tick arms the yame trigger.
     const aPointsBefore = a.points;
     const bPointsBefore = b.points;
@@ -1152,9 +1162,9 @@ export function runFight(cfg: FightConfig): FightResult {
     // is never amputated), then reset both bodies to the neutral start and re-engage.
     // Runs after events.push, so the yame tick's frame shows the resolved positions.
     if (match && scored && isNeutral(a) && isNeutral(b)) {
-      if (Math.abs(a.points - b.points) >= match.winGap) {
+      if (Math.abs(a.points - b.points) >= (inOT ? 1 : match.winGap)) {
         ticks = tick + 1;
-        endReason = "gap";
+        endReason = inOT ? "overtime" : "gap";
         break;
       }
 
@@ -1193,9 +1203,9 @@ export function runFight(cfg: FightConfig): FightResult {
         // A jogai penalty point can settle the bout — re-check the winGap at this boundary
         // (mutually exclusive with the yame block's check: yame's reset makes the crossing
         // undetectable, so at most one winGap check fires per tick).
-        if (Math.abs(a.points - b.points) >= match.winGap) {
+        if (Math.abs(a.points - b.points) >= (inOT ? 1 : match.winGap)) {
           ticks = tick + 1;
-          endReason = "gap";
+          endReason = inOT ? "overtime" : "gap";
           break;
         }
 
@@ -1238,9 +1248,9 @@ export function runFight(cfg: FightConfig): FightResult {
 
         // A passivity +1 can settle the bout — same winGap re-check as jogai (mutually exclusive per
         // tick with the yame/jogai checks, so at most one endReason "gap" fires per tick).
-        if (Math.abs(a.points - b.points) >= match.winGap) {
+        if (Math.abs(a.points - b.points) >= (inOT ? 1 : match.winGap)) {
           ticks = tick + 1;
-          endReason = "gap";
+          endReason = inOT ? "overtime" : "gap";
           break;
         }
 
@@ -1249,6 +1259,22 @@ export function runFight(cfg: FightConfig): FightResult {
         resetToNeutral(b, bStartX);
         scored = false;
       }
+    }
+
+    // Match mode: overtime (C2) entry. At the END of the last regulation tick, if the bout is
+    // LEVEL and one sudden-death period is configured, extend the loop by `otTicks` ticks and reset
+    // both bodies to a fresh neutral engagement (encho-sen). Runs AFTER the officiating blocks, so a
+    // same-tick winGap / jogai / passivity gap-stop pre-empts it (a decided bout is never level).
+    // resetToNeutral clears position/posture/guard/windows/clocks; points, stamina, penaltyCount,
+    // mem, and senshuHolder persist. `ticks` advances to the new cap so an exhausted OT reports the
+    // full executed count (an early break overwrites it with tick+1).
+    if (!inOT && otTicks > 0 && tick === maxTicks - 1 && a.points === b.points) {
+      cap = maxTicks + otTicks;
+      inOT = true;
+      ticks = cap;
+      resetToNeutral(a, aStartX);
+      resetToNeutral(b, bStartX);
+      scored = false;
     }
   }
 
