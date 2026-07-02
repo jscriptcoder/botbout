@@ -6655,3 +6655,216 @@ describe("runFight — self passivity read (story B3)", () => {
     expect(result.events[15].b.action).toEqual(STEP);
   });
 });
+
+describe("runFight — opponent passivity read (story B4)", () => {
+  // B4 exposes opponent.passivityRemaining — the DELAYED (L_act) countdown to the FOE's passivity
+  // foul, max(0, limit − ticksSinceOffense) served from the lAct-delayed history frame (like
+  // opponent.stamina). frameOf records the raw clock at the loop TOP (before the tick's increment),
+  // so at L_act = 0 the read equals the foe's own self.passivityRemaining; at L_act = d it lags by d.
+  // Observed the B3 way: a PERCEIVING bot gates a distinctive action on the field and the frame
+  // records that chosen action. Here the foe (A) idles so its clock climbs cleanly; the reader is B
+  // (its opponent is A). perception.lPos = 0 isolates the action layer; jitter off (deterministic).
+
+  const STEP: Action = { type: "move", dir: -1 }; // distinct from idle; a retreat never connects
+  const ATTACK: Action = { type: "attack", move: "gyaku-zuki", band: "mid" };
+
+  type Cmp = "eq" | "lte" | "gt";
+
+  // A bot that returns `act` when the FOE's countdown satisfies `op value`, else idles.
+  const watchOpp = (op: Cmp, value: number, act: Action = STEP): BotDoc => {
+    const when: BoolExpr = {
+      op,
+      args: [
+        { op: "field", path: "opponent.passivityRemaining" },
+        { op: "const", value },
+      ],
+    };
+
+    return bot([{ when, do: act }], { type: "idle" });
+  };
+
+  // Same, but reading the fighter's OWN clock (self.passivityRemaining) — for the L_act = 0 coherence
+  // check that the delayed opponent read matches the foe's live self read.
+  const watchSelf = (op: Cmp, value: number, act: Action = STEP): BotDoc => {
+    const when: BoolExpr = {
+      op,
+      args: [
+        { op: "field", path: "self.passivityRemaining" },
+        { op: "const", value },
+      ],
+    };
+
+    return bot([{ when, do: act }], { type: "idle" });
+  };
+
+  const delayRules = (lAct: number): Rules =>
+    getMockRules({ perception: { lPos: 0, lAct } });
+
+  // AC-1 (delayed value + direction/offset). A idles ⇒ its clock climbs, so the foe's live remaining
+  // at tick t is limit − t. B reads it lagged by lAct: with limit 10 the == 6 gate (which a live read
+  // would fire at tick 4) fires at tick 4 when lAct = 0 and at tick 6 when lAct = 2 — the +lAct offset
+  // IS the delay. Pins the subtraction/direction (kills limit + tso / tso − limit) AND the delayed
+  // frame index (a live read off the current frame would fire at tick 4 for both lAct values).
+  it("serves the foe's countdown lagged by lAct (a live read would fire lAct ticks earlier)", () => {
+    const match = { winGap: 99, passivity: { limit: 10 } };
+
+    const live = runFight(
+      getMockConfig({
+        rules: delayRules(0),
+        botA: IDLE,
+        botB: watchOpp("eq", 6),
+        maxTicks: 9,
+        match,
+      }),
+    );
+
+    expect(live.events[3].b.action).toEqual({ type: "idle" }); // remaining 7
+    expect(live.events[4].b.action).toEqual(STEP); // remaining 6 (lAct 0 ⇒ same tick as the live read)
+    expect(live.events[5].b.action).toEqual({ type: "idle" }); // remaining 5
+
+    const delayed = runFight(
+      getMockConfig({
+        rules: delayRules(2),
+        botA: IDLE,
+        botB: watchOpp("eq", 6),
+        maxTicks: 9,
+        match,
+      }),
+    );
+
+    expect(delayed.events[5].b.action).toEqual({ type: "idle" }); // perceived remaining 7
+    expect(delayed.events[6].b.action).toEqual(STEP); // perceived remaining 6 ⇒ fires 2 ticks LATER than the live read
+    expect(delayed.events[7].b.action).toEqual({ type: "idle" }); // perceived remaining 5
+  });
+
+  // AC-1 boundary (reads exactly 0 on the delayed foul-imminent frame). With limit 5, lAct 1 the
+  // perceived countdown reaches 0 at tick 6 (reads the frame recorded at tick 5, tso 5 ⇒ 5 − 5). The
+  // == 0 gate fires there and not at tick 5 (perceived remaining 1). Kills Math.max(0,·) → Math.max(1,·):
+  // under that mutant tick 6 would perceive 1, not 0, so the step would not fire.
+  it("perceives exactly 0 on the foe's foul-imminent frame (kills the max(0,·) → max(1,·) mutant)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: delayRules(1),
+        botA: IDLE,
+        botB: watchOpp("eq", 0),
+        maxTicks: 8,
+        match: { winGap: 99, passivity: { limit: 5 } },
+      }),
+    );
+
+    expect(result.events[5].b.action).toEqual({ type: "idle" }); // perceived remaining 1
+    expect(result.events[6].b.action).toEqual(STEP); // perceived remaining 0 ⇒ the foe is a tick from fouling
+  });
+
+  // AC-3 (a re-engage snap-back is perceived DELAYED). The foe's mutual passivity foul at tick 10
+  // zeroes its clock; the perceiving bot sees the countdown restart on the delayed layer. With lAct 2
+  // the == 6 gate fires in cycle 1 at tick 6 (as above) AND again in cycle 2 at tick 17 (the snap-back
+  // reset is perceived 2 ticks after it manifests in the frame). Neighbours idle.
+  it("perceives the foe's re-engage snap-back on the delayed layer (countdown restarts)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: delayRules(2),
+        botA: IDLE,
+        botB: watchOpp("eq", 6),
+        maxTicks: 18,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[6].b.action).toEqual(STEP); // cycle 1 (perceived remaining 6)
+    expect(result.events[16].b.action).toEqual({ type: "idle" }); // perceived remaining 7
+    expect(result.events[17].b.action).toEqual(STEP); // cycle 2 ⇒ the reset was perceived, countdown restarted
+  });
+
+  // AC-2 (coherence at L_act = 0). With no delay, the foe's delayed read IS its live read: an A-bot
+  // gating self.passivityRemaining == 6 and a B-bot gating opponent.passivityRemaining == 6 (reading A)
+  // both fire the SAME tick (4). Pins the frame-vs-live convention (frameOf records at the loop top,
+  // before the increment, so the current frame equals the live clock).
+  it("equals the foe's own self read at L_act = 0 (live coherence)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: delayRules(0),
+        botA: watchSelf("eq", 6),
+        botB: watchOpp("eq", 6),
+        maxTicks: 6,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[3].a.action).toEqual({ type: "idle" });
+    expect(result.events[3].b.action).toEqual({ type: "idle" });
+    expect(result.events[4].a.action).toEqual(STEP); // A's own live clock reads 6
+    expect(result.events[4].b.action).toEqual(STEP); // B's delayed read of A reads 6 the SAME tick
+  });
+
+  // AC-4 (sentinel 0 when unconfigured). With no passivity key the foe's clock is never simulated, so
+  // the perceived countdown reads the inert sentinel 0 every tick: an == 0 gate fires from tick 0,
+  // while a > 0 gate never fires. Kills the config ternary → true (which would dereference an absent
+  // match.passivity.limit and throw).
+  it("reads the sentinel 0 every tick when no passivity is configured", () => {
+    const base = getMockConfig({
+      botA: IDLE,
+      maxTicks: 5,
+      match: { winGap: 99 },
+    });
+
+    const alwaysZero = runFight({ ...base, botB: watchOpp("eq", 0) });
+    expect(alwaysZero.events[0].b.action).toEqual(STEP);
+    expect(alwaysZero.events[4].b.action).toEqual(STEP);
+
+    const neverPositive = runFight({ ...base, botB: watchOpp("gt", 0) });
+    expect(neverPositive.events[0].b.action).toEqual({ type: "idle" });
+    expect(neverPositive.events[4].b.action).toEqual({ type: "idle" });
+  });
+
+  // AC-5 (the read is actionable — bait the forced commit). B is in reach of an idling A and gates a
+  // strike on the foe's perceived countdown reaching 8. With limit 12, lAct 2 the perceived remaining
+  // is 8 at tick 6, so B commits gyaku-zuki (startup 4) there and it connects at tick 10 — a scoring
+  // engagement B timed off the DELAYED opponent read (an idle B would never score).
+  it("lets a bot time an attack off the foe's perceived countdown (bait the forced commit)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: delayRules(2),
+        botA: IDLE,
+        botB: watchOpp("lte", 8, ATTACK),
+        maxTicks: 11,
+        match: { winGap: 99, passivity: { limit: 12 } },
+      }),
+    );
+
+    expect(result.events[5].b.action).toEqual({ type: "idle" }); // perceived remaining 9 > 8 ⇒ not yet
+    expect(result.events[6].b.action).toEqual(ATTACK); // perceived remaining 8 ⇒ commit the timed strike
+    expect(result.events[10].b.points).toBe(1); // it connected ⇒ B acted on the delayed read
+  });
+
+  // AC-6 (replay-stable): a passivity fight whose bot reads the delayed opponent countdown is
+  // deterministic.
+  it("is replay-stable when the bot reads the foe's passivity countdown", () => {
+    const cfg = getMockConfig({
+      rules: delayRules(2),
+      botA: IDLE,
+      botB: watchOpp("eq", 6),
+      maxTicks: 18,
+      match: { winGap: 99, passivity: { limit: 10 } },
+    });
+
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  // AC-6 (swap-symmetric): with the roles swapped, A perceives B's countdown identically
+  // (perceiveOpponent serves both directions) — the == 6 gate fires on A at ticks 6 and 17.
+  it("serves the delayed countdown to the A-slot fighter identically (swap-symmetric)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: delayRules(2),
+        botA: watchOpp("eq", 6),
+        botB: IDLE,
+        maxTicks: 18,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[6].a.action).toEqual(STEP);
+    expect(result.events[17].a.action).toEqual(STEP);
+  });
+});

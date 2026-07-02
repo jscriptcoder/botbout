@@ -62,6 +62,7 @@ export type OpponentState = {
   gassed: boolean; // perceived gas tell (C10 Story 4): delayed stamina ≤ gasThreshold (false = not gassed / no threshold)
   points: number; // live scoreboard read — the opponent's WKF points, exposed with ZERO perception delay (a scoreboard fact, not a body-perception tell; sourced from the live opponent, never the ring buffer)
   penalties: number; // live scoreboard read — the opponent's shared jogai/passivity warning count, ZERO perception delay (public fact, off the live opponent, never the ring buffer)
+  passivityRemaining: number; // B4: perceived countdown to the foe's passivity foul, max(0, limit − ticksSinceOffense); DELAYED on the L_act layer (a body-condition tell, like stamina — NOT the live scoreboard); 0 = imminent / no passivity configured (the sentinel)
 };
 
 export type RingState = { width: number };

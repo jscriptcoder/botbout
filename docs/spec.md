@@ -95,6 +95,7 @@ constants in the frame table); `opponent.points` is a live scoreboard read.
 - `opponent.gassed`
 - `opponent.points`
 - `opponent.penalties`
+- `opponent.passivityRemaining`
 - `ring.width`
 - `clock.tick`
 - `clock.ticksRemaining`
@@ -355,6 +356,7 @@ declared-before-use cells — the `validate()` gate remains the authority.
         "opponent.gassed",
         "opponent.points",
         "opponent.penalties",
+        "opponent.passivityRemaining",
         "ring.width",
         "clock.tick",
         "clock.ticksRemaining"

@@ -174,6 +174,7 @@ type Frame = {
   knockdown: boolean;
   vx: number;
   stamina: number; // conditioning meter (C10 Story 4) — an action-layer tell (L_act)
+  ticksSinceOffense: number; // B4: raw passivity clock — an L_act tell (the countdown is derived on serve, like `gassed` from `stamina`)
 };
 
 const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
@@ -187,6 +188,7 @@ const frameOf = (f: Fighter, prev: Frame | undefined): Frame => ({
   knockdown: f.state.kind === "downed",
   vx: prev ? f.x - prev.x : 0,
   stamina: f.stamina,
+  ticksSinceOffense: f.ticksSinceOffense,
 });
 
 const initMem = (bot: BotDoc): Record<string, number> => ({
@@ -222,6 +224,7 @@ const perceiveOpponent = (
   oppAct: Frame,
   lPos: number,
   rules: Rules,
+  match: FightConfig["match"],
 ): Omit<OpponentState, "points" | "penalties"> => {
   const predictedX = oppPos.x + oppPos.vx * lPos;
 
@@ -239,6 +242,10 @@ const perceiveOpponent = (
     predictedDistance: Math.abs(predictedX - selfX),
     stamina: oppAct.stamina, // C10 Story 4: rides the action layer (L_act), like attacking
     gassed: isGassedAt(oppAct.stamina, rules), // C10 Story 4b: gas line on the DELAYED stamina
+    // B4: the DELAYED countdown to the foe's passivity foul — the shared formula on the L_act-delayed
+    // `oppAct.ticksSinceOffense` (like `gassed` is derived from the delayed `oppAct.stamina`). Sentinel
+    // 0 unconfigured. At L_act = 0 this equals the foe's own live self.passivityRemaining (B3).
+    passivityRemaining: passivityRemainingOf(oppAct.ticksSinceOffense, match),
   };
 };
 
@@ -270,12 +277,12 @@ const viewFor = (
   const finishWindow =
     oppLive.state.kind === "downed" ? oppLive.state.finish : 0;
 
-  // Live countdown to the passivity foul (B3): the clock counts UP to `limit`, so remaining =
-  // limit − clock; 0 = "connect this tick or foul". Config-gated — sentinel 0 when passivity is
-  // unconfigured (the value can't depend on match at the TCB boundary; only here in viewFor).
-  const passivityRemaining = match?.passivity
-    ? Math.max(0, match.passivity.limit - self.ticksSinceOffense)
-    : 0;
+  // Live countdown to the passivity foul (B3): the shared formula on self's LIVE clock — 0 = "connect
+  // this tick or foul", sentinel 0 unconfigured. B4 serves the same value on the L_act-delayed clock.
+  const passivityRemaining = passivityRemainingOf(
+    self.ticksSinceOffense,
+    match,
+  );
 
   return {
     self: {
@@ -373,6 +380,18 @@ const drawChip = (def: Fighter, chip: number): void => {
 const isGassedAt = (stamina: number, rules: Rules): boolean =>
   rules.stamina?.gasThreshold !== undefined &&
   stamina <= rules.stamina.gasThreshold;
+
+// The countdown to the passivity foul from a no-offense clock (§7 passivity): max(0, limit − clock)
+// when passivity is configured, else the sentinel 0. The SINGLE source of the countdown formula —
+// shared by the live self read (`self.passivityRemaining`, B3, in `viewFor`) and the L_act-delayed
+// opponent read (`opponent.passivityRemaining`, B4, in `perceiveOpponent`, off the delayed clock),
+// exactly as `isGassedAt` is shared by the self/opponent gas tells. Config-gated ⇒ the TCB boundary
+// can't depend on `match`; only this derived value is.
+const passivityRemainingOf = (
+  ticksSinceOffense: number,
+  match: FightConfig["match"],
+): number =>
+  match?.passivity ? Math.max(0, match.passivity.limit - ticksSinceOffense) : 0;
 
 // Whether a fighter is GASSED (C10 Story 3): the gas-line predicate on its CURRENT
 // (post-spend) stamina. Feeds the recovery penalty (`gasRecovery`) and the live
@@ -966,6 +985,7 @@ export function runFight(cfg: FightConfig): FightResult {
       perceivedFrame(histB, tick, aLAct),
       aLPos,
       rules,
+      match,
     );
 
     const bOpp = perceiveOpponent(
@@ -974,6 +994,7 @@ export function runFight(cfg: FightConfig): FightResult {
       perceivedFrame(histA, tick, bLAct),
       bLPos,
       rules,
+      match,
     );
 
     // 2. Both fighters decide against one immutable pre-tick snapshot.
