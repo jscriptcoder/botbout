@@ -31,20 +31,20 @@ delivery sequencing; that section is the contract.
 
 (Full G/W/T text in the tracker's C2 AC section — checkboxes here for tracking.)
 
-- [ ] AC-1 — OT entry on level (extra ticks; `resetToNeutral` both; points/stamina/penalties/mem/senshu persist)
-- [ ] AC-2 — not level ⇒ no OT (`ticks = maxTicks`, byte-identical)
-- [ ] AC-3 — sudden death, solo score wins (`endReason "overtime"`, `ticks = tick+1`)
-- [ ] AC-4 — mutual trade in OT stays level (OT continues)
-- [ ] AC-5 — 0-0 scoreless regulation ⇒ first OT score decides (`"overtime"`)
-- [ ] AC-6 — penalty (2nd+ foul) decides OT (`"overtime"`)
-- [ ] AC-7 — OT exhausts ⇒ senshu holder wins (`"senshu"`, `ticks = maxTicks+K`)
-- [ ] AC-8 — OT exhausts, no holder ⇒ `"draw"`/`"time"` (`ticks = maxTicks+K`)
-- [ ] AC-9 — holder's OT foul forfeits senshu (revoke → `none` → fallback is draw)
-- [ ] AC-10 — winGap in regulation ⇒ `"gap"`, no OT
-- [ ] AC-11 — degenerate `overtime.ticks ≤ 0` ⇒ byte-identical (no validation)
+- [x] AC-1 — OT entry on level (extra ticks; `resetToNeutral` both; points/stamina/penalties/mem/senshu persist)
+- [x] AC-2 — not level ⇒ no OT (`ticks = maxTicks`, byte-identical)
+- [x] AC-3 — sudden death, solo score wins (`endReason "overtime"`, `ticks = tick+1`)
+- [x] AC-4 — mutual trade in OT stays level (OT continues)
+- [x] AC-5 — 0-0 scoreless regulation ⇒ first OT score decides (`"overtime"`)
+- [x] AC-6 — penalty (2nd+ foul) decides OT (`"overtime"`)
+- [x] AC-7 — OT exhausts ⇒ senshu holder wins (`"senshu"`, `ticks = maxTicks+K`)
+- [x] AC-8 — OT exhausts, no holder ⇒ `"draw"`/`"time"` (`ticks = maxTicks+K`)
+- [x] AC-9 — holder's OT foul forfeits senshu (revoke → `none` → fallback is draw)
+- [x] AC-10 — winGap in regulation ⇒ `"gap"`, no OT
+- [x] AC-11 — degenerate `overtime.ticks ≤ 0` ⇒ byte-identical (no validation)
 - [ ] AC-12 — `clock.overtime` reads `0` in regulation, `1` from first OT tick
 - [ ] AC-13 — `clock.ticksRemaining` counts the OT budget down, never negative; unchanged absent OT
-- [ ] AC-14 — byte-identical absent + replay-stable + swap-symmetric
+- [x] AC-14 — byte-identical absent + replay-stable + swap-symmetric (officiating half; perception half → C2b)
 - [ ] AC-15 — C2b `docs/spec.md` drift-clean after regen; `dsl.ts` interpreter 100%
 
 ## Slices
