@@ -92,10 +92,14 @@ export type FightConfig = {
   // yet). Absent `jogai` ⇒ no ring-out ⇒ byte-identical. `passivity` (non-engagement, B1):
   // a per-fighter no-offense clock; when either exceeds `limit` contactless ticks a
   // yame-style reset re-engages both (no penalty yet). Absent `passivity` ⇒ byte-identical.
+  // `senshu` (first-blood tie-break, C1): a LEVEL bout at the cap is won by the first fighter
+  // to score a TECHNIQUE point (penalty points never confer), `endReason "senshu"`; absent ⇒
+  // a level cap stays a `"draw"` ⇒ byte-identical.
   match?: {
     winGap: number;
     jogai?: { margin: number };
     passivity?: { limit: number };
+    senshu?: boolean;
   };
 };
 
@@ -104,7 +108,7 @@ export type FightResult = {
   ticks: number; // ticks actually executed (= maxTicks unless a match ended early)
   scores: { a: number; b: number };
   events: FightEvent[];
-  endReason: "gap" | "time"; // "gap" = ended on the winGap; "time" = ran to the cap (decided on points)
+  endReason: "gap" | "time" | "senshu"; // "gap" = ended on the winGap; "time" = ran to the cap (decided on points); "senshu" = level at the cap, decided by first-blood (C1)
 };
 
 // A fighter is either free to act (neutral) or locked into a committed move —
@@ -939,6 +943,11 @@ export function runFight(cfg: FightConfig): FightResult {
   // values (the byte-identical absent-match path).
   let ticks = maxTicks;
   let endReason: FightResult["endReason"] = "time";
+  // Match mode: senshu (C1) first-blood latch. `undecided` until the first tick a fighter's
+  // TECHNIQUE points rise (read below, BEFORE the penalty blocks ⇒ penalty points never confer):
+  // a solo first-scorer holds it, a simultaneous first ⇒ `none` (permanent). A bout-level local —
+  // outside resetToNeutral's scope ⇒ it survives every yame/jogai/passivity reset.
+  let senshuHolder: "undecided" | "A" | "B" | "none" = "undecided";
   // Match mode (Q4): true once a point has been scored in the current exchange —
   // one input to the yame trigger. Cleared at each yame.
   let scored = false;
@@ -1127,6 +1136,16 @@ export function runFight(cfg: FightConfig): FightResult {
     // Arm the yame trigger if either fighter's score rose this tick.
     if (a.points > aPointsBefore || b.points > bPointsBefore) scored = true;
 
+    // Match mode: senshu first-blood latch (C1). Decided the first tick a fighter's TECHNIQUE
+    // points rise — read HERE, before the jogai/passivity penalty blocks below, so a penalty
+    // point never confers. A solo first-scorer holds senshu; a simultaneous first ⇒ `none`.
+    // Latches once (only while `undecided`), so the first scorer sticks (never re-latched).
+    if (match?.senshu && senshuHolder === "undecided") {
+      const aTech = a.points > aPointsBefore;
+      const bTech = b.points > bPointsBefore;
+      if (aTech || bTech) senshuHolder = aTech && bTech ? "none" : aTech ? "A" : "B";
+    }
+
     // Match mode: yame. After the exchange fully resolves — a point was scored and
     // both fighters are back to a clean neutral (no committed move, no open counter
     // or cancel window) — check the win gap at THIS boundary (so an in-progress combo
@@ -1221,7 +1240,15 @@ export function runFight(cfg: FightConfig): FightResult {
     }
   }
 
-  const winner = a.points > b.points ? "A" : b.points > a.points ? "B" : "draw";
+  let winner: FightResult["winner"] =
+    a.points > b.points ? "A" : b.points > a.points ? "B" : "draw";
+
+  // Match mode: senshu decides ONLY a level bout at the cap — a points/gap winner is untouched.
+  // senshuHolder is A/B only when `match.senshu` latched it, so no config re-check is needed.
+  if (winner === "draw" && (senshuHolder === "A" || senshuHolder === "B")) {
+    winner = senshuHolder;
+    endReason = "senshu";
+  }
 
   return {
     winner,

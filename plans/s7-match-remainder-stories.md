@@ -74,6 +74,24 @@ benchmark-adoption + spec-teaching slices.
   enum; drift test green); strategic prose deferred to Capability D (D4). Single-slice plan file
   (`passivity-self-read.md`) deleted (record in git/PR #102). The B3 resolved-decisions section below
   is retained as the design record.
+- **B4 — opponent passivity clock read (delayed) — ✅ DONE** (PR #103, merged 2026-07-02;
+  `main`@`71e19fc`). **Capability B (passivity) is now COMPLETE** (B1–B4, PRs #100–#103). The
+  opponent-perception field **`opponent.passivityRemaining`** on the **`L_act`-delayed** ring-buffer
+  layer (like `opponent.stamina`) — a bot perceives how close the FOE is to a passivity foul and can
+  bait the forced commit. **DELAYED, not live** (D1): rides `oppAct`, complementing A3's live
+  `opponent.penalties` (pending timer delayed, landed foul live). `frameOf` records raw
+  `ticksSinceOffense` (scoring-agnostic, like `stamina`); `perceiveOpponent` derives `Math.max(0,
+  limit − oppAct.ticksSinceOffense)`, threading `match` in (D2, the C10 S4b `isGassedAt` precedent) —
+  coherent with B3's self read at `L_act = 0` (D3). REFACTOR: shared `passivityRemainingOf(tso, match)`
+  now feeds BOTH the B3 live self read (`viewFor`) and this delayed opponent read (`perceiveOpponent`).
+  One `FieldPath` member + `OpponentState.passivityRemaining` + one **static** `FIELD_READERS` entry ⇒
+  `dsl.ts` interpreter stays 100% (D4). Byte-identical absent `match.passivity` (the new
+  `Frame.ticksSinceOffense` frames `0`, never enters `FightResult`; served value sentinel `0`),
+  replay-stable, swap-symmetric. 809 tests; scoped mutation 100% (shared `passivityRemainingOf` helper
+  4/4, `dsl.ts` reader 1/1, `frameOf` copy 0 mutable nodes — zero survivors/equivalents). `docs/spec.md`
+  regenerated (field joins read-surface list + JSON-schema enum; drift test green); strategic prose
+  deferred to Capability D. Single-slice plan file (`passivity-opponent-read.md`) deleted (record in
+  git/PR #103). The B4 resolved-decisions section below is retained as the design record.
 
 ## Parent
 
@@ -533,37 +551,107 @@ precedent — gate a distinctive action on `opponent.passivityRemaining` crossin
   interpreter stays 100%. `docs/spec.md` regenerated (field joins the read-surface list + schema enum;
   drift test green). Replay-stable + swap-symmetric present.
 
+## C1 — resolved decisions & acceptance criteria (find-gaps 2026-07-02)
+
+Confirmed before planning C1 (senshu first-blood tiebreak). Feeds `planning` directly. **C1 is
+WKF-faithful** — deliberately refined beyond DESIGN.md §7a's "score ANY point / never lost" (see the
+reconciliation action; §7a updated to match). NO overtime (C2), NO perception (C3 — `self`/
+`opponent.senshu`), so the `dsl.ts` TCB stays untouched (no `FIELD_READERS` entry, interpreter stays
+100%).
+
+**Config:** `FightConfig.match.senshu?: boolean` — scoring-layer, NOT `Rules`/`CANONICAL_RULES`
+(`npm run fight` unaffected). Absent or `false` ⇒ no senshu tie-break ⇒ byte-identical. Test-fixture-
+only until Capability D (the benchmark `MATCH` + spec prose adopt it there).
+
+**State (no new per-fighter field):** a bout-level `senshuHolder: "undecided" | "A" | "B" | "none"`
+local to `runFight` (like `endReason`), NOT on the `Fighter` body ⇒ `resetToNeutral` can't touch it
+⇒ persists across every yame/jogai/passivity reset automatically. First blood is detected from the
+**per-tick scored-technique points delta** (snapshot points at tick-top, read right after combat
+resolution, BEFORE the jogai/passivity penalty block) — so penalty points never register as first
+blood, with NO separate technique counter.
+
+**State machine (one-way, deterministic):**
+
+- start `undecided`.
+- **Latch** (combat phase, only while `undecided`): the fighter whose technique points rose this tick
+  claims senshu; both rose the same tick ⇒ `none` (simultaneous); neither ⇒ stays `undecided`.
+- **Revoke** (penalty phase, only while holder is `A`/`B`): if the **holder** commits any jogai/
+  passivity foul this tick (incl. the free 1st warning) ⇒ `none`. A foul by the non-holder does nothing.
+- `none` is terminal — never re-latched, never transferred.
+
+**Resolution order:** senshu is consulted ONLY at the terminal tally (post-loop) and ONLY when
+`winner === "draw"` (level points). It never overrides a `winGap`/`"gap"` early-stop or a points-
+decided `"time"` winner (both non-level ⇒ mutually exclusive with senshu). `FightResult.endReason`
+gains the union member `"senshu"`.
+
+**Acceptance criteria:**
+
+- **AC-1 — first-blood latch (solo).** Given `match.senshu` true and A lands the bout's first scored
+  technique (1-0) at tick T, Then A holds senshu.
+- **AC-2 — simultaneous ⇒ none (permanent).** Given both score a technique on the same first-scoring
+  tick (1-1), Then senshu is `none` for the bout; a level cap stays winner `"draw"`, endReason
+  `"time"`; a later solo technique does NOT claim it.
+- **AC-3 — decides a level bout only.** Given A holds senshu and the bout is level at the cap (e.g.
+  4-4), Then A wins, endReason `"senshu"`. Given NOT level (e.g. 5-3), Then the leader wins, endReason
+  `"time"` (senshu never overrides a points winner).
+- **AC-4 — gap early-stop unaffected.** Given the gap reaches `winGap`, Then endReason `"gap"`,
+  winner = the leader, regardless of senshu (a `"gap"` bout is never level).
+- **AC-5 — no-senshu draw.** Given a level cap with no holder (0-0, or `none`), Then winner `"draw"`,
+  endReason `"time"` (unchanged from pre-C1).
+- **AC-6 — penalty never confers.** Given a jogai/passivity penalty gives B its first point (never a
+  technique), Then B does not hold senshu; a subsequent first A technique latches senshu to A.
+- **AC-7 — holder's foul revokes.** Given A holds senshu and A later commits any jogai/passivity foul
+  (incl. the free warning), Then senshu → `none` (not transferred to B); a level cap is then `"draw"`/
+  `"time"`. (A non-holder foul leaves senshu intact.)
+- **AC-8 — same-tick latch-then-revoke.** Given A scores its first technique AND fouls on the same
+  tick, Then latch (combat phase) precedes revoke (penalty phase) ⇒ `none`.
+- **AC-9 — persists across resets.** Given A holds senshu and yame/jogai/passivity resets occur, Then
+  A still holds senshu at the cap.
+- **AC-10 — byte-identical absent + swap-symmetric.** Given `match.senshu` absent/`false`, replay is
+  byte-identical to pre-C1 (no `senshuHolder` consulted, no `"senshu"` endReason). Given present,
+  replay is stable and swap-symmetric (holder A↔B mirrors under a fighter swap).
+
+**Spec:** NO `docs/spec.md` change in C1 — `generateSpec`'s `Match` type is `{ winGap }` and emits no
+`endReason`; the "equal ⇒ draw" win-condition prose stays accurate while `match.senshu` is fixture-
+only. The prose fix (equal ⇒ senshu-holder, else draw) + the `Match` extension land in Capability D
+alongside the benchmark `MATCH`/`INPUT_HASH`/`BENCHMARK_VERSION` adoption.
+
+**DESIGN.md reconciliation (DONE this pass):** §7a's senshu row + the `match` config block were
+updated to the confirmed semantics — "score ANY point" → **scored techniques only** (penalty points
+never confer); "never lost" → **lost on the holder's Category-2 foul** (any foul, incl. free warning;
+permanent; not transferred); standalone `match.senshu?: boolean`.
+
+**Recommended slicing (for `planning`):** two PR-sized slices — **C1a** the latch (techniques-only) +
+level-at-cap resolution + `endReason "senshu"` + `match.senshu` toggle (senshu-only fixtures; the
+"fully independent bargain" tracer; byte-identical absent); **C1b** the revocation coupling — a
+holder's jogai/passivity foul cancels senshu (co-configured jogai/passivity fixtures). Each byte-
+identical-absent + replay-stable + swap-symmetric, with scoped mutation on the changed `sim.ts`
+officiating regions.
+
 ## Next Step
 
-**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B passivity —
-B1 (clock, PR #100) + B2 (shared penalty ladder, PR #101) + B3 (self read, PR #102) COMPLETE**
-(see Progress). Branch `feat/passivity-opponent-read` is cut for the next slice.
+**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B (passivity) COMPLETE**
+(B1 clock #100, B2 shared penalty ladder #101, B3 self read #102, B4 opponent read #103) — see
+Progress. Branch `feat/senshu-tiebreak` is cut for the next slice.
 
-**Next: B4 — opponent passivity clock read (delayed).** The passivity _opponent-perception_: a
-bot can perceive how close the FOE is to a passivity foul, so it can bait the forced commit and
-prep a counter. Introduces **`opponent.passivityRemaining`** — unlike B3's live self-read, this
-rides the **`L_act`-delayed ring-buffer layer** (the coherent delayed snapshot, invariant #4),
-exactly like `opponent.stamina` / `opponent.gassed` (C10 S4): `frameOf` records the derived
-countdown (or `ticksSinceOffense`) into the per-fighter history, `perceiveOpponent` serves it from
-the `oppAct` (lAct-delayed) frame — so it reads `tick − L_act`, live at `L_act = 0`, sentinel `0`
-unconfigured. This completes **Capability B**. Because it moves onto the delayed perception layer
-(new `Frame` field vs derived-on-read, jitter interaction, the observe-after-commit tick) rather
-than B3's live derivation, it wants a short **`find-gaps` pass before `planning`**: open questions
-are (a) record the raw `ticksSinceOffense` and derive on serve vs record the countdown into the
-frame (mirror C10 S4b's `isGassedAt`-style derive-on-serve, avoiding a new `Frame` field), (b) how
-`limit` reaches `perceiveOpponent` (a `match`/`limit` param, like S4b's `rules` param), (c) the
-sentinel + interpreter-100% story (static reader, A3/B3 precedent), (d) jitter/observe-after-commit
-semantics on the delayed layer. Byte-identical absent `match.passivity` (sentinel `0`);
-`docs/spec.md` regen + drift test (like A3/B3).
+**Next: C1 — senshu first-blood tiebreak** (find-gaps DONE 2026-07-02 — see the "C1 — resolved
+decisions & acceptance criteria" section above). The Parking-Lot **bargain**: a WKF-faithful first-
+blood latch that decisively resolves a level bout at the cap and cheaply closes the benchmark's
+`"draw"` gap. **Resolved:** senshu latches on the first **scored-technique** point (penalty points
+never confer); a simultaneous first score ⇒ `none` (permanent); the holder is **revoked** to `none`
+by any jogai/passivity foul it commits (incl. the free 1st warning; not transferred); at the cap a
+LEVEL bout goes to the holder (`endReason "senshu"`), else `"draw"`; config `match.senshu?: boolean`,
+byte-identical absent. Bout-level `runFight` state (survives resets); **no DSL surface** (`self`/
+`opponent.senshu` is C3) ⇒ `dsl.ts` TCB untouched; **no `docs/spec.md` change** (`Match` is
+`{ winGap }`; prose to Capability D). DESIGN.md §7a's senshu row + `match` block were updated to match.
 
-After B4: **C** (tie-resolution: senshu + overtime) → **D** (benchmark + spec adoption).
+After C1: **C2** (sudden-death overtime) → **C3/C4** (senshu/overtime perception) → **D** (benchmark
+`MATCH`/`INPUT_HASH` + `BENCHMARK_VERSION` adoption; spec teaches jogai/passivity/tie-break prose).
 
 Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
-(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **B4's `find-gaps`
-pass is DONE** (2026-07-02) — see the "B4 — resolved decisions & acceptance criteria" section above
-(D1–D4, AC-1…AC-6): DELAYED `L_act` read (D1, complementing A3's live `opponent.penalties`), raw
-`ticksSinceOffense` framed + derive-on-serve threading `match` into `perceiveOpponent` (D2, the
-`isGassedAt` precedent), coherent with B3's self read at `L_act = 0` (D3), sentinel `0` /
-interpreter-100% / mechanical-spec-regen (D4). **Next: `planning` B4** into PR-sized slices (expected:
-one slice — the delayed field + its perceive-layer wiring + the B3-style read tests + spec regen,
-mirroring C10 S4's delayed-opponent-read PRs and B3's single-slice perception PR).
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **C1's `find-gaps` pass
+is DONE** — proceed to `planning` (recommended split: **C1a** latch + level-at-cap + `endReason
+"senshu"` + `match.senshu` toggle, the independent tracer; **C1b** the revocation coupling with
+co-configured jogai/passivity fixtures). Precedent to mirror: every §7 slice is byte-identical when
+its `match` key is absent + replay-stable + swap-symmetric, with scoped mutation on the changed
+`sim.ts` officiating regions.

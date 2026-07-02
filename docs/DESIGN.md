@@ -209,7 +209,7 @@ level bout (equal points at the time limit → today `"draw"`). Best-of-N is a n
 | --- | --- |
 | Scheme | **Overtime → senshu fallback.** Level at cap ⇒ sudden-death OT; OT decides ⇒ win; OT scoreless ⇒ senshu-holder; never-scored ⇒ draw. |
 | Overtime | Reset both to neutral start (points/stamina/mem persist); **first fighter to hold a lead (gap ≥ 1) wins immediately**; a same-tick trade stays level; fixed `match.overtimeTicks` cap ⇒ senshu fallback; jogai/passivity stay live in OT (their points can BE the sudden-death score). |
-| Senshu | **First-blood latch**: the first fighter to score ANY point holds senshu for the bout (never lost); simultaneous first score ⇒ none. |
+| Senshu | **First-blood latch (WKF-faithful)**: the first fighter to score a **technique** point (penalty points never confer) holds senshu; simultaneous first score ⇒ none (permanent, not transferred). **Revoked** to none if the holder later commits any jogai/passivity foul (incl. the free 1st warning). Standalone toggle `match.senshu?: boolean` (also the OT fallback). |
 | endReason | `"gap" \| "time" \| "overtime" \| "senshu"` (a true no-senshu draw reports via the tie path with winner `"draw"`). |
 
 **New DSL read surface** (all additive `FIELD_READERS`, config-gated values, static entries ⇒
@@ -238,7 +238,8 @@ match?: {
   winGap: number;                 // built
   jogai?: { margin: number };     // sub-units
   passivity?: { limit: number };  // ticks
-  overtimeTicks?: number;         // enables OT + senshu tie-break
+  senshu?: boolean;               // first-blood tie-break (C1; standalone + the OT fallback)
+  overtimeTicks?: number;         // enables sudden-death OT (falls back to senshu)
 };
 ```
 

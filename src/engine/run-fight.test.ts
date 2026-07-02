@@ -6868,3 +6868,173 @@ describe("runFight — opponent passivity read (story B4)", () => {
     expect(result.events[17].a.action).toEqual(STEP);
   });
 });
+
+describe("runFight — senshu first-blood tiebreak (story C1a)", () => {
+  // A bot that attacks exactly once (tick 0), scores on its move's first active frame,
+  // then idles forever (mem `fought` latches on the first committed tick). Two such bots
+  // with different-startup moves score once each on different ticks, so the bout ends level.
+  const scoreOnce = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-once",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  // gyaku-zuki (startup 4) scores at tick 4; kizami-zuki (startup 8) at tick 8.
+  const twoMoveRules = getMockRules({
+    moves: {
+      "gyaku-zuki": { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+      "kizami-zuki": { startup: 8, active: 2, recovery: 6, score: 1, reach: 250000 },
+    },
+  });
+
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  // Fast A (gyaku, tick 4) vs slow B (kizami, tick 8): A draws first blood, B evens ⇒
+  // the bout ends 1-1 level, so senshu (held by A) decides it.
+  const offsetLevel = (o: Partial<FightConfig> = {}): FightConfig => ({
+    rules: twoMoveRules,
+    botA: scoreOnce("gyaku-zuki"),
+    botB: scoreOnce("kizami-zuki"),
+    maxTicks: 40,
+    seed: 1,
+    match: { winGap: 8, senshu: true },
+    ...o,
+  });
+
+  it("awards a level bout to the first fighter to score a technique (AC-1, AC-3)", () => {
+    const result = runFight(offsetLevel());
+
+    expect(result.scores).toEqual({ a: 1, b: 1 }); // level at the cap
+    expect(result.winner).toBe("A"); // A scored first (tick 4, before B at tick 8)
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("does not award senshu on a simultaneous first score — stays a draw (AC-2, AC-5)", () => {
+    // Mirror bots both score their first technique on the SAME tick (4) ⇒ no holder.
+    const result = runFight({
+      rules: getMockRules(),
+      botA: scoreOnce("gyaku-zuki"),
+      botB: scoreOnce("gyaku-zuki"),
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 8, senshu: true },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("leaves a scoreless level bout a draw — no holder, no senshu (AC-5)", () => {
+    const result = runFight({
+      rules: getMockRules(),
+      botA: IDLE,
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, senshu: true },
+    });
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("never overrides a points winner — senshu decides only a LEVEL bout (AC-3)", () => {
+    // A leads 1-0 at the cap (not level) ⇒ A wins on points, endReason "time", not senshu.
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 10,
+        match: { winGap: 8, senshu: true },
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("never overrides a winGap early-stop (AC-4)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: IDLE,
+        maxTicks: 200,
+        match: { winGap: 8, senshu: true },
+      }),
+    );
+
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("gap");
+    expect(result.scores).toEqual({ a: 8, b: 0 });
+  });
+
+  it("persists the holder across a yame reset (AC-9)", () => {
+    // The 1-1 exchange resolves to both-neutral+scored ⇒ a yame reset fires between A's
+    // first blood (tick 4) and the cap; A still wins on senshu, so the latch (a runFight
+    // local, outside resetToNeutral's scope) survives the reset.
+    const result = runFight(offsetLevel({ maxTicks: 40 }));
+
+    expect(result.ticks).toBe(40); // ran past the yame boundary to the cap
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("does not perturb the simulation — senshu is a terminal-tally overlay (AC-10)", () => {
+    const withSenshu = runFight(offsetLevel());
+    const withoutSenshu = runFight(offsetLevel({ match: { winGap: 8 } }));
+
+    // Identical per-tick simulation; only the terminal winner/endReason differ.
+    expect(withSenshu.events).toEqual(withoutSenshu.events);
+    expect(withoutSenshu.winner).toBe("draw");
+    expect(withoutSenshu.endReason).toBe("time");
+    expect(withSenshu.winner).toBe("A");
+    expect(withSenshu.endReason).toBe("senshu");
+  });
+
+  it("is replay-stable in senshu mode (AC-10)", () => {
+    const first = runFight(offsetLevel());
+    const second = runFight(offsetLevel());
+
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+
+  it("is swap-symmetric — swapping the fighters flips the holder (AC-10)", () => {
+    // Swap the moves: the fast (gyaku) scorer is now B ⇒ B draws first blood ⇒ B wins.
+    const result = runFight(
+      offsetLevel({
+        botA: scoreOnce("kizami-zuki"),
+        botB: scoreOnce("gyaku-zuki"),
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("senshu");
+  });
+});
