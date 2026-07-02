@@ -405,9 +405,42 @@ generating code; flag any change that would.
   `""` is observationally indistinguishable from `"none"`; every dangerous mutant is killed (always-revoke,
   drop-holder-check, wrong-fighter, `&&`→`||`, statement-removal). All absent-config invariants hold:
   `match.senshu` absent ⇒ byte-identical; jogai/passivity configured but no foul ⇒ byte-identical;
-  swap-symmetric; replay-stable. **Capability C is partially done**: C1 (senshu) COMPLETE; **C2
-  (sudden-death overtime)** and the C3/C4 perception + Capability D benchmark/spec adoption remain (per
-  `plans/s7-match-remainder-stories.md`).
+  swap-symmetric; replay-stable. **Capability C is partially done**: C1 (senshu) + C2 (overtime — see the
+  next entry) COMPLETE; the **C3 perception** (`self`/`opponent.senshu`) + **Capability D** benchmark/spec
+  adoption remain (C4/`clock.overtime` shipped inside C2), per `plans/s7-match-remainder-stories.md`.
+- DONE (**sudden-death overtime — Capability C story C2, PRs #107–#108**): the WKF *encho-sen* that
+  decisively resolves a LEVEL bout when senshu alone won't — one fixed sudden-death period, first to a
+  1-point gap. Behind an optional `FightConfig.match.overtime?: { ticks }` — a **scoring-layer** param,
+  NOT in `Rules`/`CANONICAL_RULES` (so `npm run fight` is unaffected); absent (or `ticks ≤ 0`) ⇒
+  **byte-identical**. Model X (**OT-first**): overtime is tried BEFORE C1's terminal senshu override, which
+  is reused untouched as the exhaust-still-level fallback. **C2a** (PR #107, officiating) — the `runFight`
+  loop cap goes dynamic: at the END of the last regulation tick, if the bout is LEVEL (`a.points ===
+  b.points`) and one period is configured, `cap` extends to `maxTicks + ticks`, `inOT` flips, and both
+  bodies `resetToNeutral` (fresh engagement; **points / stamina / penaltyCount / mem / senshuHolder
+  persist**). The winGap threshold then drops to `1` at the THREE EXISTING check-sites (`gap = inOT ? 1 :
+  winGap` at yame / jogai / passivity) — so the first fighter to a 1-point gap (a scored technique OR a 2nd+
+  penalty — **penalties are fully live in OT**) wins with `endReason "overtime"`; a same-tick trade stays
+  level; OT exhausting level falls to the senshu/draw fallback (a holder's OT foul still forfeits senshu →
+  draw); `FightResult.ticks` counts OT. The OT-entry block runs AFTER the officiating blocks, so a same-tick
+  winGap / jogai / passivity gap-stop pre-empts it (a decided bout is never level). No DSL surface. 848
+  tests; scoped `sim.ts` mutation 92.31% — the **4 survivors are documented equivalents**: the `otTicks ≤ 0`
+  OT-entry guards fire an *unobserved* last-tick `resetToNeutral` (after `events.push`, `cap == maxTicks`, no
+  next frame recorded), and the `scored = false` reset is a harmless same-tick spurious yame (both bodies
+  already at the neutral start). **C2b** (PR #108, perception — folds in C4) — a bot can now perceive sudden
+  death: **`clock.overtime`** (a new `ClockState` view field, `inOT ? 1 : 0` — 0 in regulation, 1 from the
+  first OT tick) via a new static `clock.overtime` FIELD_READER (**the only new TCB surface**; value
+  config-gated ⇒ `dsl.ts` interpreter stays 100%), and **`clock.ticksRemaining`** now counts the CURRENT
+  period's budget (`cap − tick`: `maxTicks − tick` in regulation, the OT-extended `cap − tick` once sudden
+  death begins — K on the first OT tick, 1 on the last, **never negative**). `docs/spec.md` regenerated: one
+  whitelist bullet + one JSON Schema enum entry (both auto-derived from `ALLOWED_FIELDS`) — **no OT semantic
+  prose** (win/draw + `Match` extension deferred to Capability D). 853 tests; scoped Stryker **100%** on the
+  changed `sim.ts` clock line + `dsl.ts` reader (Stryker emits no `ConditionalExpression` mutant for
+  `X ? 1 : 0` literal ternaries, so **both arms of `inOT ? 1 : 0` were hand-verified killed** — always-0 by
+  the RED placeholder, always-1 by a manual mutation → 2 failing tests). **C4 (`clock.overtime`) is now
+  shipped inside C2.** **Capability C: C1 (senshu) + C2 (overtime) COMPLETE**; **C3** (`self`/`opponent.senshu`
+  + OT/senshu perception) and **Capability D** (benchmark `MATCH`/`INPUT_HASH`/`BENCHMARK_VERSION` adoption +
+  `generateSpec` win/OT prose) remain. The C2 plan file `plans/c2-overtime.md` is deleted (record in git /
+  PRs #107–#108); the standing tracker `plans/s7-match-remainder-stories.md` flips Next Step to C3.
 - ROADMAP (C9 + C10 + LLM benchmark v1 + benchmark match structure COMPLETE): the still-unresolved **air-actions** (air
   strikes / horizontal jump displacement) and the **rest of §7 match structure** (jogai / passivity /
   rounds, beyond the benchmark's yame + win condition) — `grill-me` → `planning` → TDD. (C9, the

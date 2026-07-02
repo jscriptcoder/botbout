@@ -113,6 +113,31 @@ benchmark-adoption + spec-teaching slices.
   killed (always-revoke, drop-holder-check, wrong-fighter, `&&`→`||`, statement-removal). The C1 plan
   (`senshu-tiebreak.md`) deleted (record in git/PRs #104–#105). The C1 resolved-decisions section below
   is retained as the design record.
+- **C2 — sudden-death overtime — ✅ DONE** (PRs #107–#108, merged 2026-07-02; `main`@`8ca63ea`).
+  **Capability C's second story COMPLETE** — a LEVEL bout at the cap plays one fixed sudden-death period
+  (first to a 1-point gap), behind `FightConfig.match.overtime?: { ticks }` (scoring-layer, NOT
+  `Rules`/`CANONICAL_RULES` ⇒ `npm run fight` unaffected); absent or `ticks ≤ 0` ⇒ byte-identical. Model X
+  (**OT-first**): overtime is tried before C1's terminal senshu override, reused untouched as the
+  exhaust-still-level fallback. Two additive slices: **C2a** (#107, officiating) — the `runFight` loop cap
+  goes dynamic: at the end of the last regulation tick, if LEVEL (`a.points === b.points`) and a period is
+  configured, `cap` extends to `maxTicks + ticks`, `inOT` flips, both bodies `resetToNeutral` (points /
+  stamina / penaltyCount / mem / senshuHolder persist); the winGap threshold drops to `1` at the three
+  EXISTING check-sites (`gap = inOT ? 1 : winGap` at yame/jogai/passivity) ⇒ first to a 1-point gap (a
+  technique OR a 2nd+ penalty — penalties fully live in OT) wins `endReason "overtime"`, a same-tick trade
+  stays level, OT exhausting level falls to senshu/draw (a holder's OT foul still forfeits senshu); the
+  OT-entry block runs AFTER the officiating blocks (a same-tick gap-stop pre-empts it); `FightResult.ticks`
+  counts OT. No DSL surface. 848 tests; scoped `sim.ts` mutation 92.31% — 4 documented equivalents (the
+  `otTicks ≤ 0` OT-entry guards fire an unobserved last-tick reset; the `scored = false` reset is a harmless
+  same-tick spurious yame). **C2b** (#108, perception — folds in C4) — **`clock.overtime`** (new
+  `ClockState` view field, `inOT ? 1 : 0`) via a new static `clock.overtime` FIELD_READER (the only new TCB
+  surface; value config-gated ⇒ `dsl.ts` interpreter stays 100%), and **`clock.ticksRemaining`** now counts
+  the current period's budget (`cap − tick` — K on the first OT tick, 1 on the last, never negative);
+  `docs/spec.md` regenerated (one bullet + one JSON Schema enum entry, auto-derived from `ALLOWED_FIELDS`;
+  no OT prose — Capability D). 853 tests; scoped Stryker 100% on the changed `sim.ts` clock line + `dsl.ts`
+  reader (both `inOT ? 1 : 0` arms hand-verified — Stryker emits no `ConditionalExpression` mutant for
+  `X ? 1 : 0` literal ternaries). Byte-identical absent `match.overtime`, replay-stable, swap-symmetric.
+  The C2 plan (`c2-overtime.md`) deleted (record in git/PRs #107–#108). The C2 resolved-decisions section
+  below is retained as the design record.
 
 ## Parent
 
@@ -772,23 +797,22 @@ AC-13, AC-15 + AC-14's perception half.
 
 **Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B (passivity) COMPLETE**
 (B1 clock #100, B2 shared penalty ladder #101, B3 self read #102, B4 opponent read #103). **Capability
-C, story C1 (senshu) COMPLETE** (C1a latch #104, C1b revocation #105) — see Progress. `main`@`170a9e1`.
+C, stories C1 (senshu) + C2 (overtime) COMPLETE** (C1a latch #104, C1b revocation #105; C2a officiating
+#107, C2b perception #108) — see Progress. `main`@`8ca63ea`. **C4 (`clock.overtime` live 1/0 +
+OT-budget `ticksRemaining`) shipped inside C2b.**
 
-**Next: C2 — sudden-death overtime** (the second Capability-C tie-resolution story). **`grill-me` DONE
-(2026-07-02)** — the OT decision tree is resolved and captured in the **C2 — resolved decisions**
-section above: Model X trigger (OT-first, senshu-fallback); `resetToNeutral` at OT entry; nested
-`match.overtime?: { ticks }` config; gap-1 sudden death reusing the existing yame/jogai/passivity
-check-sites; penalties fully live in OT; `endReason "overtime"`; **C4 folded in** as `clock.overtime` +
-OT-budget `ticksRemaining`. **`find-gaps` DONE (2026-07-02)** — AC-1…AC-15 + the AC→slice map are in
-the C2 section (3 gaps resolved: no-validation degenerate `ticks`; a holder's-OT-foul-forfeits-senshu;
-mechanical C2b spec regen). **Next: `planning`** — turn C2 into the two PR-sized slices (C2a
-officiating → C2b perception), then per-slice RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR.
+**Next: C3 — senshu perception** (`self.senshu` / `opponent.senshu` — the first-blood tells that let a
+bot know who holds senshu, so it can play to protect or steal it). The read-surface decision tree is
+UNRESOLVED: which fields (self only, or both), which perception layer (`opponent.senshu` on the
+`L_act`-delayed action layer like the other body tells, or a live scoreboard read like
+`opponent.points`), and the `none`/`undecided` encoding a bot sees. Config-gated FIELD_READERS ⇒ the
+`dsl.ts` interpreter stays 100%; scoring-layer, byte-identical when `match.senshu`/`overtime` absent.
 
-After C2: **C3/C4** (senshu/overtime perception — `self`/`opponent.senshu`, `clock.overtime`) → **D**
-(benchmark `MATCH`/`INPUT_HASH` + `BENCHMARK_VERSION` adoption; `generateSpec` teaches
-jogai/passivity/senshu/OT prose + the corrected win/draw semantics).
+After C3: **Capability D** — benchmark adoption (fold `senshu`/`overtime` into `MATCH` + `INPUT_HASH`,
+bump `BENCHMARK_VERSION`) + `generateSpec` teaches the jogai/passivity/senshu/OT prose + the corrected
+win/draw semantics (the deferred `docs/spec.md` match narrative).
 
-Flow: `grill-me` (resolve the OT decision tree) → `find-gaps` (harden ACs) → `planning` → per-slice
-RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR (`tdd` + `testing` + `mutation-testing` + `refactoring`).
-Precedent to mirror: every §7 slice is byte-identical when its `match` key is absent + replay-stable +
-swap-symmetric, with scoped mutation on the changed `sim.ts` officiating regions.
+Flow: `grill-me` (resolve the C3 read-surface decision tree) → `find-gaps` (harden ACs) → `planning` →
+per-slice RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR (`tdd` + `testing` + `mutation-testing` +
+`refactoring`). Precedent to mirror: every §7 slice is byte-identical when its `match` key is absent +
+replay-stable + swap-symmetric, with scoped mutation on the changed `sim.ts`/`dsl.ts` regions.
