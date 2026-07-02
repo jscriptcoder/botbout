@@ -51,7 +51,8 @@ export type FieldPath =
   | "opponent.passivityRemaining"
   | "ring.width"
   | "clock.tick"
-  | "clock.ticksRemaining";
+  | "clock.ticksRemaining"
+  | "clock.overtime";
 
 // ─── Numeric expressions (values are fixed-point integers) ───────────────────
 // Arithmetic is int32-saturating: every op clamps its result to
@@ -131,6 +132,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "ring.width": (s) => s.ring.width,
   "clock.tick": (s) => s.clock.tick,
   "clock.ticksRemaining": (s) => s.clock.ticksRemaining,
+  "clock.overtime": (s) => s.clock.overtime,
 };
 
 export const ALLOWED_FIELDS: ReadonlySet<string> = new Set(

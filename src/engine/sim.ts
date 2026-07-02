@@ -267,7 +267,8 @@ const viewFor = (
   oppLive: Fighter,
   rules: Rules,
   tick: number,
-  maxTicks: number,
+  cap: number,
+  inOT: boolean,
   match: FightConfig["match"],
 ): State => {
   const st = self.state;
@@ -313,7 +314,11 @@ const viewFor = (
       penalties: oppLive.penaltyCount,
     }, // points + penalties are LIVE scoreboard reads off the true opponent (zero latency, like self.points / clock.tick)
     ring: { width: rules.ring.width },
-    clock: { tick, ticksRemaining: maxTicks - tick },
+    // ticksRemaining counts down the CURRENT period's budget: `cap − tick`. In regulation cap ==
+    // maxTicks (unchanged); once sudden death begins cap == maxTicks + otTicks, so the OT budget is
+    // K on the first OT tick, 1 on the last, never negative (the loop never runs at tick == cap).
+    // overtime is the live 1/0 sudden-death tell.
+    clock: { tick, ticksRemaining: cap - tick, overtime: inOT ? 1 : 0 },
   };
 };
 
@@ -1019,14 +1024,14 @@ export function runFight(cfg: FightConfig): FightResult {
     // 2. Both fighters decide against one immutable pre-tick snapshot.
     const aAction = runTick(
       botA,
-      viewFor(a, aOpp, b, rules, tick, maxTicks, match),
+      viewFor(a, aOpp, b, rules, tick, cap, inOT, match),
       a.mem,
       rules,
     );
 
     const bAction = runTick(
       botB,
-      viewFor(b, bOpp, a, rules, tick, maxTicks, match),
+      viewFor(b, bOpp, a, rules, tick, cap, inOT, match),
       b.mem,
       rules,
     );

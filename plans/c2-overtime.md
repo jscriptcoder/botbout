@@ -42,10 +42,10 @@ delivery sequencing; that section is the contract.
 - [x] AC-9 — holder's OT foul forfeits senshu (revoke → `none` → fallback is draw)
 - [x] AC-10 — winGap in regulation ⇒ `"gap"`, no OT
 - [x] AC-11 — degenerate `overtime.ticks ≤ 0` ⇒ byte-identical (no validation)
-- [ ] AC-12 — `clock.overtime` reads `0` in regulation, `1` from first OT tick
-- [ ] AC-13 — `clock.ticksRemaining` counts the OT budget down, never negative; unchanged absent OT
+- [x] AC-12 — `clock.overtime` reads `0` in regulation, `1` from first OT tick
+- [x] AC-13 — `clock.ticksRemaining` counts the OT budget down, never negative; unchanged absent OT
 - [x] AC-14 — byte-identical absent + replay-stable + swap-symmetric (officiating half; perception half → C2b)
-- [ ] AC-15 — C2b `docs/spec.md` drift-clean after regen; `dsl.ts` interpreter 100%
+- [x] AC-15 — C2b `docs/spec.md` drift-clean after regen; `dsl.ts` interpreter 100%
 
 ## Slices
 

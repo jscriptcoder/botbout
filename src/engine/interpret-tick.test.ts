@@ -72,7 +72,7 @@ const getMockState = (o: StateOverrides = {}): State => ({
     ...o.opponent,
   },
   ring: { width: 600, ...o.ring },
-  clock: { tick: 0, ticksRemaining: 1800, ...o.clock },
+  clock: { tick: 0, ticksRemaining: 1800, overtime: 0, ...o.clock },
 });
 
 const TRUE: BoolExpr = {
@@ -234,6 +234,7 @@ describe("runTick — numeric reads", () => {
     ["ring.width", { ring: { width: 600 } }, 600],
     ["clock.tick", { clock: { tick: 42 } }, 42],
     ["clock.ticksRemaining", { clock: { ticksRemaining: 100 } }, 100],
+    ["clock.overtime", { clock: { overtime: 1 } }, 1],
   ])("reads field %s as its state value", (path, override, expected) => {
     const doc = bot([
       {

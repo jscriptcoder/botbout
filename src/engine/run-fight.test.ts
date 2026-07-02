@@ -7953,3 +7953,175 @@ describe("runFight — sudden-death overtime (story C2a, officiating skeleton)",
     expect(result.ticks).toBeLessThan(70); // before the OT cap
   });
 });
+
+describe("runFight — sudden-death overtime perception (story C2b: clock.overtime + OT countdown)", () => {
+  // Reuse the C2a OT geometry: gyaku-zuki (startup 4) connects from the post-reset neutral
+  // positions, so a bot that first acts at the OT boundary lands its strike.
+  const otRules = getMockRules({
+    moves: {
+      "gyaku-zuki": { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+    },
+  });
+
+  // A probe that idles every regulation tick (clock.overtime == 0) and, the moment sudden death
+  // begins (clock.overtime == 1), throws exactly ONE attack — latched to idle after. If overtime
+  // were stuck at 0 it never attacks (0-0 ⇒ no OT decision); if stuck at 1 it would attack in
+  // regulation instead. Reads ONLY clock.overtime — isolates that field.
+  const attackOnceWhenOvertime = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "attack-once-when-overtime",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.overtime" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  });
+
+  // AC-12: clock.overtime reads 1 from the first OT tick ⇒ a probe that only attacks in sudden
+  // death scores there and wins on the gap. Also proves it reads 0 through regulation: the probe
+  // stayed idle 0-0, so the bout was still LEVEL entering overtime (else it would have scored
+  // earlier and never entered OT).
+  it("reads clock.overtime as 1 in sudden death and 0 in regulation — a probe scores only in OT (AC-12)", () => {
+    const result = runFight({
+      rules: otRules,
+      botA: attackOnceWhenOvertime("gyaku-zuki"),
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, senshu: true, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(10); // scored only after entering OT
+    expect(result.ticks).toBeLessThan(30);
+  });
+
+  // AC-12 + AC-14 (perception half): with NO overtime configured, clock.overtime reads 0 for the
+  // whole bout ⇒ the same probe never attacks ⇒ a scoreless draw. Adding the field/reader does not
+  // perturb a no-overtime fight.
+  it("reads clock.overtime as 0 all bout when no overtime is configured (AC-12, AC-14)", () => {
+    const result = runFight({
+      rules: otRules,
+      botA: attackOnceWhenOvertime("gyaku-zuki"),
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8 },
+    });
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(10); // never entered OT, never attacked
+  });
+
+  // A probe that attacks the single tick clock.ticksRemaining equals `target`. With maxTicks 10 and
+  // a 20-tick OT, ticksRemaining runs 10..1 in regulation and 20..1 in OT — so target 20 is reached
+  // ONLY on the first OT tick. Reads ONLY clock.ticksRemaining.
+  const attackWhenRemainingEq = (move: MoveId, target: number): BotDoc => ({
+    version: 1,
+    name: "attack-when-remaining-eq",
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "clock.ticksRemaining" },
+            { op: "const", value: target },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  });
+
+  // AC-13: in overtime clock.ticksRemaining counts the OT budget down (K on the first OT tick) — the
+  // probe gated on the OT-exclusive value 20 fires exactly at OT start and wins. Pre-fix the clock
+  // read `maxTicks − tick` yields 0 there, so the probe never fires (the RED).
+  it("counts the OT budget down through clock.ticksRemaining (K on the first OT tick) (AC-13)", () => {
+    const result = runFight({
+      rules: otRules,
+      botA: attackWhenRemainingEq("gyaku-zuki", 20), // = overtime.ticks ⇒ only the first OT tick
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, senshu: true, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("overtime");
+    expect(result.ticks).toBeGreaterThan(10);
+    expect(result.ticks).toBeLessThan(30);
+  });
+
+  // A probe that attacks whenever clock.ticksRemaining ≤ 0 — never, if the countdown is correct.
+  const attackWhenRemainingNonPositive = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "attack-when-remaining-nonpositive",
+    rules: [
+      {
+        when: {
+          op: "lte",
+          args: [
+            { op: "field", path: "clock.ticksRemaining" },
+            { op: "const", value: 0 },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+    ],
+    default: { type: "idle" },
+  });
+
+  // AC-13 (never negative): across a full level→exhausted OT bout clock.ticksRemaining is always ≥ 1,
+  // so a probe that would fire on a non-positive countdown never attacks ⇒ scoreless draw. Pre-fix,
+  // `maxTicks − tick` hits 0 at OT start and goes negative after — the probe would fire (the RED).
+  it("keeps clock.ticksRemaining strictly positive throughout overtime (AC-13)", () => {
+    const result = runFight({
+      rules: otRules,
+      botA: attackWhenRemainingNonPositive("gyaku-zuki"),
+      botB: IDLE,
+      maxTicks: 10,
+      seed: 1,
+      match: { winGap: 8, overtime: { ticks: 20 } },
+    });
+
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+    expect(result.ticks).toBe(30); // 10 + 20, ran to exhaustion with no spurious attack
+  });
+});

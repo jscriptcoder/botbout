@@ -66,7 +66,13 @@ export type OpponentState = {
 };
 
 export type RingState = { width: number };
-export type ClockState = { tick: number; ticksRemaining: number };
+export type ClockState = {
+  tick: number;
+  ticksRemaining: number;
+  // Sudden-death overtime flag (C2): 1 while the bout is in the encho-sen period, else 0 (also 0
+  // when no overtime is configured — the inert default). Lets a bot play safe / all-in in OT.
+  overtime: number;
+};
 
 export type State = {
   self: SelfState;

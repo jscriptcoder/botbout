@@ -99,6 +99,7 @@ constants in the frame table); `opponent.points` is a live scoreboard read.
 - `ring.width`
 - `clock.tick`
 - `clock.ticksRemaining`
+- `clock.overtime`
 
 ## Ruleset read surface (`rule`)
 
@@ -359,7 +360,8 @@ declared-before-use cells — the `validate()` gate remains the authority.
         "opponent.passivityRemaining",
         "ring.width",
         "clock.tick",
-        "clock.ticksRemaining"
+        "clock.ticksRemaining",
+        "clock.overtime"
       ]
     },
     "rulePath": {
