@@ -6228,3 +6228,189 @@ describe("runFight — passivity clock (story B1)", () => {
     expect(result.events[8].b.x).toBe(404000); // 2nd reset (period 4)
   });
 });
+
+describe("runFight — passivity penalty (story B2)", () => {
+  // B2 turns B1's inert passivity re-engage into a real penalty on the SHARED per-fighter
+  // penaltyCount ladder (A2's jogai ladder): a fighter whose clock exceeds `limit` is fouled —
+  // 1st free, 2+ ⇒ opponent +1 → winGap re-check (endReason "gap") → resetToNeutral(both).
+  //
+  // Isolation (learned from B1): penaltyCount is NOT framed, so a foul is observable only via the
+  // opponent's `points` rising. To watch a NET passivity point with ZERO combat noise, we pit an
+  // ATTACKER (mid) against a BLOCKER (mid): every strike is BLOCKED (negates the score) yet the
+  // block is the ATTACKER's own outcome ⇒ resets the ATTACKER's clock, while the guard never
+  // commits an offense ⇒ its clock climbs unbroken and it is the SOLE fouler. The guard's clock is
+  // a pure counter (only the passivity resets zero it), so with limit 15 it fouls at exactly tick
+  // 15 (free) and tick 31 (scores) — the attacker's own clock never exceeds recovery+startup = 10,
+  // so the attacker never fouls. Both fighters are stationary, so the ONLY thing that moves `points`
+  // is the passivity penalty.
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+  const BLOCKER = bot([], { type: "block", band: "mid" }); // guards mid ⇒ blocks (no score), sole fouler
+
+  // AC-1 (free 1st foul) + AC-2 (2nd+ foul scores the opponent) + AC-6 (a defender contacted every
+  // cycle still fouls-and-scores — the attacker-only reset predicate does not distinguish a block
+  // from a hit, both being the ATTACKER's outcome). BLOCKER in the B slot is the sole fouler: its
+  // 1st foul (tick 15) is a free warning (no point), its 2nd (tick 31) scores its opponent A +1,
+  // visible the NEXT tick (award is post-events.push, the A1/A2 precedent).
+  it("scores the opponent on the fouler's 2nd passivity foul, the 1st being a free warning", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 40,
+        match: { winGap: 99, passivity: { limit: 15 } },
+      }),
+    );
+
+    expect(result.events[16].a.points).toBe(0); // B's 1st foul (tick 15) was a FREE warning (kills > 1 → > 0)
+    expect(result.events[31].a.points).toBe(0); // 2nd foul's point is NOT in its own frame (awarded post-push)
+    expect(result.events[32].a.points).toBe(1); // B's 2nd foul (tick 31) scores its opponent A +1
+    expect(result.events[32].b.points).toBe(0); // the guard never scores (all strikes blocked ⇒ zero combat)
+  });
+
+  // AC-5 (per-fighter A-term) + AC-8 (swap-symmetry): the SAME shape with the roles swapped — the
+  // BLOCKER in the A slot is the sole fouler, so the award must fire on A's OWN clock term and land
+  // on B. Kills the `if (aPassive) applyPenalty(a, b)` A-side mutant (the B-side is killed above).
+  it("awards on the A-side clock term when the sole fouler is in the A slot (swap-symmetric)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: BLOCKER,
+        botB: ATTACKER,
+        maxTicks: 40,
+        match: { winGap: 99, passivity: { limit: 15 } },
+      }),
+    );
+
+    expect(result.events[16].b.points).toBe(0); // A's 1st foul free
+    expect(result.events[32].b.points).toBe(1); // A's 2nd foul scores its opponent B
+    expect(result.events[32].a.points).toBe(0); // symmetric: the guard (A) never scores
+  });
+
+  // AC-5 (both-passive mutual net-zero): two IDLE bots both foul the SAME tick, so each fighter's
+  // OWN foul count decides — both past the free warning on their 2nd mutual foul ⇒ mutual +1 ⇒ the
+  // gap stays 0. limit 3 ⇒ 1st mutual foul tick 3 (free), 2nd tick 7 (both score) visible tick 8.
+  // winGap 2 makes this the winGap-check DISCRIMINATOR: the gap (|a − b| = 0) never reaches 2, so
+  // the bout runs to time — a `|a + b|` bug (sum = 2 at the mutual score) would wrongly stop early.
+  it("awards both fighters when both go passive the same tick (mutual +1, net-zero, no gap stop)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: IDLE,
+        botB: IDLE,
+        maxTicks: 12,
+        match: { winGap: 2, passivity: { limit: 3 } },
+      }),
+    );
+
+    expect(result.events[4].a.points).toBe(0); // 1st mutual foul (tick 3) free — neither scores
+    expect(result.events[4].b.points).toBe(0);
+    expect(result.events[8].a.points).toBe(1); // 2nd mutual foul (tick 7): each opponent +1 ...
+    expect(result.events[8].b.points).toBe(1); // ... so both rise together (sum 2, gap 0)
+    expect(result.winner).toBe("draw"); // net-zero gap ⇒ still a draw
+    expect(result.endReason).toBe("time"); // gap |a−b|=0 never reaches winGap ⇒ NOT a gap stop
+    expect(result.ticks).toBe(12); // ran the full bout (kills the winGap |a−b| → |a+b| mutant)
+  });
+
+  // AC-3 (shared free warning across mechanics): jogai and passivity share ONE penaltyCount. A bot
+  // retreats until it earns a penalty, then idles (reads self.penalties, A3). It crosses the jogai
+  // margin at tick 2 (its ONE free warning, no score), then idles ⇒ goes passive; its FIRST
+  // passivity foul (tick 8) is therefore its 2nd ladder foul overall ⇒ it immediately scores its
+  // opponent (no second free warning).
+  it("charges a point on the first passivity foul when the free warning was already spent on jogai", () => {
+    const retreatUntilPenalized = bot(
+      [
+        {
+          when: {
+            op: "gte",
+            args: [
+              { op: "field", path: "self.penalties" },
+              { op: "const", value: 1 },
+            ],
+          },
+          do: { type: "idle" },
+        },
+      ],
+      { type: "move", dir: -1 },
+    );
+
+    const result = runFight(
+      getMockConfig({
+        botA: retreatUntilPenalized,
+        botB: IDLE,
+        maxTicks: 12,
+        match: { winGap: 99, jogai: { margin: 190000 }, passivity: { limit: 5 } },
+      }),
+    );
+
+    expect(result.events[3].a.points).toBe(0); // jogai foul at tick 2 was the FREE warning ...
+    expect(result.events[3].b.points).toBe(0); // ... neither scored
+    expect(result.events[8].b.points).toBe(0); // passivity award not yet framed
+    expect(result.events[9].b.points).toBe(1); // A's 1st passivity foul (tick 8) is its 2nd ladder foul ⇒ B +1
+  });
+
+  // AC-4 (a passivity +1 can end the bout): with winGap 1, the sole fouler's 2nd foul (tick 31)
+  // pushes the gap to 1 ⇒ the fight ends that tick with endReason "gap", winner = the leader.
+  it("ends the bout on the gap when a passivity penalty reaches winGap", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: BLOCKER,
+        maxTicks: 40,
+        match: { winGap: 1, passivity: { limit: 15 } },
+      }),
+    );
+
+    expect(result.endReason).toBe("gap");
+    expect(result.ticks).toBe(32); // stopped at the tick-31 foul (+1)
+    expect(result.winner).toBe("A");
+    expect(result.scores).toEqual({ a: 1, b: 0 });
+  });
+
+  // AC-7 (yame pre-empts passivity): an ATTACKER hitting an IDLE scores and both return neutral, so
+  // yame fires (~every 12 ticks) and — via the B1/D5 clock-zeroing in resetToNeutral — zeroes the
+  // idle fighter's climbing clock before it can foul. With limit 12 the idle clock reaches its foul
+  // threshold the SAME tick yame fires; yame's block runs first, so passivity never fires and no
+  // spurious penalty leaks. Byte-identical to the same fight with no passivity key.
+  it("never awards a passivity penalty when yame re-engages the same tick (pre-emption)", () => {
+    const base = getMockConfig({
+      botA: ATTACKER,
+      botB: IDLE,
+      maxTicks: 40,
+      match: { winGap: 99 },
+    });
+
+    const withoutPassivity = runFight(base);
+
+    const withPassivity = runFight({
+      ...base,
+      match: { winGap: 99, passivity: { limit: 12 } },
+    });
+
+    expect(withPassivity.events).toEqual(withoutPassivity.events);
+  });
+
+  // AC-8 (byte-identical absent / inert, + replay-stable): a huge limit never fouls ⇒ the penalty
+  // path is inert ⇒ byte-identical to no passivity key; and a penalising fight is deterministic.
+  it("is byte-identical to no passivity when the limit is never exceeded, and replay-stable when it is", () => {
+    const base = getMockConfig({
+      botA: ATTACKER,
+      botB: BLOCKER,
+      maxTicks: 40,
+      match: { winGap: 99 },
+    });
+
+    const withoutPassivity = runFight(base);
+
+    const inert = runFight({
+      ...base,
+      match: { winGap: 99, passivity: { limit: 100000 } },
+    });
+
+    expect(inert.events).toEqual(withoutPassivity.events);
+
+    const penalising = {
+      ...base,
+      match: { winGap: 99, passivity: { limit: 15 } },
+    };
+
+    expect(runFight(penalising).events).toEqual(runFight(penalising).events);
+  });
+});

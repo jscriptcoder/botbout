@@ -840,6 +840,12 @@ const resetToNeutral = (f: Fighter, startX: number): void => {
   f.ticksSinceOffense = 0;
 };
 
+// The shared category-2 warning-ladder award (jogai A2 + passivity B2): the fouler's per-fighter
+// penaltyCount increments; past the one free warning (> 1) its opponent scores +1 — feeding winGap.
+const applyPenalty = (fouler: Fighter, opponent: Fighter): void => {
+  if (++fouler.penaltyCount > 1) opponent.points += 1;
+};
+
 export function runFight(cfg: FightConfig): FightResult {
   const { rules, botA, botB, maxTicks, match } = cfg;
 
@@ -1121,8 +1127,8 @@ export function runFight(cfg: FightConfig): FightResult {
       if (aOut || bOut) {
         // Each fighter's OWN foul count decides whether ITS opponent scores; both may fire the
         // same tick (mutual +1, net-zero gap change), which keeps the tick swap-symmetric.
-        if (aOut && ++a.penaltyCount > 1) b.points += 1;
-        if (bOut && ++b.penaltyCount > 1) a.points += 1;
+        if (aOut) applyPenalty(a, b);
+        if (bOut) applyPenalty(b, a);
 
         // A jogai penalty point can settle the bout — re-check the winGap at this boundary
         // (mutually exclusive with the yame block's check: yame's reset makes the crossing
@@ -1147,20 +1153,37 @@ export function runFight(cfg: FightConfig): FightResult {
       }
     }
 
-    // Match mode: passivity (non-engagement, B1). If either fighter's no-offense clock (updated
-    // pre-events above) has exceeded `limit` contactless ticks (strict `>` — the limit is the grace,
-    // so the foul fires on the limit+1-th), re-engage both with a yame-style reset. NO penalty /
-    // winGap yet (B2). Runs AFTER yame + jogai: a reset from either already ZEROED both clocks (via
-    // resetToNeutral), so this check reads 0 and cannot double-fire — at most one reset per tick.
-    // The reset zeroes the clocks again and clears the yame trigger (the exchange ended).
-    if (
-      match?.passivity &&
-      (a.ticksSinceOffense > match.passivity.limit ||
-        b.ticksSinceOffense > match.passivity.limit)
-    ) {
-      resetToNeutral(a, aStartX);
-      resetToNeutral(b, bStartX);
-      scored = false;
+    // Match mode: passivity (non-engagement, B1 clock + B2 penalty). Each fighter's no-offense
+    // clock (updated pre-events above) that has exceeded `limit` contactless ticks (strict `>` — the
+    // limit is the grace, so the foul fires on the limit+1-th) is a passivity foul. Runs AFTER yame
+    // + jogai: a reset from either already ZEROED both clocks (via resetToNeutral), so this check
+    // reads 0 and cannot double-fire — at most one reset (and one winGap check) per tick.
+    if (match?.passivity) {
+      const aPassive = a.ticksSinceOffense > match.passivity.limit;
+      const bPassive = b.ticksSinceOffense > match.passivity.limit;
+
+      if (aPassive || bPassive) {
+        // B2: per-fighter award on the SHARED penaltyCount ladder (A2's), identical to jogai — each
+        // fighter whose OWN clock exceeded is fouled: 1st free, 2+ ⇒ opponent +1 (both-passive ⇒
+        // mutual +1, net-zero). Fires independent of any same-tick score (only yame's reset pre-empts,
+        // via the clock-zeroing above); the shared counter means a warning already spent on jogai
+        // makes the first passivity foul cost.
+        if (aPassive) applyPenalty(a, b);
+        if (bPassive) applyPenalty(b, a);
+
+        // A passivity +1 can settle the bout — same winGap re-check as jogai (mutually exclusive per
+        // tick with the yame/jogai checks, so at most one endReason "gap" fires per tick).
+        if (Math.abs(a.points - b.points) >= match.winGap) {
+          ticks = tick + 1;
+          endReason = "gap";
+          break;
+        }
+
+        // Re-engage: zeroes the clocks again and clears the yame trigger (the exchange ended).
+        resetToNeutral(a, aStartX);
+        resetToNeutral(b, bStartX);
+        scored = false;
+      }
     }
   }
 

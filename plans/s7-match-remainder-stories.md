@@ -32,6 +32,18 @@ benchmark-adoption + spec-teaching slices.
   (2 fields join the read-surface list + JSON-schema enum; drift test green); penalty *prose*
   teaching deferred to D2. Single-slice plan file (`penalty-perception.md`) deleted (record in
   git/PR #99). **Capability A (jogai) is COMPLETE** (A1+A2+A3, PRs #97–#99).
+- **B1 — passivity clock + reset-on-contact + re-engage reset — ✅ DONE** (PR #100,
+  merged 2026-07-02; `main`@`66f6307`). Optional `FightConfig.match.passivity.limit` +
+  per-fighter `Fighter.ticksSinceOffense` (always present, init 0). Attacker-only reset
+  predicate `aOutcome !== null || aThrow !== null` (D1); increments every tick (D2);
+  stuffed/clash grabs still reset — reads `aThrow` not `aThrowFinal` (D3); fires on strict
+  `> limit` (D4); any re-engage (yame/jogai/passivity) zeros both clocks via `resetToNeutral`
+  (D5, gated on `match?.passivity`). Byte-identical absent `match.passivity` (field never
+  framed), replay-stable, swap-symmetric; **no DSL/TCB surface** (perception is B3/B4), no new
+  `endReason` (penalty is B2). 784 tests; scoped `sim.ts` mutation 14/14 = 100% (a T3-mirror
+  sole-fouler test killed the last `> limit` survivor). Single-slice plan file
+  (`passivity-clock.md`) deleted (record in git/PR #100). The B1 resolved-decisions section
+  below is retained as the design record.
 
 ## Parent
 
@@ -250,21 +262,114 @@ sit in officiating AFTER the yame + jogai blocks, fired post-`events.push` (A1 f
 jogai reset sites also zero the clocks (gated). Contact-reset reads `aThrow` (not `aThrowFinal`).
 `limit` lives in test fixtures — no canonical wiring in B1.
 
+## B2 — resolved decisions & acceptance criteria (find-gaps 2026-07-02)
+
+Confirmed before planning B2 (passivity feeds the shared penalty ladder). Feeds `planning`
+directly. **B2 scope:** turn B1's inert passivity re-engage into a real penalty on the **shared**
+`Fighter.penaltyCount` ladder (A2's) — NO new perception (B3/B4), NO new `endReason`.
+Byte-identical absent `match.passivity`.
+
+**Config/state:** unchanged from B1 — `FightConfig.match.passivity.limit` + per-fighter
+`Fighter.ticksSinceOffense`. B2 adds NO new config or state; it reuses A2's bout-persistent
+`Fighter.penaltyCount` (shared with jogai).
+
+**Resolved decisions (find-gaps):**
+
+- **D1 — per-fighter fouler, mutual net-zero** (Q1). When the passivity block fires, EACH fighter
+  whose OWN clock `> limit` is a fouler: `++penaltyCount`, and past the free warning (`> 1`) its
+  OPPONENT scores +1 — the identical per-fighter award as jogai (A2). Both idle ⇒ both clocks
+  exceed the same tick ⇒ mutual +1 (net-zero gap), a SINGLE `resetToNeutral(both)`. Swap-symmetric,
+  consistent with jogai's both-out AC-5.
+- **D2 — fire independently of a same-tick score** (Q2). B1's fire condition is UNCHANGED
+  (`ticksSinceOffense > limit`, no `scored` gate). A pure-defender that never commits an offense
+  (attacker-only, B1 D1) fouls even while being hit — so on a tick where a hit-point rose but yame
+  did NOT reset, the hit-point AND the passivity penalty both apply. ONLY yame's actual reset
+  (both-neutral) pre-empts passivity, via the D5 clock-zeroing — exactly as it pre-empts jogai.
+- **D3 — shared helper extracted now** (Q3). A2's inline award graduates to one shared
+  `applyPenalty(fouler, opponent)` (the ladder rule "1 free, then opponent +1"), called from BOTH
+  the jogai and passivity blocks. Pure extraction at the REFACTOR step (mutation confirms both call
+  sites first); jogai stays byte-identical.
+- **D4 — reuse `endReason "gap"`, re-check in block** (Q4). The passivity block gains the same
+  winGap re-check jogai has, AFTER the award: if the gap reaches `winGap`, end the bout,
+  `endReason "gap"`, winner = leader. NO new `endReason`. Mutually exclusive per tick with
+  yame/jogai (each reset zeroes clocks / snaps in-bounds ⇒ at most one reset AND at most one winGap
+  check per tick).
+
+**Cross-mechanic interaction (the headline — structurally guaranteed, an AC below):** jogai and
+passivity share ONE `penaltyCount`. Because at most one reset fires per tick (yame > jogai >
+passivity, each zeroing the clocks), a jogai foul and a passivity foul NEVER co-occur on the same
+tick — the interaction is SEQUENTIAL across ticks: a fighter that spent its free warning on a jogai
+retreat pays a point on its FIRST subsequent passivity foul (and vice-versa).
+
+**Acceptance criteria:**
+
+- **AC-1 — free first passivity foul.** Given `match.passivity.limit = L` and a fighter's clock on
+  its 1st `> L` fire of the bout (no prior foul of EITHER kind), When it fires, Then that fighter's
+  `penaltyCount` = 1, NEITHER fighter's `points` change (warning only), and both reset.
+- **AC-2 — 2nd+ passivity foul scores the opponent.** Given a fighter fouling passivity a 2nd (or
+  later) time (its `penaltyCount` already ≥ 1 from any source), When its clock fires, Then its
+  OPPONENT gains +1 point (visible in the NEXT tick's frame — awarded post-`events.push`, the
+  A1/A2 precedent) and both reset.
+- **AC-3 — shared free warning across mechanics.** Given a fighter already used its one free warning
+  on a jogai foul (`penaltyCount` = 1), When its FIRST passivity foul fires, Then its opponent
+  immediately scores +1 (no second free warning). Symmetric: passivity-first then a jogai foul also
+  costs.
+- **AC-4 — passivity penalty can end the match.** Given a passivity +1 makes the gap reach `winGap`,
+  Then the fight ends that tick, `endReason "gap"`, winner = the leader. (winGap re-checked inside
+  the passivity block after the award; at most one winGap check per tick.)
+- **AC-5 — both-passive same tick, swap-symmetric.** Given both clocks exceed `L` on the same tick,
+  Then each fighter's OWN prior foul count decides whether ITS opponent scores (both past the free
+  warning ⇒ mutual +1, net-zero gap; one still on its free warning ⇒ only the other opponent
+  scores), with a SINGLE reset and no spurious early-stop. Swap-symmetric.
+- **AC-6 — attacker-only + fire-independent** (from B1 D1 + D2). Given a pure-defender turtle that
+  only blocks/parries and never commits an offense, When its clock reaches `> L` even on a tick it
+  is being hit (a point rose but yame did not reset), Then it still fouls (opponent +1 past the free
+  warning) that tick — the hit-point and the passivity penalty both apply.
+- **AC-7 — yame pre-empts passivity.** Given a scored + both-neutral tick where a clock also sits
+  `> L`, Then the yame block resets first and (D5) zeroes both clocks, so the passivity check reads
+  0 and does NOT fire ⇒ no passivity penalty, single reset. Same when a jogai reset fires the same
+  tick.
+- **AC-8 — byte-identical absent, stable present.** Given `match.passivity` absent, Then replay is
+  byte-identical to pre-B2 (`penaltyCount` still only moved by jogai; no passivity award path
+  touched). Given `match.passivity` present, replay is stable and swap-symmetric.
+- **AC-9 — jogai unchanged by the extraction.** Given the shared-helper refactor, Then jogai's
+  observable behavior (A2's AC-1…AC-7) is byte-identical — the helper is a pure extraction of the
+  existing two-line award.
+
+**Implementation notes (not user-facing):** award in the passivity block, per-fighter, gated on each
+fighter's own `ticksSinceOffense > limit`; call the extracted `applyPenalty(fouler, opponent)` from
+both jogai and passivity. winGap re-check + `break "gap"` after the award, before the
+`resetToNeutral(both)`. Ladder constants (1 free, +1/foul) stay hardcoded/shared. `limit` stays
+test-fixture-only (no canonical wiring — that's D). No new `FIELD_READER`, no new `endReason`,
+`dsl.ts` TCB untouched.
+
 ## Next Step
 
-**Capability A (jogai) is COMPLETE** — A1 + A2 + A3 all DONE (PRs #97–#99; see Progress).
+**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **B1 (passivity clock)
+COMPLETE** (PR #100; see Progress). Branch `feat/passivity-penalty` is cut for the next slice.
 
-**Next: Capability B — passivity (non-engagement penalty).** Branch `feat/passivity-clock`
-is cut for **B1 — clock + reset-on-contact + re-engage reset** (the anti-stall metric spine,
-NO penalty/perception yet — those are B2/B3/B4). B1 adds an optional `FightConfig.match.passivity.limit`
-+ a per-fighter `ticksSinceOffense` clock reset **only on contact** (hit/block/parry/grab/sweep-connect
-— a whiff at air does NOT reset); exceeding `limit` ⇒ `resetToNeutral(both)` + reset both clocks.
-Byte-identical absent `match.passivity`; **no DSL surface in B1** (perception is B3/B4). B **reuses A2's
-shared `Fighter.penaltyCount` ladder** (why jogai came first). Officiating order (design §7a): resolve
-combat → update clocks (passivity, jogai edge-detect) → `events.push` → apply penalties → at most one
-`resetToNeutral(both)` → one `winGap` check. After B: **C** (tie-resolution) → **D** (benchmark + spec).
+**Next: B2 — passivity feeds the shared penalty ladder.** The passivity *value*: a
+`ticksSinceOffense > limit` foul (B1's now-inert re-engage) becomes a real penalty by
+incrementing the **shared `Fighter.penaltyCount`** (A2's ladder) — 1st foul free, 2+ ⇒
+opponent +1 point → existing `winGap` re-check (`endReason "gap"`), then `resetToNeutral(both)`.
+Because jogai and passivity **share** `penaltyCount`, a fighter that already burned its free
+warning on a jogai retreat pays a point on its **first** passivity foul (and vice-versa) —
+that cross-mechanic interaction is B2's key new behavior to pin. Byte-identical absent
+`match.passivity`; still **no DSL surface** (perception is B3/B4).
+
+Officiating order (design §7a, the swap-symmetry contract): resolve combat → update clocks
+(passivity, jogai edge-detect) → `events.push` → apply penalties → at most one
+`resetToNeutral(both)` → one `winGap` check. B2 folds the passivity award into that same
+penalty/winGap path A2 established — the natural moment to extract A2's inline award into a
+shared helper (deferred there by YAGNI; passivity is now the second consumer).
+
+After B2: **B3** (`self.passivityRemaining` live read — also completes B1's throw-term
+behavioral verification) → **B4** (`opponent.passivityRemaining`, `L_act`-delayed) → **C**
+(tie-resolution) → **D** (benchmark + spec).
 
 Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
-(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. B1 still needs a
-`find-gaps`/`planning` pass (the subtle "reset-on-contact only" metric — what counts as *contact*)
-before RED.
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **B2's `find-gaps`
+pass is DONE** (2026-07-02) — see the "B2 — resolved decisions & acceptance criteria" section above
+(D1–D4, AC-1…AC-9): per-fighter mutual-net-zero award (D1), fire independently of a same-tick score
+(D2), extract a shared `applyPenalty` helper (D3), reuse `endReason "gap"` (D4); the shared-free-
+warning interaction is captured as AC-3. **Next: `planning` B2** into PR-sized slices.
