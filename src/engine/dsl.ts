@@ -31,6 +31,7 @@ export type FieldPath =
   | "self.finishWindow"
   | "self.stamina"
   | "self.gassed"
+  | "self.penalties"
   | "opponent.x"
   | "opponent.y"
   | "opponent.facing"
@@ -45,6 +46,7 @@ export type FieldPath =
   | "opponent.stamina"
   | "opponent.gassed"
   | "opponent.points"
+  | "opponent.penalties"
   | "ring.width"
   | "clock.tick"
   | "clock.ticksRemaining";
@@ -106,6 +108,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "self.finishWindow": (s) => s.self.finishWindow,
   "self.stamina": (s) => s.self.stamina,
   "self.gassed": (s) => s.self.gassed,
+  "self.penalties": (s) => s.self.penalties,
   "opponent.x": (s) => s.opponent.x,
   "opponent.y": (s) => s.opponent.y,
   "opponent.facing": (s) => s.opponent.facing,
@@ -120,6 +123,7 @@ const FIELD_READERS: Record<FieldPath, (s: State) => number> = {
   "opponent.stamina": (s) => s.opponent.stamina,
   "opponent.gassed": (s) => (s.opponent.gassed ? 1 : 0),
   "opponent.points": (s) => s.opponent.points,
+  "opponent.penalties": (s) => s.opponent.penalties,
   "ring.width": (s) => s.ring.width,
   "clock.tick": (s) => s.clock.tick,
   "clock.ticksRemaining": (s) => s.clock.ticksRemaining,

@@ -42,6 +42,7 @@ export type SelfState = {
   finishWindow: number; // okizeme finish-window ticks left on the LIVE opponent's knockdown (C8; live, 0 = can't finish — not downed, or in i-frames)
   stamina: number; // C10 conditioning meter (live self-proprioception); 0 when no meter is configured (the inactive sentinel)
   gassed: number; // C10 derived gas tell (live): 1 iff stamina ≤ gasThreshold, else 0 (also 0 when no threshold/meter — the inert sentinel)
+  penalties: number; // shared jogai/passivity warning count (live scoreboard, like points); 0 = none
 };
 
 export type OpponentState = {
@@ -59,6 +60,7 @@ export type OpponentState = {
   stamina: number; // perceived conditioning meter (C10 Story 4; action ⇒ L_act-delayed; 0 = no meter, the inert sentinel)
   gassed: boolean; // perceived gas tell (C10 Story 4): delayed stamina ≤ gasThreshold (false = not gassed / no threshold)
   points: number; // live scoreboard read — the opponent's WKF points, exposed with ZERO perception delay (a scoreboard fact, not a body-perception tell; sourced from the live opponent, never the ring buffer)
+  penalties: number; // live scoreboard read — the opponent's shared jogai/passivity warning count, ZERO perception delay (public fact, off the live opponent, never the ring buffer)
 };
 
 export type RingState = { width: number };
