@@ -5,6 +5,17 @@ benchmark match-structure (PRs #87–#93) — additive slices, each byte-identic
 when its `match` config key is absent + replay-stable, with downstream
 benchmark-adoption + spec-teaching slices.
 
+## Progress
+
+- **A1 — jogai out-zone detection + reset — ✅ DONE** (PR #97, merged 2026-07-01;
+  `main`@`30e0288`). Optional `FightConfig.match.jogai.margin` over the unchanged
+  hard clamp; on-entry edge-detect (in→out) fires `resetToNeutral(both)`; `wasInBounds`
+  trackers re-armed post-reset (+ robust B1 init from start position); yame pre-empts
+  jogai same-tick, a prior score stands. Byte-identical absent `match.jogai`, replay-stable,
+  swap-symmetric. NO penalty/points/perception yet. Single-slice plan file deleted (record
+  in git/PR #97).
+- **A2 — jogai warning-ladder penalty — ⏭ NEXT.**
+
 ## Parent
 
 **Actor:** the match officiating layer that scores an LLM-authored bot (and,
@@ -109,10 +120,54 @@ and passivity slice builds on this reset/edge-detect spine.
   precedent's discipline), plus mutation on the changed `sim.ts`/`dsl.ts`/
   `gen-spec.ts` regions.
 
+## A2 — resolved decisions & acceptance criteria (find-gaps 2026-07-02)
+
+Confirmed before planning A2 (jogai warning-ladder penalty). Feeds `planning` directly.
+
+**Observability contract (decision):** penalties are observed **via `points` + reset only** — a
+paid foul shows as the opponent's `points` / `scores` / `winner` / `endReason`; a free warning
+shows as a `resetToNeutral` with **no** point delta. **No** new `FightEvent` / `FightResult` field
+this slice (stays byte-identical; all penalty surfacing waits for A3's DSL reads). "jogai
+`FightEvent`" in the table = the existing per-tick frame, not a new event type.
+
+**Acceptance criteria (design-resolved, §7a):**
+
+- **AC-1 — free first foul.** Given `match.jogai.margin` set and a fighter on its 1st out-zone
+  crossing of the bout, When it crosses in→out, Then both reset to start, that fighter's
+  `penaltyCount` = 1, and **neither** fighter's `points` change (warning only).
+- **AC-2 — 2nd+ foul scores the opponent.** Given a fighter on its 2nd (or later) crossing, When it
+  crosses out, Then its **opponent** gains +1 point and both reset. (The point appears in the
+  **next** tick's frame — awarded after `events.push`, per A1's reset precedent.)
+- **AC-3 — penalty can end the match.** Given enough retreats that a jogai +1 makes the gap reach
+  `winGap`, Then the fight ends that tick, `endReason "gap"`, winner = the leading fighter. (winGap
+  re-checked inside the jogai block after the award; mutually exclusive with the yame block's check
+  ⇒ at most one per tick.)
+- **AC-4 — per-fighter counters, bout-persistent.** Each fighter has its own `penaltyCount` (generic
+  name — passivity B2 will share it); it persists across every yame/jogai reset (like `points`),
+  never reset mid-bout.
+- **AC-5 — both-out same tick.** Given both fighters cross out on the same tick, Then each fighter's
+  OWN foul history decides whether ITS opponent scores (both past the free warning ⇒ mutual +1,
+  net-zero gap; one still on its free warning ⇒ only the other opponent scores), with a **single**
+  reset and no spurious early-stop. (Swap-symmetric.)
+- **AC-6 — yame pre-empts jogai.** Given the rare both-neutral + scored + out tick, Then the yame
+  block resets first (snapping the offender in-bounds), so jogai does **not** fire ⇒ **no** penalty
+  awarded, single reset.
+- **AC-7 — byte-identical absent config.** Given `match.jogai` absent, Then replay is byte-identical
+  to pre-A2 (the new `penaltyCount` field is never touched and never enters a frame). Given
+  `match.jogai` present, replay is stable and swap-symmetric.
+
+**Implementation notes (not user-facing):** award inline in the jogai block; field named
+`penaltyCount` (generic) but extract a shared award helper only when passivity (B2) arrives (YAGNI).
+Ladder constants (1 free warning, +1 pt/foul) hardcoded — `margin` stays the only `jogai` config. A1
+tests that cross ≥2 times and asserted "points unchanged" get updated (the 2nd crossing now scores).
+
 ## Next Step
 
-Plan the selected first slice with `planning` (default: **A1**). Optionally run
-`find-gaps` on this split first, or pick the **C1 (senshu) bargain** to plan
-instead. Each planned implementation slice must run the full
+A1 is DONE (see Progress). Plan **A2 — jogai warning-ladder penalty** with `planning`:
+shared per-fighter `penaltyCount` (generic, reused later by passivity); 1st out-zone
+foul is a free warning, 2+ ⇒ opponent **+1 point** feeding the existing `winGap`
+(endReason `"gap"`); `winGap` re-checked at the jogai boundary; a jogai `FightEvent`.
+Defers perception (`self`/`opponent.penalties` → A3). Optionally run `find-gaps` on
+the A2 plan first. Each planned implementation slice must run the full
 RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle (`tdd` + `testing` +
 `mutation-testing` + `refactoring`) before code changes.
