@@ -378,6 +378,36 @@ generating code; flag any change that would.
   fixed gauntlet), the **HTTP API** (`/spec` / `/validate` / `/fight`), the `vulture` parry→counter
   gauntlet-rebalance story (carried by the match-structure entry), and a true cold-model dogfood (the
   implementing agent has codebase knowledge, so its "cold" authoring is an imperfect proxy).
+- DONE (**senshu first-blood tiebreak — Capability C story C1, PRs #104–#105**): the WKF *senshu* rule
+  that decisively resolves a LEVEL bout at the tick cap, closing the benchmark's `"draw"` gap. Behind an
+  optional `FightConfig.match.senshu?: boolean` — a **scoring-layer** param, NOT in `Rules`/`CANONICAL_RULES`
+  (so `npm run fight` is unaffected); absent ⇒ **byte-identical**. **No DSL/TCB surface** (`dsl.ts`
+  untouched — `self`/`opponent.senshu` perception is the deferred C3); **no `docs/spec.md` change** (the
+  win/draw prose + `Match` extension are deferred to Capability D). Two additive slices: **C1a** (PR #104)
+  the first-blood **latch** — a bout-level `senshuHolder: "undecided" | "A" | "B" | "none"` as a `runFight`
+  local (outside `resetToNeutral`'s scope ⇒ survives every yame/jogai/passivity reset, no new per-fighter
+  field), decided the first tick a fighter's **technique** points rise; reads the pre-existing per-tick
+  technique delta (`a.points > aPointsBefore`) **before** the jogai/passivity penalty blocks ⇒ a penalty
+  point never confers; a solo first-scorer holds senshu, a simultaneous first ⇒ `none` (permanent, not
+  transferred); the terminal tally rewrites a `"draw"` → the holder with `FightResult.endReason "senshu"`
+  — only when the bout is LEVEL (a points/gap winner is untouched); 818 tests, `sim.ts` mutation 39/40.
+  **C1b** (PR #105) the WKF **revocation** coupling — a holder that commits its OWN jogai or passivity
+  foul (incl. the free 1st warning) loses senshu → `none` (not transferred); a non-holder's foul leaves it
+  intact; four guarded lines added to the existing jogai + passivity penalty blocks right after
+  `applyPenalty`, so the combat-phase latch precedes the penalty-phase revoke (⇒ a same-tick score+foul
+  latches then revokes → `none`); penalty-never-confers falls out of C1a's pre-penalty latch placement
+  (characterized, not newly coded); killing the passivity Conditional/Logical mutants required an
+  **isolated** (non-mutual) passivity foul fixture (`ATTACKER` vs a `scoreThenBlock` guard — the B2
+  attacker-only-reset isolation), since natural both-idle fixtures only produce *mutual* fouls where
+  `&&`/`||` and the holder-check are indistinguishable; 832 tests, `sim.ts` revocation-line mutation 24/28.
+  The mutation survivors across both slices are the **same equivalent class**: the `"none" → ""` StringLiteral
+  — `senshuHolder` is only ever read via `=== "undecided"/"A"/"B"` (the latch guard + terminal tally), so
+  `""` is observationally indistinguishable from `"none"`; every dangerous mutant is killed (always-revoke,
+  drop-holder-check, wrong-fighter, `&&`→`||`, statement-removal). All absent-config invariants hold:
+  `match.senshu` absent ⇒ byte-identical; jogai/passivity configured but no foul ⇒ byte-identical;
+  swap-symmetric; replay-stable. **Capability C is partially done**: C1 (senshu) COMPLETE; **C2
+  (sudden-death overtime)** and the C3/C4 perception + Capability D benchmark/spec adoption remain (per
+  `plans/s7-match-remainder-stories.md`).
 - ROADMAP (C9 + C10 + LLM benchmark v1 + benchmark match structure COMPLETE): the still-unresolved **air-actions** (air
   strikes / horizontal jump displacement) and the **rest of §7 match structure** (jogai / passivity /
   rounds, beyond the benchmark's yame + win condition) — `grill-me` → `planning` → TDD. (C9, the
