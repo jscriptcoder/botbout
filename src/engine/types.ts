@@ -43,6 +43,7 @@ export type SelfState = {
   stamina: number; // C10 conditioning meter (live self-proprioception); 0 when no meter is configured (the inactive sentinel)
   gassed: number; // C10 derived gas tell (live): 1 iff stamina ≤ gasThreshold, else 0 (also 0 when no threshold/meter — the inert sentinel)
   penalties: number; // shared jogai/passivity warning count (live scoreboard, like points); 0 = none
+  passivityRemaining: number; // B3: ticks until the passivity foul (live self-proprioception); max(0, limit − ticksSinceOffense), 0 = foul imminent / no passivity configured (the sentinel)
 };
 
 export type OpponentState = {

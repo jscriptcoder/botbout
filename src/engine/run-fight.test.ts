@@ -5654,7 +5654,9 @@ describe("runFight — jogai (out-zone resets, story A1)", () => {
     expect(result.events[26].a.x).toBe(196000); // both reset + one step
     expect(result.events[26].b.x).toBe(404000);
     // Mirror images about the centre — the same-tick double crossing is swap-symmetric.
-    expect(result.events[26].a.x + result.events[26].b.x).toBe(rules.ring.width);
+    expect(result.events[26].a.x + result.events[26].b.x).toBe(
+      rules.ring.width,
+    );
   });
 
   // The tracker re-arms after a reset: A crosses out at tick 25 (reset visible tick 26),
@@ -5782,7 +5784,11 @@ describe("runFight — jogai (out-zone resets, story A1)", () => {
   // B2: jogai fires independently mid-exchange (the scorer is still committed, so yame's
   // both-neutral condition is not met) and a point scored earlier STANDS through the reset.
   it("fires while a point scored earlier in the exchange stands (B2)", () => {
-    const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+    const ATTACKER = bot([], {
+      type: "attack",
+      move: "gyaku-zuki",
+      band: "mid",
+    });
 
     // margin 180000 ⇒ legal [180000,420000]; both start in-bounds. B hits A at tick 4
     // (gap 220000 ≤ reach 250000), scoring 1 while B enters recovery. A steps out at tick 5
@@ -5920,7 +5926,9 @@ describe("runFight — jogai warning-ladder penalty (story A2)", () => {
     // A single reset, symmetric about the ring centre (positions unaffected by the award).
     expect(result.events[52].a.x).toBe(196000);
     expect(result.events[52].b.x).toBe(404000);
-    expect(result.events[52].a.x + result.events[52].b.x).toBe(rules.ring.width);
+    expect(result.events[52].a.x + result.events[52].b.x).toBe(
+      rules.ring.width,
+    );
   });
 
   // AC-3 (arithmetic guard): equal penalty scores keep the GAP at 0, so the match must NOT end
@@ -5999,7 +6007,10 @@ describe("runFight — jogai penalty perception (story A3)", () => {
   // AC-1: a bot branches on its OWN foul count. Retreat by default; once self.penalties >= 1, do a
   // distinctive crouch — the action can only flip by reading self.penalties.
   it("lets a bot read self.penalties and act on its own foul count", () => {
-    const READER = bot([crouchWhen("self.penalties")], { type: "move", dir: -1 });
+    const READER = bot([crouchWhen("self.penalties")], {
+      type: "move",
+      dir: -1,
+    });
 
     const result = runFight(
       getMockConfig({
@@ -6056,7 +6067,10 @@ describe("runFight — jogai penalty perception (story A3)", () => {
   // AC-4: absent match.jogai, penaltyCount never rises ⇒ self.penalties reads the sentinel 0 ⇒ the
   // crouch rule never fires (the bot just retreats). No jogai ⇒ no penalty surface effect.
   it("reads the sentinel 0 when jogai is unconfigured", () => {
-    const READER = bot([crouchWhen("self.penalties")], { type: "move", dir: -1 });
+    const READER = bot([crouchWhen("self.penalties")], {
+      type: "move",
+      dir: -1,
+    });
 
     const result = runFight(
       getMockConfig({ botA: READER, botB: IDLE, maxTicks: 30 }),
@@ -6170,7 +6184,11 @@ describe("runFight — passivity clock (story B1)", () => {
         botA: RETREATER,
         botB: IDLE,
         maxTicks: 35,
-        match: { winGap: 99, jogai: { margin: 100000 }, passivity: { limit: 30 } },
+        match: {
+          winGap: 99,
+          jogai: { margin: 100000 },
+          passivity: { limit: 30 },
+        },
       }),
     );
 
@@ -6336,7 +6354,11 @@ describe("runFight — passivity penalty (story B2)", () => {
         botA: retreatUntilPenalized,
         botB: IDLE,
         maxTicks: 12,
-        match: { winGap: 99, jogai: { margin: 190000 }, passivity: { limit: 5 } },
+        match: {
+          winGap: 99,
+          jogai: { margin: 190000 },
+          passivity: { limit: 5 },
+        },
       }),
     );
 
@@ -6412,5 +6434,224 @@ describe("runFight — passivity penalty (story B2)", () => {
     };
 
     expect(runFight(penalising).events).toEqual(runFight(penalising).events);
+  });
+});
+
+describe("runFight — self passivity read (story B3)", () => {
+  // B3 exposes self.passivityRemaining — a LIVE countdown to the passivity foul,
+  // max(0, limit − ticksSinceOffense). viewFor runs at the loop TOP (before the tick's clock
+  // increment), so a never-connecting fighter reads limit − T at tick T (until the foul at tick =
+  // limit resets it). The field is NOT framed, so it is observed the only reset- and
+  // commitment-independent way: a bot GATES a distinctive action on the field, and the frame records
+  // that CHOSEN action (events[T].a.action = "the bot's RETURNED action, honoured or not"). Same
+  // harness as B1/B2: ring 600000, walkSpeed 4000, startGap 200000; gyaku-zuki startup 4 / active 2 /
+  // recovery 6, reach 250000.
+
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+  const STEP: Action = { type: "move", dir: -1 }; // distinct from idle; a retreat never connects
+  const ATTACK: Action = { type: "attack", move: "gyaku-zuki", band: "mid" };
+
+  type Cmp = "eq" | "lte" | "gt";
+
+  // A bot that returns `act` when the countdown satisfies `op value`, else idles.
+  const onRemaining = (op: Cmp, value: number, act: Action = STEP): BotDoc => {
+    const when: BoolExpr = {
+      op,
+      args: [
+        { op: "field", path: "self.passivityRemaining" },
+        { op: "const", value },
+      ],
+    };
+
+    return bot([{ when, do: act }], { type: "idle" });
+  };
+
+  // AC-1 (countdown value) + AC-2 (restart with the clock). A bot steps only when the countdown reads
+  // exactly 6; with limit 10 that is tick 4 (10 − 4) in the FIRST cycle. The mutual passivity foul at
+  // tick 10 resets both clocks, so the countdown RESTARTS — the same == 6 gate fires again in the
+  // SECOND cycle at tick 15 (11 + (10 − 6)). Neighbouring ticks stay idle. Pins the subtraction +
+  // direction (kills limit + clock / clock − limit) and the restart-with-the-clock.
+  it("reads a live countdown that decrements each contactless tick and restarts on a re-engage", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: onRemaining("eq", 6),
+        botB: IDLE,
+        maxTicks: 17,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[3].a.action).toEqual({ type: "idle" }); // remaining 7
+    expect(result.events[4].a.action).toEqual(STEP); // remaining 6 (cycle 1)
+    expect(result.events[5].a.action).toEqual({ type: "idle" }); // remaining 5
+    expect(result.events[14].a.action).toEqual({ type: "idle" }); // remaining 7 (cycle 2)
+    expect(result.events[15].a.action).toEqual(STEP); // remaining 6 again ⇒ countdown restarted after the tick-10 reset
+  });
+
+  // AC-1 / AC-4 (foul-imminent reads exactly 0). With limit 5 the countdown reaches 0 at tick 5 — the
+  // tick the foul fires (events.push precedes the reset, so the chosen action is still recorded). The
+  // == 0 gate steps there and not earlier. Kills Math.max(0, X) → Math.max(1, X): under that mutant
+  // tick 5 would read 1, not 0, so the step would not fire.
+  it("reads exactly 0 on the foul-imminent tick (kills the max(0,·) → max(1,·) mutant)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: onRemaining("eq", 0),
+        botB: IDLE,
+        maxTicks: 7,
+        match: { winGap: 99, passivity: { limit: 5 } },
+      }),
+    );
+
+    expect(result.events[4].a.action).toEqual({ type: "idle" }); // remaining 1
+    expect(result.events[5].a.action).toEqual(STEP); // remaining 0 ⇒ connect-or-foul this tick
+  });
+
+  // AC-5 (sentinel 0 when unconfigured). With no passivity key the clock is never simulated, so the
+  // countdown reads the inert sentinel 0 every tick: an == 0 gate fires from tick 0 onward, while a
+  // > 0 gate never fires. Kills the config ternary → true (which would dereference an absent
+  // match.passivity.limit and throw).
+  it("reads the sentinel 0 every tick when no passivity is configured", () => {
+    const base = getMockConfig({
+      botB: IDLE,
+      maxTicks: 5,
+      match: { winGap: 99 },
+    });
+
+    const alwaysZero = runFight({ ...base, botA: onRemaining("eq", 0) });
+    expect(alwaysZero.events[0].a.action).toEqual(STEP);
+    expect(alwaysZero.events[4].a.action).toEqual(STEP);
+
+    const neverPositive = runFight({ ...base, botA: onRemaining("gt", 0) });
+    expect(neverPositive.events[0].a.action).toEqual({ type: "idle" });
+    expect(neverPositive.events[4].a.action).toEqual({ type: "idle" });
+  });
+
+  // AC-3 (a throw's grab resets the clock — completes B1's throw-term verification). Throw config:
+  // startup 2 ⇒ grab-active at tick 2, reach 250000, score 3.
+  const throwRules = (o: Partial<Rules> = {}): Rules =>
+    getMockRules({
+      startGap: 200000,
+      knockdownDuration: 6,
+      throw: { startup: 2, active: 1, recovery: 3, reach: 250000, score: 3 },
+      ...o,
+    });
+
+  // Throws at tick 0, then steps once the countdown reads `limit` again (i.e. the clock was zeroed).
+  const throwThenWatch = (limit: number): BotDoc =>
+    bot(
+      [
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "clock.tick" },
+              { op: "const", value: 0 },
+            ],
+          },
+          do: { type: "throw" },
+        },
+        {
+          when: {
+            op: "eq",
+            args: [
+              { op: "field", path: "self.passivityRemaining" },
+              { op: "const", value: limit },
+            ],
+          },
+          do: STEP,
+        },
+      ],
+      { type: "idle" },
+    );
+
+  it("restarts the countdown when the fighter's own throw goes grab-active (completes B1's throw-reset term)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules(),
+        botA: throwThenWatch(10),
+        botB: IDLE,
+        maxTicks: 6,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[2].a.points).toBe(3); // the grab connected ⇒ aThrow was live (setup valid)
+    expect(result.events[3].a.action).toEqual(STEP); // remaining == limit ⇒ the grab reset the clock
+    expect(result.events[4].a.action).toEqual({ type: "idle" }); // remaining 9 ⇒ a single reset
+  });
+
+  // AC-3 (a STUFFED grab still resets — reads aThrow, not aThrowFinal). Throw startup 4 lines the
+  // grab-active tick up with the ATTACKER's gyaku-zuki active window (ticks 4–5): at tick 4 the strike
+  // HITs the thrower and STUFFS the grab (strike > throw) ⇒ the grab is voided, yet the clock still
+  // resets because the reset reads the pre-precedence aThrow. The == limit gate fires at tick 5.
+  it("restarts the countdown even when the grab is stuffed by a strike (reads aThrow, not aThrowFinal)", () => {
+    const result = runFight(
+      getMockConfig({
+        rules: throwRules({
+          throw: {
+            startup: 4,
+            active: 1,
+            recovery: 3,
+            reach: 250000,
+            score: 3,
+          },
+        }),
+        botA: throwThenWatch(10),
+        botB: ATTACKER, // strike active ticks 4–5 stuffs the tick-4 grab
+        maxTicks: 7,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[4].a.points).toBe(0); // A's throw was stuffed ⇒ no grab score ...
+    expect(result.events[4].b.points).toBe(1); // ... and B's strike hit A (the stuff happened)
+    expect(result.events[5].a.action).toEqual(STEP); // remaining == limit ⇒ the STUFFED grab still reset the clock
+  });
+
+  // AC-6 (the read is actionable — self-timed forced engagement). A bot idles until the countdown
+  // reaches 5, then commits a strike. With limit 12 that is tick 7 (12 − 5); the strike (startup 4)
+  // connects at tick 11 — an EFFECTIVE engagement that scores and resets the clock, so the fighter
+  // avoids the foul it would take at tick 12 by idling.
+  it("lets a bot time an effective engagement off the countdown (avoids the foul an idler would take)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: onRemaining("lte", 5, ATTACK),
+        botB: IDLE,
+        maxTicks: 15,
+        match: { winGap: 99, passivity: { limit: 12 } },
+      }),
+    );
+
+    expect(result.events[6].a.action).toEqual({ type: "idle" }); // remaining 6 > 5 ⇒ not yet
+    expect(result.events[7].a.action).toEqual(ATTACK); // remaining 5 ⇒ commit the timed engagement
+    expect(result.events[11].a.points).toBe(1); // the strike connected ⇒ an effective (clock-resetting) engagement
+  });
+
+  // AC-7 (replay-stable): a passivity fight whose bot reads the field is deterministic.
+  it("is replay-stable when the bot reads the passivity countdown", () => {
+    const cfg = getMockConfig({
+      botA: onRemaining("eq", 6),
+      botB: IDLE,
+      maxTicks: 17,
+      match: { winGap: 99, passivity: { limit: 10 } },
+    });
+
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  // AC-7 (swap-symmetric): the countdown is served to the B-slot fighter identically (viewFor runs for
+  // both) — the same == 6 gate fires on B at ticks 4 and 15 with the roles swapped.
+  it("serves the countdown to the B-slot fighter identically (swap-symmetric)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: IDLE,
+        botB: onRemaining("eq", 6),
+        maxTicks: 17,
+        match: { winGap: 99, passivity: { limit: 10 } },
+      }),
+    );
+
+    expect(result.events[4].b.action).toEqual(STEP);
+    expect(result.events[15].b.action).toEqual(STEP);
   });
 });

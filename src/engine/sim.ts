@@ -253,6 +253,7 @@ const viewFor = (
   rules: Rules,
   tick: number,
   maxTicks: number,
+  match: FightConfig["match"],
 ): State => {
   const st = self.state;
 
@@ -269,6 +270,13 @@ const viewFor = (
   const finishWindow =
     oppLive.state.kind === "downed" ? oppLive.state.finish : 0;
 
+  // Live countdown to the passivity foul (B3): the clock counts UP to `limit`, so remaining =
+  // limit − clock; 0 = "connect this tick or foul". Config-gated — sentinel 0 when passivity is
+  // unconfigured (the value can't depend on match at the TCB boundary; only here in viewFor).
+  const passivityRemaining = match?.passivity
+    ? Math.max(0, match.passivity.limit - self.ticksSinceOffense)
+    : 0;
+
   return {
     self: {
       x: self.x,
@@ -282,8 +290,13 @@ const viewFor = (
       stamina: self.stamina, // live — the conditioning meter is self-proprioception (C10)
       gassed: gassed(self, rules) ? 1 : 0, // live — the derived gas tell (C10 Story 3): 1 iff at/below the gas line
       penalties: self.penaltyCount, // live — the shared jogai/passivity warning count is self-proprioception (A3)
+      passivityRemaining, // live — the countdown to the passivity foul (B3), derived above
     },
-    opponent: { ...opponent, points: oppLive.points, penalties: oppLive.penaltyCount }, // points + penalties are LIVE scoreboard reads off the true opponent (zero latency, like self.points / clock.tick)
+    opponent: {
+      ...opponent,
+      points: oppLive.points,
+      penalties: oppLive.penaltyCount,
+    }, // points + penalties are LIVE scoreboard reads off the true opponent (zero latency, like self.points / clock.tick)
     ring: { width: rules.ring.width },
     clock: { tick, ticksRemaining: maxTicks - tick },
   };
@@ -966,14 +979,14 @@ export function runFight(cfg: FightConfig): FightResult {
     // 2. Both fighters decide against one immutable pre-tick snapshot.
     const aAction = runTick(
       botA,
-      viewFor(a, aOpp, b, rules, tick, maxTicks),
+      viewFor(a, aOpp, b, rules, tick, maxTicks, match),
       a.mem,
       rules,
     );
 
     const bAction = runTick(
       botB,
-      viewFor(b, bOpp, a, rules, tick, maxTicks),
+      viewFor(b, bOpp, a, rules, tick, maxTicks, match),
       b.mem,
       rules,
     );

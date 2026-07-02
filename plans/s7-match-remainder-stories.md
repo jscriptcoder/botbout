@@ -26,10 +26,10 @@ benchmark-adoption + spec-teaching slices.
   (own bout foul count) + `opponent.penalties` (the foe's), both zero-delay off the live
   fighter (like `opponent.points`, NOT the `L_act` ring buffer); `SelfState`/`OpponentState`
   gain `penalties`, the delayed `viewFor`/perceive types widened to `Omit<…, "points" |
-  "penalties">`. Byte-identical absent `match.jogai` (sentinel `0`), live zero-delay,
+"penalties">`. Byte-identical absent `match.jogai` (sentinel `0`), live zero-delay,
   interpreter stays 100% (static entries, no new branch). 776 tests; fresh scoped mutation
   17/17 = 100% (`sim.ts:277-279` 1/1, `dsl.ts:111-126` 16/16). `docs/spec.md` regenerated
-  (2 fields join the read-surface list + JSON-schema enum; drift test green); penalty *prose*
+  (2 fields join the read-surface list + JSON-schema enum; drift test green); penalty _prose_
   teaching deferred to D2. Single-slice plan file (`penalty-perception.md`) deleted (record in
   git/PR #99). **Capability A (jogai) is COMPLETE** (A1+A2+A3, PRs #97–#99).
 - **B1 — passivity clock + reset-on-contact + re-engage reset — ✅ DONE** (PR #100,
@@ -44,6 +44,20 @@ benchmark-adoption + spec-teaching slices.
   sole-fouler test killed the last `> limit` survivor). Single-slice plan file
   (`passivity-clock.md`) deleted (record in git/PR #100). The B1 resolved-decisions section
   below is retained as the design record.
+- **B2 — passivity feeds the shared penalty ladder — ✅ DONE** (PR #101, merged 2026-07-02;
+  `main`@`6e43bec`). B1's inert passivity re-engage becomes a real penalty on the **shared**
+  `Fighter.penaltyCount` (A2's ladder): each fighter whose OWN clock `> limit` fouls — 1st free,
+  2+ ⇒ opponent +1 (D1, per-fighter mutual net-zero; both-idle ⇒ mutual +1); fires independent of
+  a same-tick score (D2 — only yame's both-neutral reset pre-empts, via B1's D5 clock-zeroing);
+  same `winGap` re-check → `endReason "gap"` before the reset (D4, at most one check/tick). A2's
+  inline award graduated to a shared `applyPenalty(fouler, opponent)` called from BOTH the jogai
+  and passivity blocks (D3, pure REFACTOR-step extraction — jogai byte-identical). The headline
+  cross-mechanic behavior: a warning spent on jogai makes the FIRST passivity foul cost (shared
+  counter). Byte-identical absent `match.passivity`, replay-stable, swap-symmetric; **no DSL/TCB
+  surface** (perception is B3/B4), no new `endReason`. 791 tests; scoped `sim.ts` mutation 100%
+  (passivity block + `applyPenalty` helper 29/29, jogai call site 4/4). Single-slice plan file
+  (`passivity-penalty.md`) deleted (record in git/PR #101). The B2 resolved-decisions section below
+  is retained as the design record.
 
 ## Parent
 
@@ -70,7 +84,7 @@ its config key.
 **A1 — a fighter that retreats into the out-zone triggers a yame reset back to
 center** (boundary geometry + on-entry edge-detect + reset; no penalty yet).
 
-Why this first: it burns the single biggest *architecture risk* of the whole
+Why this first: it burns the single biggest _architecture risk_ of the whole
 feature — reading a new officiating boundary (`[margin, width−margin]`) over the
 existing hard positional clamp and firing the reset path — as a clean tracer,
 independent of the penalty ladder. End-to-end and demonstrable; every later jogai
@@ -80,36 +94,36 @@ and passivity slice builds on this reset/edge-detect spine.
 
 ### Capability A — Jogai (ring-out penalty)
 
-| Slice | Value | Includes | Defers | Acceptance Examples | Release |
-|---|---|---|---|---|---|
-| **A1** out-zone detection + reset | Proves the boundary read + reset spine; de-risks geometry | `match.jogai.margin`; legal `[margin, width−margin]`; on-entry edge-detect (in-bounds→out); `resetToNeutral` both; `was-in-bounds` tracker set true post-reset | Penalty, points, warnings, perception | Given `margin` set, When A walks past `margin`, Then both reset to start that tick (points unchanged). Given absent `match.jogai`, Then byte-identical replay | Shippable (inert without config) |
-| **A2** warning-ladder penalty | The jogai *value*: retreat costs points | Shared per-fighter `penaltyCount` (generic, reused by passivity); 1st foul free, 2+ ⇒ opponent +1 → existing `winGap`; `winGap` re-check at the jogai boundary (endReason `"gap"`); jogai `FightEvent` | Perception fields | Given A's 1st out-zone entry, Then warning only (0 pts). Given A's 2nd, Then B +1 pt + reset. Given enough retreats, Then B wins on `winGap` | Shippable |
-| **A3** penalty perception | Bots can read the shared warning count | `self.penalties` + `opponent.penalties` (live scoreboard `FIELD_READERS`, like `opponent.points`); interpreter stays 100% | Passivity/senshu reads | Given A has 1 warning, Then A's bot reads `self.penalties==1` and B reads `opponent.penalties==1` | Shippable |
+| Slice                             | Value                                                     | Includes                                                                                                                                                                                               | Defers                                | Acceptance Examples                                                                                                                                           | Release                          |
+| --------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **A1** out-zone detection + reset | Proves the boundary read + reset spine; de-risks geometry | `match.jogai.margin`; legal `[margin, width−margin]`; on-entry edge-detect (in-bounds→out); `resetToNeutral` both; `was-in-bounds` tracker set true post-reset                                         | Penalty, points, warnings, perception | Given `margin` set, When A walks past `margin`, Then both reset to start that tick (points unchanged). Given absent `match.jogai`, Then byte-identical replay | Shippable (inert without config) |
+| **A2** warning-ladder penalty     | The jogai _value_: retreat costs points                   | Shared per-fighter `penaltyCount` (generic, reused by passivity); 1st foul free, 2+ ⇒ opponent +1 → existing `winGap`; `winGap` re-check at the jogai boundary (endReason `"gap"`); jogai `FightEvent` | Perception fields                     | Given A's 1st out-zone entry, Then warning only (0 pts). Given A's 2nd, Then B +1 pt + reset. Given enough retreats, Then B wins on `winGap`                  | Shippable                        |
+| **A3** penalty perception         | Bots can read the shared warning count                    | `self.penalties` + `opponent.penalties` (live scoreboard `FIELD_READERS`, like `opponent.points`); interpreter stays 100%                                                                              | Passivity/senshu reads                | Given A has 1 warning, Then A's bot reads `self.penalties==1` and B reads `opponent.penalties==1`                                                             | Shippable                        |
 
 ### Capability B — Passivity (non-engagement penalty) — reuses A2's ladder
 
-| Slice | Value | Includes | Defers | Acceptance Examples | Release |
-|---|---|---|---|---|---|
+| Slice                                             | Value                                          | Includes                                                                                                                                                                                                  | Defers              | Acceptance Examples                                                                                                                                                                  | Release                          |
+| ------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
 | **B1** clock + reset-on-contact + re-engage reset | Proves the anti-stall metric (the subtle part) | Per-fighter `ticksSinceOffense`; reset **only on contact** (hit/block/parry/grab/sweep-connect — whiff at air does NOT reset); exceed `match.passivity.limit` ⇒ `resetToNeutral` both + reset both clocks | Penalty, perception | Given two far-apart idle bots, When neither connects for `limit` ticks, Then both reset to `startGap`. Given a whiff-at-air spammer, Then it still goes passive (whiff didn't reset) | Shippable (inert without config) |
-| **B2** passivity feeds shared ladder | Non-engagement costs points | Passivity `++` on the shared `penaltyCount` (shares the free first warning with jogai); opponent +1 after free; `winGap` re-check; `FightEvent` | — | Given B's clock hits `limit` twice, Then A +1 pt the 2nd time. Given one jogai already used the free warning, Then the next passivity immediately costs a point | Shippable |
-| **B3** self passivity clock read (live) | Bot times its forced engagement | `self.passivityRemaining` (live `FIELD_READER`) | Opponent read | Given `limit` and elapsed ticks, Then `self.passivityRemaining` counts down and a bot commits contact just in time to avoid the foul | Shippable |
-| **B4** opponent passivity read (delayed) | Bait the forced commit | `opponent.passivityRemaining` on the `L_act` layer (ring-buffer served, like `opponent.stamina` in C10 S4) | — | Given B is 3 ticks from passive, Then A perceives `opponent.passivityRemaining==3+jitter` on the delayed layer and can prep a counter | Shippable |
+| **B2** passivity feeds shared ladder              | Non-engagement costs points                    | Passivity `++` on the shared `penaltyCount` (shares the free first warning with jogai); opponent +1 after free; `winGap` re-check; `FightEvent`                                                           | —                   | Given B's clock hits `limit` twice, Then A +1 pt the 2nd time. Given one jogai already used the free warning, Then the next passivity immediately costs a point                      | Shippable                        |
+| **B3** self passivity clock read (live)           | Bot times its forced engagement                | `self.passivityRemaining` (live `FIELD_READER`)                                                                                                                                                           | Opponent read       | Given `limit` and elapsed ticks, Then `self.passivityRemaining` counts down and a bot commits contact just in time to avoid the foul                                                 | Shippable                        |
+| **B4** opponent passivity read (delayed)          | Bait the forced commit                         | `opponent.passivityRemaining` on the `L_act` layer (ring-buffer served, like `opponent.stamina` in C10 S4)                                                                                                | —                   | Given B is 3 ticks from passive, Then A perceives `opponent.passivityRemaining==3+jitter` on the delayed layer and can prep a counter                                                | Shippable                        |
 
 ### Capability C — Tie resolution (senshu + overtime)
 
-| Slice | Value | Includes | Defers | Acceptance Examples | Release |
-|---|---|---|---|---|---|
-| **C1** senshu first-blood tiebreak | Fixes the real `"draw"` gap cheaply (a bargain) | First-blood latch (first scorer holds senshu; simultaneous ⇒ none); at cap, level ⇒ winner = senshu-holder, endReason `"senshu"`; no senshu ⇒ `"draw"`. Config toggle under `match` | Overtime, perception | Given a 4-4 bout where A scored first, Then A wins, endReason `"senshu"`. Given 0-0 all bout, Then `"draw"` | Shippable (inert without config) |
-| **C2** sudden-death overtime | Decisive resolution before falling to senshu | On level at cap: `resetToNeutral` both (points/stamina/mem persist), first fighter to gap ≥ 1 wins immediately, same-tick trade stays level, `match.overtimeTicks` cap ⇒ fall to C1's senshu; jogai/passivity live in OT; endReason `"overtime"` | — | Given level at cap, When A scores first in OT, Then A wins, endReason `"overtime"`. Given OT elapses scoreless, Then senshu (C1) decides | Shippable |
-| **C3** senshu perception | Late-bout tiebreak strategy | `self.senshu` + `opponent.senshu` (live 1/0 scoreboard `FIELD_READERS`) | — | Given A holds senshu, Then A reads `self.senshu==1`, B reads `opponent.senshu==1` | Shippable |
-| **C4** overtime perception | Play-safe vs all-in in sudden death | `clock.overtime` (live 1/0) — could ride C2 | — | Given the bout is in OT, Then both bots read `clock.overtime==1` | Shippable (may fold into C2) |
+| Slice                              | Value                                           | Includes                                                                                                                                                                                                                                         | Defers               | Acceptance Examples                                                                                                                      | Release                          |
+| ---------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **C1** senshu first-blood tiebreak | Fixes the real `"draw"` gap cheaply (a bargain) | First-blood latch (first scorer holds senshu; simultaneous ⇒ none); at cap, level ⇒ winner = senshu-holder, endReason `"senshu"`; no senshu ⇒ `"draw"`. Config toggle under `match`                                                              | Overtime, perception | Given a 4-4 bout where A scored first, Then A wins, endReason `"senshu"`. Given 0-0 all bout, Then `"draw"`                              | Shippable (inert without config) |
+| **C2** sudden-death overtime       | Decisive resolution before falling to senshu    | On level at cap: `resetToNeutral` both (points/stamina/mem persist), first fighter to gap ≥ 1 wins immediately, same-tick trade stays level, `match.overtimeTicks` cap ⇒ fall to C1's senshu; jogai/passivity live in OT; endReason `"overtime"` | —                    | Given level at cap, When A scores first in OT, Then A wins, endReason `"overtime"`. Given OT elapses scoreless, Then senshu (C1) decides | Shippable                        |
+| **C3** senshu perception           | Late-bout tiebreak strategy                     | `self.senshu` + `opponent.senshu` (live 1/0 scoreboard `FIELD_READERS`)                                                                                                                                                                          | —                    | Given A holds senshu, Then A reads `self.senshu==1`, B reads `opponent.senshu==1`                                                        | Shippable                        |
+| **C4** overtime perception         | Play-safe vs all-in in sudden death             | `clock.overtime` (live 1/0) — could ride C2                                                                                                                                                                                                      | —                    | Given the bout is in OT, Then both bots read `clock.overtime==1`                                                                         | Shippable (may fold into C2)     |
 
 ### Capability D — Downstream adoption (per the precedent; after the mechanics land)
 
-| Slice | Value | Includes | Defers | Acceptance Examples | Release |
-|---|---|---|---|---|---|
-| **D1** benchmark adopts full officiating | The frozen gauntlet scores under jogai/passivity/tie-res | Fold new `match` config into the benchmark `MATCH` constant + `INPUT_HASH`; bump `BENCHMARK_VERSION`; re-characterize the gauntlet + `docs/benchmark-gauntlet-vN.md` | A possible rebalance (see Parking Lot) | Given the benchmark config change, Then `INPUT_HASH` guard test forces a version bump; the gauntlet is re-characterized in a note | Shippable |
-| **D2** spec teaches the new rules | LLM authors know the officiating | Extend `generateSpec(rules, match)` to teach jogai margin/penalty, the passivity engagement rule, senshu/OT + corrected win/draw semantics; drift-test the regenerated `docs/spec.md` | — | Given the generator change, Then `docs/spec.md` documents jogai/passivity/tie-break and the byte-match drift test passes | Shippable |
+| Slice                                    | Value                                                    | Includes                                                                                                                                                                              | Defers                                 | Acceptance Examples                                                                                                               | Release   |
+| ---------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| **D1** benchmark adopts full officiating | The frozen gauntlet scores under jogai/passivity/tie-res | Fold new `match` config into the benchmark `MATCH` constant + `INPUT_HASH`; bump `BENCHMARK_VERSION`; re-characterize the gauntlet + `docs/benchmark-gauntlet-vN.md`                  | A possible rebalance (see Parking Lot) | Given the benchmark config change, Then `INPUT_HASH` guard test forces a version bump; the gauntlet is re-characterized in a note | Shippable |
+| **D2** spec teaches the new rules        | LLM authors know the officiating                         | Extend `generateSpec(rules, match)` to teach jogai margin/penalty, the passivity engagement rule, senshu/OT + corrected win/draw semantics; drift-test the regenerated `docs/spec.md` | —                                      | Given the generator change, Then `docs/spec.md` documents jogai/passivity/tie-break and the byte-match drift test passes          | Shippable |
 
 ## Parking Lot
 
@@ -207,7 +221,7 @@ explicit officiating step, gated on passivity configured — see AC-7).
 
 **Resolved decisions (grill/find-gaps):**
 
-- **D1 — reset predicate: ATTACKER ONLY** (Q1). A fighter's clock resets iff *its own* committed
+- **D1 — reset predicate: ATTACKER ONLY** (Q1). A fighter's clock resets iff _its own_ committed
   offense connected this tick: **`aOutcome !== null || aThrow !== null`** (strike hit/block/parry/
   finish, OR a live grab). The fighter merely hit/defended-against does NOT reset — "no-OFFENSE
   clock". A real back-and-forth resets both naturally (each attacks); a pure block-only turtle
@@ -343,33 +357,109 @@ both jogai and passivity. winGap re-check + `break "gap"` after the award, befor
 test-fixture-only (no canonical wiring — that's D). No new `FIELD_READER`, no new `endReason`,
 `dsl.ts` TCB untouched.
 
+## B3 — resolved decisions & acceptance criteria (find-gaps 2026-07-02)
+
+Confirmed before planning B3 (self passivity clock read, live). Feeds `planning` directly.
+**B3 scope:** the self-perception field **`self.passivityRemaining`** — Capability B's FIRST new
+DSL surface. NO opponent read (that's B4), NO new `endReason`, NO canonical wiring (that's D). Also
+**completes B1's throw-term behavioral verification** (AC-4), now that the clock is observable.
+Byte-identical absent `match.passivity` (sentinel `0`).
+
+**Config/state:** unchanged from B1/B2 — reuses per-fighter `Fighter.ticksSinceOffense` +
+`FightConfig.match.passivity.limit`. B3 adds one `FieldPath`, one `SelfState.passivityRemaining`
+field, one static `FIELD_READERS` entry, and threads `match` into `viewFor` (see notes).
+
+**Resolved decisions (find-gaps):**
+
+- **D1 — derived countdown value** (Q1). `self.passivityRemaining = Math.max(0, limit −
+self.ticksSinceOffense)` when `match.passivity` is configured. A countdown of ticks until the
+  passivity foul: reads `limit` on a fresh clock, decrements each contactless tick, and reads `0` on
+  the tick the foul is imminent ("connect THIS tick or foul"). Mirrors the
+  `finishWindow`/`counterWindow`/`cancelWindow` "ticks-left, 0 = closed" precedent. **Read timing:**
+  `viewFor` runs at the loop top, BEFORE the tick's clock increment/foul-check, so the value reflects
+  the clock as of the end of the previous tick (the same live-but-one-step convention as the other
+  self windows). The `[0]` floor is defensive — the officiating resets the clock the tick it exceeds
+  `limit`, so the read value structurally stays in `[0, limit]` (never negative).
+- **D2 — sentinel `0` when unconfigured** (Q1, baked into the value choice). Absent `match.passivity`,
+  `self.passivityRemaining` reads `0` — consistent with A3's `self.penalties` and every window field
+  (the interpreter/TCB boundary can't depend on `match`; ONLY the derived value is config-gated in
+  `viewFor`). Accepts the same in-band/inactive `0` collision the window fields already carry (a bot
+  reading `0` while unconfigured over-eagerly commits, but there is no foul ⇒ harmless; a
+  spec-authored bot knows the field reads `0` when passivity is off).
+- **D3 — B3 completes B1's throw-term verification** (Q2). B1's `aThrow !== null` contact-reset term
+  (a stuffed/clashed grab still zeroes the clock — B1 D3 / AC-4) had NO direct test: B1 could not
+  observe the clock, so the `aThrow → false` mutant was survived-or-equivalent under B1's throw-free
+  tests. Now that `self.passivityRemaining` makes the clock observable, B3 adds a `runFight` test
+  reading it immediately after a committed throw's grab-active tick (including stuffed/clash) and
+  asserting the snap-back to `limit` — pinning the term behaviorally (AC-3 below).
+- **D4 — mechanical spec only; strategic prose deferred to Capability D** (Q3). Regenerate
+  `docs/spec.md` so `self.passivityRemaining` joins the read-surface list + JSON-schema enum (drift
+  test green), exactly like A3. Engagement-timing prose lands in D's spec-teaching slice with the
+  rest of the officiating rules (A3's defer-prose-to-D pattern — avoids doc churn when D rewrites
+  that section).
+
+**Implementation notes (not user-facing):** thread `match` (the scoring config) into `viewFor` as a
+new optional param — the smallest change, forward-compatible with later live officiating reads
+(senshu/OT in Capability C); absent ⇒ sentinel `0`, derived like `finishWindow` inside `viewFor`.
+`self.passivityRemaining` is a static `FIELD_READERS` entry `(s) => s.self.passivityRemaining` + a
+`SelfState.passivityRemaining` field + a `FieldPath` union member — **no new interpreter branch**, so
+the `dsl.ts` interpreter stays 100% (A3 precedent; only the value is config-gated, in `viewFor`).
+`limit` stays test-fixture-only (no canonical wiring — that's D). AC-6's "just in time" test must
+account for strike **startup lead**: the clock resets on a CONNECTING strike (`aOutcome !== null`),
+which occurs on the strike's active frame, not the commit tick — so a bot must gate its commit at a
+`passivityRemaining` threshold ≥ the move's startup for the strike to connect before the foul
+(threshold derived in RED against the harness constants).
+
+**Acceptance criteria:**
+
+- **AC-1 — countdown when configured.** Given `match.passivity.limit = L` and a fighter that has not
+  connected for `k` ticks (`k ≤ L`), Then its bot reads `self.passivityRemaining == L − k` (fresh
+  clock ⇒ `L`; the tick the foul is imminent ⇒ `0`).
+- **AC-2 — resets with the clock.** Given a fighter connects (or is re-engaged by yame/jogai/
+  passivity), Then `self.passivityRemaining` jumps back to `L` on the next tick (the clock zeroed).
+- **AC-3 — throw resets (completes B1 AC-4).** Given a fighter commits a throw whose grab goes active
+  — even stuffed by an opposing strike or clashed (⇒ the grab is voided) — Then
+  `self.passivityRemaining` snaps back to `L` the next tick, proving `aThrow !== null` zeroed the
+  clock (the B1 throw term, now observable).
+- **AC-4 — floored at 0, stays in `[0, L]`.** `self.passivityRemaining` never reads negative.
+- **AC-5 — sentinel `0` unconfigured.** Given `match.passivity` absent, Then `self.passivityRemaining`
+  reads `0` for the whole bout (the value is never derived).
+- **AC-6 — the read is actionable.** Given a bot in range that gates a connecting commit on the
+  countdown (`when self.passivityRemaining <= T do attack`, `T` = the startup lead), Then it connects
+  before its clock fouls and avoids a passivity foul that the same bot without the rule (idling)
+  takes — demonstrating the B3 value (self-timed forced engagement).
+- **AC-7 — byte-identical absent, interpreter 100%, spec drift-clean.** Given `match.passivity`
+  absent, replay is byte-identical to pre-B3 (sentinel `0`; `ticksSinceOffense` still never framed).
+  The new `FIELD_READERS` entry is static (value config-gated in `viewFor`) ⇒ `dsl.ts` interpreter
+  stays 100%. `docs/spec.md` regenerated (field joins the read-surface list + schema enum; byte-match
+  drift test green). Replay-stable + swap-symmetric present.
+
 ## Next Step
 
-**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **B1 (passivity clock)
-COMPLETE** (PR #100; see Progress). Branch `feat/passivity-penalty` is cut for the next slice.
+**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B passivity —
+B1 (clock, PR #100) + B2 (shared penalty ladder, PR #101) COMPLETE** (see Progress).
+Branch `feat/passivity-self-read` is cut for the next slice.
 
-**Next: B2 — passivity feeds the shared penalty ladder.** The passivity *value*: a
-`ticksSinceOffense > limit` foul (B1's now-inert re-engage) becomes a real penalty by
-incrementing the **shared `Fighter.penaltyCount`** (A2's ladder) — 1st foul free, 2+ ⇒
-opponent +1 point → existing `winGap` re-check (`endReason "gap"`), then `resetToNeutral(both)`.
-Because jogai and passivity **share** `penaltyCount`, a fighter that already burned its free
-warning on a jogai retreat pays a point on its **first** passivity foul (and vice-versa) —
-that cross-mechanic interaction is B2's key new behavior to pin. Byte-identical absent
-`match.passivity`; still **no DSL surface** (perception is B3/B4).
+**Next: B3 — self passivity clock read (live).** The passivity _self-perception_: a bot can
+read how close it is to a passivity foul so it can commit contact just in time. Introduces
+`self.passivityRemaining` — a **live `FIELD_READER`** derived from `limit - ticksSinceOffense`
+(clamped `[0]`), zero-delay off the live fighter (like A3's `self.penalties` / `opponent.points`,
+NOT the `L_act` ring buffer). This is **the first new DSL surface of Capability B** — so it needs
+a `find-gaps` pass before `planning`: the open questions are (a) the exact derived value + clamp
+(remaining ticks vs elapsed; behavior at/after the foul boundary), (b) the sentinel when
+`match.passivity` is absent (mirror A3's `0`), (c) whether the interpreter stays 100% (static
+entry, config-gated value — the A3 precedent), and (d) B3 is called out in the split as _also
+completing B1's throw-term behavioral verification_ — confirm what that entails. Byte-identical
+absent `match.passivity` (sentinel `0`); `docs/spec.md` regen + drift test (like A3).
 
-Officiating order (design §7a, the swap-symmetry contract): resolve combat → update clocks
-(passivity, jogai edge-detect) → `events.push` → apply penalties → at most one
-`resetToNeutral(both)` → one `winGap` check. B2 folds the passivity award into that same
-penalty/winGap path A2 established — the natural moment to extract A2's inline award into a
-shared helper (deferred there by YAGNI; passivity is now the second consumer).
-
-After B2: **B3** (`self.passivityRemaining` live read — also completes B1's throw-term
-behavioral verification) → **B4** (`opponent.passivityRemaining`, `L_act`-delayed) → **C**
-(tie-resolution) → **D** (benchmark + spec).
+After B3: **B4** (`opponent.passivityRemaining`, `L_act`-delayed ring-buffer read, like
+`opponent.stamina`) → **C** (tie-resolution: senshu + overtime) → **D** (benchmark + spec adoption).
 
 Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
-(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **B2's `find-gaps`
-pass is DONE** (2026-07-02) — see the "B2 — resolved decisions & acceptance criteria" section above
-(D1–D4, AC-1…AC-9): per-fighter mutual-net-zero award (D1), fire independently of a same-tick score
-(D2), extract a shared `applyPenalty` helper (D3), reuse `endReason "gap"` (D4); the shared-free-
-warning interaction is captured as AC-3. **Next: `planning` B2** into PR-sized slices.
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **B3's `find-gaps`
+pass is DONE** (2026-07-02) — see the "B3 — resolved decisions & acceptance criteria" section above
+(D1–D4, AC-1…AC-7): derived countdown `max(0, limit − ticksSinceOffense)` with sentinel `0` (D1/D2),
+B3 completes B1's `aThrow` throw-reset verification (D3), mechanical spec regen with prose deferred
+to Capability D (D4). **Next: `planning` B3** into PR-sized slices (expected: one slice — the field
+
+- its reads + the B1 throw-term test + spec regen, mirroring A3's single-slice perception PR).
