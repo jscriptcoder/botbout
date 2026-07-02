@@ -135,6 +135,7 @@ type Fighter = {
   counterRemaining: number; // post-parry counter-window ticks left (0 = closed)
   cancelRemaining: number; // on-contact cancel-window ticks left after a connect (0 = closed)
   stamina: number; // C10 conditioning meter; init to rules.stamina.max (0 when unconfigured)
+  penaltyCount: number; // jogai/passivity fouls this bout (shared category-2 ladder); 1st free, 2+ ⇒ opponent +1
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
@@ -848,6 +849,7 @@ export function runFight(cfg: FightConfig): FightResult {
     counterRemaining: 0,
     cancelRemaining: 0,
     stamina: rules.stamina?.max ?? 0,
+    penaltyCount: 0,
   };
 
   const b: Fighter = {
@@ -863,6 +865,7 @@ export function runFight(cfg: FightConfig): FightResult {
     counterRemaining: 0,
     cancelRemaining: 0,
     stamina: rules.stamina?.max ?? 0,
+    penaltyCount: 0,
   };
 
   const events: FightEvent[] = [];
@@ -1074,23 +1077,40 @@ export function runFight(cfg: FightConfig): FightResult {
       scored = false;
     }
 
-    // Match mode: jogai (ring-out, A1). A fighter that crosses from in-bounds into the
-    // out-zone triggers a yame-style reset of BOTH fighters (no penalty yet). Runs AFTER
-    // the yame block, so a score's yame reset — which has already snapped the offender
-    // back in-bounds — naturally pre-empts jogai this tick (no double reset). Edge-detected
-    // per fighter; trackers re-armed to in-bounds after the reset so a later crossing fires
-    // again. A jogai reset adds no points, so it runs no winGap check.
+    // Match mode: jogai (ring-out). A fighter that crosses from in-bounds into the out-zone
+    // is fouled on the warning ladder (A2): its per-fighter `penaltyCount` increments and,
+    // from the 2nd foul on (the 1st is a free warning), its OPPONENT scores +1 — feeding the
+    // winGap. Then a yame-style reset of BOTH fighters. Runs AFTER the yame block, so a
+    // score's yame reset — which has already snapped the offender back in-bounds — pre-empts
+    // jogai this tick (the crossing is no longer detectable ⇒ no foul, no double reset).
+    // Edge-detected per fighter; trackers re-armed to in-bounds after the reset so a later
+    // crossing fires again. penaltyCount persists across the reset (bout-scoped, like points).
     if (match?.jogai) {
       const aNowIn = inBounds(a.x);
       const bNowIn = inBounds(b.x);
+      const aOut = aWasIn && !aNowIn;
+      const bOut = bWasIn && !bNowIn;
 
-      if ((aWasIn && !aNowIn) || (bWasIn && !bNowIn)) {
+      if (aOut || bOut) {
+        // Each fighter's OWN foul count decides whether ITS opponent scores; both may fire the
+        // same tick (mutual +1, net-zero gap change), which keeps the tick swap-symmetric.
+        if (aOut && ++a.penaltyCount > 1) b.points += 1;
+        if (bOut && ++b.penaltyCount > 1) a.points += 1;
+
+        // A jogai penalty point can settle the bout — re-check the winGap at this boundary
+        // (mutually exclusive with the yame block's check: yame's reset makes the crossing
+        // undetectable, so at most one winGap check fires per tick).
+        if (Math.abs(a.points - b.points) >= match.winGap) {
+          ticks = tick + 1;
+          endReason = "gap";
+          break;
+        }
+
         resetToNeutral(a, aStartX);
         resetToNeutral(b, bStartX);
-        // Jogai ends the exchange (a fresh neutral engagement), so clear the yame
-        // trigger too — a point scored in the now-ended exchange must not fire a
-        // spurious yame the next both-neutral tick. Points persist (resetToNeutral
-        // leaves them); only the exchange-scoped flag resets.
+        // Jogai ends the exchange (a fresh neutral engagement), so clear the yame trigger too —
+        // a point scored in the now-ended exchange must not fire a spurious yame next tick.
+        // Points AND penaltyCount persist (resetToNeutral leaves them); only the flag resets.
         scored = false;
         aWasIn = inBounds(aStartX);
         bWasIn = inBounds(bStartX);

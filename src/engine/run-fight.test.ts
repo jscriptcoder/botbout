@@ -5801,3 +5801,180 @@ describe("runFight — jogai (out-zone resets, story A1)", () => {
     expect(result.events[6].b.points).toBe(1); // the point stands through the jogai reset
   });
 });
+
+describe("runFight — jogai warning-ladder penalty (story A2)", () => {
+  // Same geometry as the A1 jogai block: ring 600000, margin 100000 ⇒ legal [100000,500000].
+  // A (RETREATER) from 200000 crosses the low edge at tick 25 (reset visible 26) and — the
+  // tracker re-arms — again at tick 51 (visible 52) and 77 (visible 78); each 26-tick cycle is
+  // one foul. B (IDLE) never moves and never scores ⇒ every point A's opponent gains is a
+  // jogai penalty, and every mid-fight reset is jogai (the exchange is scoreless ⇒ no yame).
+
+  // AC-1: the 1st out-zone crossing of the bout is a free WARNING — both reset, no point. (A
+  // green guard, not a driver: this is A1's behaviour, which A2 must preserve at the boundary.)
+  it("gives no point on the first out-zone crossing (free warning)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[25].a.x).toBe(96000); // A crossed out (the foul)
+    expect(result.events[26].a.x).toBe(196000); // both reset (the warning consequence)
+    expect(result.events[26].a.points).toBe(0);
+    expect(result.events[26].b.points).toBe(0); // ← free warning: the opponent gains nothing
+  });
+
+  // AC-2: the 2nd crossing scores the OPPONENT +1 (not the offender). Surfaces next tick,
+  // like A1's reset (awarded in the officiating block, after events.push).
+  it("awards the opponent +1 on the second crossing, not the offender", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 55,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[26].b.points).toBe(0); // 1st crossing was free
+    expect(result.events[52].b.points).toBe(1); // 2nd crossing ⇒ opponent B +1
+    expect(result.events[52].a.points).toBe(0); // the offender A gains nothing
+  });
+
+  // AC-2 (cumulative): every crossing after the free first adds another opponent point —
+  // pins the per-foul +1 and the increment-by-one (the counter persists across resets).
+  it("accumulates a penalty point on each crossing after the free first", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 80,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[52].b.points).toBe(1); // after the 2nd crossing
+    expect(result.events[78].b.points).toBe(2); // after the 3rd crossing (cumulative)
+  });
+
+  // AC-3: penalties feed the winGap — enough retreats and the opponent wins on the gap.
+  // Free 1st (tick 25) ⇒ B 0; paid 2nd (51) ⇒ B 1; paid 3rd (77) ⇒ B 2 == winGap ⇒ stop.
+  it("ends the match on the winGap once penalties reach it", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 100,
+        match: { winGap: 2, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.endReason).toBe("gap");
+    expect(result.winner).toBe("B");
+    expect(result.scores).toEqual({ a: 0, b: 2 });
+    expect(result.ticks).toBe(78); // ended on the 3rd crossing tick (77) + 1
+    expect(result.events).toHaveLength(78); // loop stopped — no frames past the winning tick
+  });
+
+  // AC-3 (guard): a small winGap must NOT trip while the gap is still below it — a lone free
+  // warning leaves the score 0-0. Pins the `>=` comparison against a spurious early stop.
+  it("does not end the match on a free warning below the winGap", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 30, // stops before the 2nd crossing (tick 51)
+        match: { winGap: 2, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.endReason).toBe("time");
+    expect(result.scores).toEqual({ a: 0, b: 0 });
+  });
+
+  // AC-5: both fighters cross out on the SAME tick — each fighter's own foul history decides
+  // whether ITS opponent scores. On the 2nd simultaneous crossing both are past the free
+  // warning ⇒ mutual +1 (net-zero gap), a SINGLE reset, no early stop. Swap-symmetric.
+  it("awards both opponents on a simultaneous second crossing (net-zero, single reset)", () => {
+    const rules = getMockRules();
+
+    const result = runFight(
+      getMockConfig({
+        rules,
+        botA: RETREATER,
+        botB: RETREATER,
+        maxTicks: 55,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    // 1st simultaneous crossing (tick 25) — both free ⇒ 0-0.
+    expect(result.events[26].a.points).toBe(0);
+    expect(result.events[26].b.points).toBe(0);
+    // 2nd simultaneous crossing (tick 51) — both past free ⇒ mutual +1 (gap stays 0).
+    expect(result.events[52].a.points).toBe(1);
+    expect(result.events[52].b.points).toBe(1);
+    // A single reset, symmetric about the ring centre (positions unaffected by the award).
+    expect(result.events[52].a.x).toBe(196000);
+    expect(result.events[52].b.x).toBe(404000);
+    expect(result.events[52].a.x + result.events[52].b.x).toBe(rules.ring.width);
+  });
+
+  // AC-3 (arithmetic guard): equal penalty scores keep the GAP at 0, so the match must NOT end
+  // even when the two scores SUM past the winGap. Both retreat and mutually foul to 1-1; with
+  // winGap 2 the sum (2) hits the threshold but the gap (0) does not — a `−`→`+` slip in the
+  // gap check would stop here on the 2nd simultaneous crossing.
+  it("does not end on equal penalty scores whose sum exceeds the winGap", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: RETREATER,
+        maxTicks: 55, // past the 2nd simultaneous crossing (tick 51), before a 3rd (tick 77)
+        match: { winGap: 2, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 1 }); // mutual +1 on the 2nd simultaneous crossing
+    expect(result.endReason).toBe("time"); // gap stayed 0 < 2 ⇒ ran to the cap, no early stop
+  });
+
+  // AC-7: the ladder does not disturb determinism — a jogai match with penalties is
+  // replay-stable (identical event logs, penalty points included).
+  it("is replay-stable with the penalty ladder active", () => {
+    const cfg = getMockConfig({
+      botA: RETREATER,
+      botB: IDLE,
+      maxTicks: 80,
+      match: { winGap: 99, jogai: { margin: 100000 } },
+    });
+
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  // AC-7: A retreating LEFT and penalizing B mirrors B retreating RIGHT and penalizing A —
+  // the ladder is swap-symmetric in the scoreboard.
+  it("awards penalties swap-symmetrically", () => {
+    const rules = getMockRules();
+
+    const cfg = {
+      maxTicks: 80,
+      match: { winGap: 99, jogai: { margin: 100000 } },
+    } as const;
+
+    const left = runFight(
+      getMockConfig({ rules, botA: RETREATER, botB: IDLE, ...cfg }),
+    );
+
+    const right = runFight(
+      getMockConfig({ rules, botA: IDLE, botB: RETREATER, ...cfg }),
+    );
+
+    expect(right.scores).toEqual({ a: left.scores.b, b: left.scores.a });
+    expect(right.winner).toBe(
+      left.winner === "A" ? "B" : left.winner === "B" ? "A" : "draw",
+    );
+  });
+});
