@@ -27,16 +27,16 @@ scoped `sim.ts` mutation on the changed officiating regions.
 
 (Verbatim AC-1…AC-10 from the tracker; slice assignment in brackets.)
 
-- [ ] **AC-1** first-blood latch (solo): A lands the first technique (1-0) ⇒ A holds senshu. _[C1a]_
-- [ ] **AC-2** simultaneous ⇒ `none` (permanent); a level cap stays `"draw"`/`"time"`; a later solo technique does not claim it. _[C1a]_
-- [ ] **AC-3** decides a level bout only: level cap (4-4) ⇒ holder wins `"senshu"`; non-level (5-3) ⇒ leader wins `"time"`. _[C1a]_
-- [ ] **AC-4** gap early-stop unaffected: gap reaches `winGap` ⇒ `"gap"`, leader wins, senshu irrelevant. _[C1a]_
-- [ ] **AC-5** no-senshu draw: level cap, no holder (0-0 or `none`) ⇒ `"draw"`/`"time"` (unchanged from pre-C1). _[C1a]_
-- [ ] **AC-6** penalty never confers: a jogai/passivity penalty giving B its first point does not confer senshu; a later first A technique latches A. _[C1b]_
-- [ ] **AC-7** holder's foul revokes: A holds senshu and commits any jogai/passivity foul (incl. free warning) ⇒ `none` (not transferred); level cap ⇒ `"draw"`/`"time"`. _[C1b]_
-- [ ] **AC-8** same-tick latch-then-revoke: A scores its first technique AND fouls same tick ⇒ latch (combat) precedes revoke (penalty) ⇒ `none`. _[C1b]_
-- [ ] **AC-9** persists across resets: A holds senshu through yame/jogai/passivity resets ⇒ still holds at the cap. _[C1a yame; C1b jogai/passivity]_
-- [ ] **AC-10** byte-identical absent + swap-symmetric + replay-stable. _[both]_
+- [x] **AC-1** first-blood latch (solo): A lands the first technique (1-0) ⇒ A holds senshu. _[C1a — PR #104]_
+- [x] **AC-2** simultaneous ⇒ `none` (permanent); a level cap stays `"draw"`/`"time"`; a later solo technique does not claim it. _[C1a — PR #104]_
+- [x] **AC-3** decides a level bout only: level cap (4-4) ⇒ holder wins `"senshu"`; non-level (5-3) ⇒ leader wins `"time"`. _[C1a — PR #104]_
+- [x] **AC-4** gap early-stop unaffected: gap reaches `winGap` ⇒ `"gap"`, leader wins, senshu irrelevant. _[C1a — PR #104]_
+- [x] **AC-5** no-senshu draw: level cap, no holder (0-0 or `none`) ⇒ `"draw"`/`"time"` (unchanged from pre-C1). _[C1a — PR #104]_
+- [x] **AC-6** penalty never confers: a jogai/passivity penalty giving B its first point does not confer senshu; a later first A technique latches A. _[C1b — PR pending; `foulThenScore` characterization]_
+- [x] **AC-7** holder's foul revokes: A holds senshu and commits any jogai/passivity foul (incl. free warning) ⇒ `none` (not transferred); level cap ⇒ `"draw"`/`"time"`. _[C1b — jogai + passivity revoke + non-holder guards]_
+- [x] **AC-8** same-tick latch-then-revoke: latch (combat, L1143) precedes revoke (penalty blocks, L1190/1236) by code placement ⇒ a same-tick score+foul ⇒ `none`. _[C1b — satisfied by construction: the literal same-tick score+ring-cross is unreachable (no engine mechanic co-produces a score and a ring-cross/passivity foul in one tick — a committed attacker can't move); the ordering is structural, not a Stryker-reorderable mutant. `foulThenScore` exercises the latch-vs-revoke ordering across ticks.]_
+- [x] **AC-9** persists across resets: A holds senshu through yame/jogai/passivity resets ⇒ still holds at the cap. _[C1a yame; C1b — the non-holder jogai (J3) + passivity-isolation tests reset both bodies yet the holder persists to the cap]_
+- [x] **AC-10** byte-identical absent + swap-symmetric + replay-stable. _[both — C1b: byte-identical when jogai/passivity configured but no foul occurs, swap-symmetric, replay-stable]_
 
 ## Anchors in `src/engine/sim.ts` (verified 2026-07-02)
 
@@ -58,7 +58,7 @@ test. Before code: load `tdd`, `testing`, `mutation-testing`, `refactoring`. Str
 (project memory): `rm -rf .stryker-tmp reports` before each run; single-line scope needs the `N-N`
 range form; multiple `--mutate` flags are last-wins (run ranges in separate invocations).
 
-### Slice C1a: A level bout is won by the first fighter to score a technique (`endReason "senshu"`)
+### Slice C1a ✅ DONE (PR #104): A level bout is won by the first fighter to score a technique (`endReason "senshu"`)
 
 **Value**: the match layer / benchmark — a tied bout resolves decisively instead of `"draw"`, the
 independent "bargain" tracer. No jogai/passivity coupling.
@@ -100,7 +100,7 @@ poorly) — do not extract for testability.
 **Done when**: AC-1/2/3/4/5/9/10 green, byte-identical-absent + replay + swap-symmetry proven,
 mutation report reviewed, human approves commit.
 
-### Slice C1b: The senshu-holder loses it (→ `none`) on any jogai/passivity foul it commits
+### Slice C1b ✅ DONE (PR pending): The senshu-holder loses it (→ `none`) on any jogai/passivity foul it commits
 
 **Value**: the match layer — WKF-faithful revocation so an initiative-holder can't turtle behind a
 foul; completes C1. Requires co-configured jogai/passivity.

@@ -7038,3 +7038,452 @@ describe("runFight — senshu first-blood tiebreak (story C1a)", () => {
     expect(result.endReason).toBe("senshu");
   });
 });
+
+describe("runFight — senshu revocation on jogai foul (story C1b)", () => {
+  // Same two-move + jogai geometry as A2/C1a: ring 600000, walkSpeed 4000, startGap 200000 (aStartX
+  // 200000, bStartX 400000), margin 100000 ⇒ legal [100000, 500000]. gyaku-zuki scores at tick 4,
+  // kizami-zuki at tick 8. The WKF revocation rule: a senshu-holder that commits ANY jogai foul it
+  // owns (including the free 1st warning) loses senshu to `none` (permanent, not transferred).
+  const twoMoveRules = getMockRules({
+    moves: {
+      "gyaku-zuki": { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+      "kizami-zuki": { startup: 8, active: 2, recovery: 6, score: 1, reach: 250000 },
+    },
+  });
+
+  // Attacks once (mem `fought` latches on the first committed tick), then IDLES — the C1a tracer.
+  const scoreOnce = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-once",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  // Scores once, then RETREATS out-zone until its own live foul count (self.penalties, the A3 read)
+  // reaches `stopAt`, then idles — so it draws a BOUNDED number of jogai fouls and holds a level board
+  // to the cap (no runaway 3rd crossing).
+  const scoreThenRetreat = (move: MoveId, stopAt: number): BotDoc => ({
+    version: 1,
+    name: "score-then-retreat",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "field", path: "self.penalties" },
+            { op: "const", value: stopAt },
+          ],
+        },
+        do: { type: "idle" },
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "move", dir: -1 },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  // RETREATS out-zone FIRST — until it has been penalised twice (its opponent now holds a jogai
+  // PENALTY point) — then attacks once and scores a TECHNIQUE. Proves the penalty point never confers
+  // senshu: the fouler still latches senshu on its later technique (the latch is read pre-penalty).
+  const foulThenScore = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "foul-then-score",
+    memory: { done: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "done", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "done" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "field", path: "self.penalties" },
+            { op: "const", value: 2 },
+          ],
+        },
+        do: { type: "attack", move, band: "mid" },
+      },
+    ],
+    default: { type: "move", dir: -1 },
+  });
+
+  it("revokes the holder's senshu when it commits a jogai foul (AC-7)", () => {
+    // A scores first (senshu A, tick 4), then retreats out-zone: its FREE 1st warning revokes senshu to
+    // none, its 2nd (paid) foul awards B the evening point ⇒ level 1-1. With senshu gone the cap is a
+    // DRAW, not the A senshu win the pre-revocation engine returns.
+    const result = runFight({
+      rules: getMockRules(),
+      botA: scoreThenRetreat("gyaku-zuki", 2),
+      botB: IDLE,
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("revokes on the holder's free first warning, not only a point-scoring foul (AC-7)", () => {
+    // A scores first (senshu A), B evens with its own TECHNIQUE (1-1), then A commits a SINGLE free
+    // jogai warning (no point) and stops. The free warning alone revokes senshu ⇒ draw.
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreThenRetreat("gyaku-zuki", 1),
+      botB: scoreOnce("kizami-zuki"),
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("does not revoke on a non-holder's jogai foul (AC-7)", () => {
+    // A holds senshu (scores first, tick 4); B evens (tick 8) then commits its OWN jogai foul. B's foul
+    // must not touch A's senshu ⇒ A still wins the level bout on senshu.
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreOnce("gyaku-zuki"),
+      botB: scoreThenRetreat("kizami-zuki", 1),
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("a jogai penalty point never confers senshu — only a technique does (AC-6)", () => {
+    // A retreats out-zone twice FIRST, handing B a jogai penalty point (B leads 0-1 with no technique),
+    // THEN scores its first technique. senshu latches to A (the technique scorer), not B (the penalty
+    // holder) — because the latch is read before the penalty blocks ⇒ level 1-1 ⇒ A wins on senshu.
+    const result = runFight({
+      rules: getMockRules(),
+      botA: foulThenScore("gyaku-zuki"),
+      botB: IDLE,
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("revokes swap-symmetrically when the B-slot holder fouls (AC-10)", () => {
+    // Mirror of AC-7 with the scorer/fouler in the B slot: B draws first blood (senshu B) then fouls
+    // out-zone ⇒ B's senshu is revoked ⇒ draw. Kills the B-direction revoke.
+    const result = runFight({
+      rules: getMockRules(),
+      botA: IDLE,
+      botB: scoreThenRetreat("gyaku-zuki", 2),
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("is byte-identical when jogai is configured but no foul occurs (AC-10)", () => {
+    // Two stationary scoreOnce bots never approach the ring edge ⇒ the jogai block never fires ⇒ the
+    // holder keeps senshu and the per-tick simulation is identical to the no-jogai run.
+    const base = {
+      rules: twoMoveRules,
+      botA: scoreOnce("gyaku-zuki"),
+      botB: scoreOnce("kizami-zuki"),
+      maxTicks: 40,
+      seed: 1,
+    } as const;
+
+    const withJogai = runFight({
+      ...base,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    const withoutJogai = runFight({
+      ...base,
+      match: { winGap: 99, senshu: true },
+    });
+
+    expect(withJogai.events).toEqual(withoutJogai.events);
+    expect(withJogai.winner).toBe("A");
+    expect(withJogai.endReason).toBe("senshu");
+  });
+
+  it("keeps the B-slot holder's senshu when jogai never fires (AC-10)", () => {
+    // Swap: B holds senshu, jogai configured but never fires ⇒ B still wins. Kills a spurious B-side
+    // revoke that fires without a foul.
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreOnce("kizami-zuki"),
+      botB: scoreOnce("gyaku-zuki"),
+      maxTicks: 40,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("is replay-stable with revocation active (AC-10)", () => {
+    const cfg: FightConfig = {
+      rules: getMockRules(),
+      botA: scoreThenRetreat("gyaku-zuki", 2),
+      botB: IDLE,
+      maxTicks: 120,
+      seed: 1,
+      match: { winGap: 99, senshu: true, jogai: { margin: 100000 } },
+    };
+
+    expect(JSON.stringify(runFight(cfg))).toBe(JSON.stringify(runFight(cfg)));
+  });
+});
+
+describe("runFight — senshu revocation on passivity foul (story C1b)", () => {
+  // A passivity foul revokes senshu exactly like a jogai foul (the shared warning ladder). Both
+  // scoreOnce bots score their technique (A first ⇒ senshu A), then idle; with both idle their
+  // no-offense clocks climb together and they commit MUTUAL passivity fouls — so the holder is always
+  // among the foulers and its senshu is revoked. limit 15 lets both slow/fast moves land before the
+  // first foul; maxTicks 40 stops on a clean level 1-1 (after the free foul ~t32, before the paid ~t48).
+  const twoMoveRules = getMockRules({
+    moves: {
+      "gyaku-zuki": { startup: 4, active: 2, recovery: 6, score: 1, reach: 250000 },
+      "kizami-zuki": { startup: 8, active: 2, recovery: 6, score: 1, reach: 250000 },
+    },
+  });
+
+  const scoreOnce = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-once",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "idle" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  const passiveLevel = (o: Partial<FightConfig> = {}): FightConfig => ({
+    rules: twoMoveRules,
+    botA: scoreOnce("gyaku-zuki"),
+    botB: scoreOnce("kizami-zuki"),
+    maxTicks: 40,
+    seed: 1,
+    match: { winGap: 99, senshu: true, passivity: { limit: 15 } },
+    ...o,
+  });
+
+  // Attacks every tick — the holder + engager: scores its first landing strike (senshu), then once its
+  // opponent guards its strikes are BLOCKED (no score) yet the block is its OWN outcome ⇒ its no-offense
+  // clock keeps resetting ⇒ it never goes passive (B2's attacker-only reset).
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  // Scores once (mem `fought` latches on the first committed tick), then GUARDS mid forever — never
+  // commits offense again ⇒ its clock climbs unbroken ⇒ it is the SOLE passivity fouler while the
+  // ATTACKER stays engaged. The isolation that lets ONE fighter foul while the other holds senshu.
+  const scoreThenBlock = (move: MoveId): BotDoc => ({
+    version: 1,
+    name: "score-then-block",
+    memory: { fought: 0 },
+    rules: [
+      {
+        when: {
+          op: "eq",
+          args: [
+            { op: "field", path: "self.canAct" },
+            { op: "const", value: 0 },
+          ],
+        },
+        set: [{ cell: "fought", to: { op: "const", value: 1 } }],
+      },
+      {
+        when: {
+          op: "gte",
+          args: [
+            { op: "mem", cell: "fought" },
+            { op: "const", value: 1 },
+          ],
+        },
+        do: { type: "block", band: "mid" },
+      },
+    ],
+    default: { type: "attack", move, band: "mid" },
+  });
+
+  it("does not revoke on a non-holder's passivity foul (AC-7)", () => {
+    // A holds senshu (ATTACKER scores tick 4, then attacks into B's guard — clock stays alive, no more
+    // score); B (scoreThenBlock) evens (tick 8) then guards forever ⇒ B is the SOLE passivity fouler
+    // (its free warning fires ~t39, its paid foul ~t55). maxTicks 50 stops after B's free foul but
+    // before the paid one, so the board is a clean level 1-1 and B's foul must not touch A's senshu.
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: ATTACKER,
+      botB: scoreThenBlock("kizami-zuki"),
+      maxTicks: 50,
+      seed: 1,
+      match: { winGap: 99, senshu: true, passivity: { limit: 15 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("A");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("keeps the B-slot holder's senshu on a non-holder passivity foul (AC-7)", () => {
+    // Swap: B holds senshu (ATTACKER scores first), A is the sole passivity fouler ⇒ B keeps senshu.
+    const result = runFight({
+      rules: twoMoveRules,
+      botA: scoreThenBlock("kizami-zuki"),
+      botB: ATTACKER,
+      maxTicks: 50,
+      seed: 1,
+      match: { winGap: 99, senshu: true, passivity: { limit: 15 } },
+    });
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("senshu");
+  });
+
+  it("revokes the holder's senshu when it goes passive (AC-7)", () => {
+    // A scores first (senshu A) then idles into a passivity foul ⇒ senshu revoked ⇒ the level 1-1 cap
+    // is a draw, not the A senshu win the pre-revocation engine returns.
+    const result = runFight(passiveLevel());
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("revokes the B-slot holder's senshu on its passivity foul (AC-10)", () => {
+    // Swap the moves: B (gyaku) draws first blood ⇒ senshu B; B's passivity foul revokes it ⇒ draw.
+    const result = runFight(
+      passiveLevel({
+        botA: scoreOnce("kizami-zuki"),
+        botB: scoreOnce("gyaku-zuki"),
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("draw");
+    expect(result.endReason).toBe("time");
+  });
+
+  it("does not revoke when passivity is configured but never fires (AC-10)", () => {
+    // A huge limit ⇒ no passivity foul ⇒ the holder keeps senshu; per-tick simulation is identical to
+    // the no-passivity run.
+    const withHugeLimit = runFight(
+      passiveLevel({ match: { winGap: 99, senshu: true, passivity: { limit: 100000 } } }),
+    );
+
+    const withoutPassivity = runFight(
+      passiveLevel({ match: { winGap: 99, senshu: true } }),
+    );
+
+    expect(withHugeLimit.events).toEqual(withoutPassivity.events);
+    expect(withHugeLimit.winner).toBe("A");
+    expect(withHugeLimit.endReason).toBe("senshu");
+  });
+
+  it("keeps the B-slot holder's senshu when passivity never fires (AC-10)", () => {
+    const result = runFight(
+      passiveLevel({
+        botA: scoreOnce("kizami-zuki"),
+        botB: scoreOnce("gyaku-zuki"),
+        match: { winGap: 99, senshu: true, passivity: { limit: 100000 } },
+      }),
+    );
+
+    expect(result.scores).toEqual({ a: 1, b: 1 });
+    expect(result.winner).toBe("B");
+    expect(result.endReason).toBe("senshu");
+  });
+});

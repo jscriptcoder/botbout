@@ -1183,6 +1183,13 @@ export function runFight(cfg: FightConfig): FightResult {
         if (aOut) applyPenalty(a, b);
         if (bOut) applyPenalty(b, a);
 
+        // Senshu (C1) revocation: a holder that commits its OWN jogai foul (incl. the free 1st
+        // warning) loses senshu to `none` — permanent, not transferred to the opponent. A non-holder
+        // foul leaves it intact. Runs after the latch (combat phase) ⇒ a same-tick score-then-foul
+        // latches then revokes ⇒ `none`.
+        if (aOut && senshuHolder === "A") senshuHolder = "none";
+        if (bOut && senshuHolder === "B") senshuHolder = "none";
+
         // A jogai penalty point can settle the bout — re-check the winGap at this boundary
         // (mutually exclusive with the yame block's check: yame's reset makes the crossing
         // undetectable, so at most one winGap check fires per tick).
@@ -1223,6 +1230,11 @@ export function runFight(cfg: FightConfig): FightResult {
         // makes the first passivity foul cost.
         if (aPassive) applyPenalty(a, b);
         if (bPassive) applyPenalty(b, a);
+
+        // Senshu (C1) revocation: identical to jogai — a holder that goes passive loses senshu to
+        // `none`; a non-holder's passivity foul leaves it intact.
+        if (aPassive && senshuHolder === "A") senshuHolder = "none";
+        if (bPassive && senshuHolder === "B") senshuHolder = "none";
 
         // A passivity +1 can settle the bout — same winGap re-check as jogai (mutually exclusive per
         // tick with the yame/jogai checks, so at most one endReason "gap" fires per tick).
