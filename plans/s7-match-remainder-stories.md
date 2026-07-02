@@ -14,7 +14,14 @@ benchmark-adoption + spec-teaching slices.
   jogai same-tick, a prior score stands. Byte-identical absent `match.jogai`, replay-stable,
   swap-symmetric. NO penalty/points/perception yet. Single-slice plan file deleted (record
   in git/PR #97).
-- **A2 — jogai warning-ladder penalty — ⏭ NEXT.**
+- **A2 — jogai warning-ladder penalty — ✅ DONE** (PR #98, merged 2026-07-02;
+  `main`@`e9d0771`). Per-fighter `penaltyCount` (bout-persistent, generic — passivity B2
+  shares it); 1st foul free, 2+ ⇒ opponent +1 feeding `winGap`; ungated winGap re-check →
+  `endReason "gap"`. Byte-identical absent `match.jogai`, replay-stable, swap-symmetric; no
+  DSL/TCB surface. 770 tests; scoped `sim.ts` mutation 97.62% (changed-line 100%, lone
+  survivor equivalent). Single-slice plan file (`jogai-warning-ladder.md`) deleted (record in
+  git/PR #98). The A2 resolved-decisions section below is retained as the design record.
+- **A3 — jogai penalty perception — ⏭ NEXT.** Plan: `plans/penalty-perception.md`.
 
 ## Parent
 
@@ -163,11 +170,10 @@ tests that cross ≥2 times and asserted "points unchanged" get updated (the 2nd
 
 ## Next Step
 
-A1 is DONE (see Progress). Plan **A2 — jogai warning-ladder penalty** with `planning`:
-shared per-fighter `penaltyCount` (generic, reused later by passivity); 1st out-zone
-foul is a free warning, 2+ ⇒ opponent **+1 point** feeding the existing `winGap`
-(endReason `"gap"`); `winGap` re-checked at the jogai boundary; a jogai `FightEvent`.
-Defers perception (`self`/`opponent.penalties` → A3). Optionally run `find-gaps` on
-the A2 plan first. Each planned implementation slice must run the full
-RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle (`tdd` + `testing` +
-`mutation-testing` + `refactoring`) before code changes.
+A1 and A2 are DONE (see Progress). **A3 — jogai penalty perception** is planned in
+`plans/penalty-perception.md`: `self.penalties` (own bout foul count) + `opponent.penalties`
+(the foe's), both **live zero-delay scoreboard** `FIELD_READERS` (like `opponent.points`, NOT the
+`L_act` ring buffer — penalties are public scoreboard facts). Completes Capability A. Then **B**
+(passivity — shares the `penaltyCount` ladder) → **C** (tie-resolution) → **D** (benchmark + spec).
+Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes.

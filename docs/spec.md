@@ -78,6 +78,7 @@ constants in the frame table); `opponent.points` is a live scoreboard read.
 - `self.finishWindow`
 - `self.stamina`
 - `self.gassed`
+- `self.penalties`
 - `opponent.x`
 - `opponent.y`
 - `opponent.facing`
@@ -92,6 +93,7 @@ constants in the frame table); `opponent.points` is a live scoreboard read.
 - `opponent.stamina`
 - `opponent.gassed`
 - `opponent.points`
+- `opponent.penalties`
 - `ring.width`
 - `clock.tick`
 - `clock.ticksRemaining`
@@ -335,6 +337,7 @@ declared-before-use cells — the `validate()` gate remains the authority.
         "self.finishWindow",
         "self.stamina",
         "self.gassed",
+        "self.penalties",
         "opponent.x",
         "opponent.y",
         "opponent.facing",
@@ -349,6 +352,7 @@ declared-before-use cells — the `validate()` gate remains the authority.
         "opponent.stamina",
         "opponent.gassed",
         "opponent.points",
+        "opponent.penalties",
         "ring.width",
         "clock.tick",
         "clock.ticksRemaining"

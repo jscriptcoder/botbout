@@ -215,7 +215,7 @@ const perceiveOpponent = (
   oppAct: Frame,
   lPos: number,
   rules: Rules,
-): Omit<OpponentState, "points"> => {
+): Omit<OpponentState, "points" | "penalties"> => {
   const predictedX = oppPos.x + oppPos.vx * lPos;
 
   return {
@@ -241,7 +241,7 @@ const perceiveOpponent = (
 // asymmetry with the delayed `opponent.knockdown` tell).
 const viewFor = (
   self: Fighter,
-  opponent: Omit<OpponentState, "points">,
+  opponent: Omit<OpponentState, "points" | "penalties">,
   oppLive: Fighter,
   rules: Rules,
   tick: number,
@@ -274,8 +274,9 @@ const viewFor = (
       finishWindow, // live — the okizeme finish window on the foe's knockdown (C8)
       stamina: self.stamina, // live — the conditioning meter is self-proprioception (C10)
       gassed: gassed(self, rules) ? 1 : 0, // live — the derived gas tell (C10 Story 3): 1 iff at/below the gas line
+      penalties: self.penaltyCount, // live — the shared jogai/passivity warning count is self-proprioception (A3)
     },
-    opponent: { ...opponent, points: oppLive.points }, // points is a LIVE scoreboard read off the true opponent (zero latency, like self.points / clock.tick)
+    opponent: { ...opponent, points: oppLive.points, penalties: oppLive.penaltyCount }, // points + penalties are LIVE scoreboard reads off the true opponent (zero latency, like self.points / clock.tick)
     ring: { width: rules.ring.width },
     clock: { tick, ticksRemaining: maxTicks - tick },
   };

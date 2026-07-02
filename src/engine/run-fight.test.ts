@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runFight, type FightConfig } from "./sim.js";
-import type { BotDoc, BoolExpr, FieldPath } from "./dsl.js";
+import type { BotDoc, BoolExpr, FieldPath, Rule } from "./dsl.js";
 import type { Rules, Action, Band, MoveId } from "./types.js";
 
 // ─── factories ───────────────────────────────────────────────────────────────
@@ -5976,5 +5976,93 @@ describe("runFight — jogai warning-ladder penalty (story A2)", () => {
     expect(right.winner).toBe(
       left.winner === "A" ? "B" : left.winner === "B" ? "A" : "draw",
     );
+  });
+});
+
+describe("runFight — jogai penalty perception (story A3)", () => {
+  // A bot reads the shared warning-ladder count it (A2) accrues. self.penalties is its OWN bout
+  // foul count; opponent.penalties is the foe's — both LIVE zero-delay scoreboard reads (like
+  // opponent.points), never the L_act ring buffer. Same jogai geometry as A1/A2: a RETREATER
+  // crosses the low edge at tick 25 (the free 1st warning ⇒ penaltyCount 1), reset visible tick 26.
+
+  const crouchWhen = (path: "self.penalties" | "opponent.penalties"): Rule => ({
+    when: {
+      op: "gte",
+      args: [
+        { op: "field", path },
+        { op: "const", value: 1 },
+      ],
+    },
+    do: { type: "crouch" },
+  });
+
+  // AC-1: a bot branches on its OWN foul count. Retreat by default; once self.penalties >= 1, do a
+  // distinctive crouch — the action can only flip by reading self.penalties.
+  it("lets a bot read self.penalties and act on its own foul count", () => {
+    const READER = bot([crouchWhen("self.penalties")], { type: "move", dir: -1 });
+
+    const result = runFight(
+      getMockConfig({
+        botA: READER,
+        botB: IDLE,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[10].a.action.type).toBe("move"); // penalties 0 ⇒ still retreating
+    expect(result.events[26].a.action.type).toBe("crouch"); // read self.penalties == 1 (the warning)
+  });
+
+  // AC-2: a bot branches on the FOE's foul count. A retreats and earns the warning; B (reading
+  // opponent.penalties) sees A's count == 1 and crouches. A at 1 / B at 0 also pins the source.
+  it("lets a bot read opponent.penalties (the foe's foul count)", () => {
+    const WATCHER = bot([crouchWhen("opponent.penalties")], { type: "idle" });
+
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: WATCHER,
+        maxTicks: 30,
+        match: { winGap: 99, jogai: { margin: 100000 } },
+      }),
+    );
+
+    expect(result.events[10].b.action.type).toBe("idle"); // A not yet warned ⇒ B idles
+    expect(result.events[26].b.action.type).toBe("crouch"); // B read opponent.penalties == 1 (A's)
+  });
+
+  // AC-3: opponent.penalties is LIVE (zero-delay) — a public scoreboard fact, not the L_act ring
+  // buffer. Under heavy action latency the foe's just-incurred warning is still readable next tick;
+  // a delayed reading would make B crouch lAct ticks late (so events[26] would still be idle).
+  it("reads opponent.penalties live — perception latency never delays it", () => {
+    const WATCHER = bot([crouchWhen("opponent.penalties")], { type: "idle" });
+
+    const crouchAt26 = (lAct: number): string =>
+      runFight(
+        getMockConfig({
+          rules: getMockRules({ perception: { lAct } }),
+          botA: RETREATER,
+          botB: WATCHER,
+          maxTicks: 30,
+          match: { winGap: 99, jogai: { margin: 100000 } },
+        }),
+      ).events[26].b.action.type;
+
+    expect(crouchAt26(0)).toBe("crouch");
+    expect(crouchAt26(6)).toBe("crouch"); // identical under 6-tick action latency ⇒ live
+  });
+
+  // AC-4: absent match.jogai, penaltyCount never rises ⇒ self.penalties reads the sentinel 0 ⇒ the
+  // crouch rule never fires (the bot just retreats). No jogai ⇒ no penalty surface effect.
+  it("reads the sentinel 0 when jogai is unconfigured", () => {
+    const READER = bot([crouchWhen("self.penalties")], { type: "move", dir: -1 });
+
+    const result = runFight(
+      getMockConfig({ botA: READER, botB: IDLE, maxTicks: 30 }),
+    );
+
+    // Never crouches — penalties stay 0 with no jogai, so the reader rule never fires.
+    expect(result.events.every((e) => e.a.action.type !== "crouch")).toBe(true);
   });
 });
