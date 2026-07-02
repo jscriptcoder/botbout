@@ -74,6 +74,24 @@ benchmark-adoption + spec-teaching slices.
   enum; drift test green); strategic prose deferred to Capability D (D4). Single-slice plan file
   (`passivity-self-read.md`) deleted (record in git/PR #102). The B3 resolved-decisions section below
   is retained as the design record.
+- **B4 — opponent passivity clock read (delayed) — ✅ DONE** (PR #103, merged 2026-07-02;
+  `main`@`71e19fc`). **Capability B (passivity) is now COMPLETE** (B1–B4, PRs #100–#103). The
+  opponent-perception field **`opponent.passivityRemaining`** on the **`L_act`-delayed** ring-buffer
+  layer (like `opponent.stamina`) — a bot perceives how close the FOE is to a passivity foul and can
+  bait the forced commit. **DELAYED, not live** (D1): rides `oppAct`, complementing A3's live
+  `opponent.penalties` (pending timer delayed, landed foul live). `frameOf` records raw
+  `ticksSinceOffense` (scoring-agnostic, like `stamina`); `perceiveOpponent` derives `Math.max(0,
+  limit − oppAct.ticksSinceOffense)`, threading `match` in (D2, the C10 S4b `isGassedAt` precedent) —
+  coherent with B3's self read at `L_act = 0` (D3). REFACTOR: shared `passivityRemainingOf(tso, match)`
+  now feeds BOTH the B3 live self read (`viewFor`) and this delayed opponent read (`perceiveOpponent`).
+  One `FieldPath` member + `OpponentState.passivityRemaining` + one **static** `FIELD_READERS` entry ⇒
+  `dsl.ts` interpreter stays 100% (D4). Byte-identical absent `match.passivity` (the new
+  `Frame.ticksSinceOffense` frames `0`, never enters `FightResult`; served value sentinel `0`),
+  replay-stable, swap-symmetric. 809 tests; scoped mutation 100% (shared `passivityRemainingOf` helper
+  4/4, `dsl.ts` reader 1/1, `frameOf` copy 0 mutable nodes — zero survivors/equivalents). `docs/spec.md`
+  regenerated (field joins read-surface list + JSON-schema enum; drift test green); strategic prose
+  deferred to Capability D. Single-slice plan file (`passivity-opponent-read.md`) deleted (record in
+  git/PR #103). The B4 resolved-decisions section below is retained as the design record.
 
 ## Parent
 
@@ -535,35 +553,38 @@ precedent — gate a distinctive action on `opponent.passivityRemaining` crossin
 
 ## Next Step
 
-**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B passivity —
-B1 (clock, PR #100) + B2 (shared penalty ladder, PR #101) + B3 (self read, PR #102) COMPLETE**
-(see Progress). Branch `feat/passivity-opponent-read` is cut for the next slice.
+**Capability A (jogai) COMPLETE** (A1+A2+A3, PRs #97–#99). **Capability B (passivity) COMPLETE**
+(B1 clock #100, B2 shared penalty ladder #101, B3 self read #102, B4 opponent read #103) — see
+Progress. Branch `feat/senshu-tiebreak` is cut for the next slice.
 
-**Next: B4 — opponent passivity clock read (delayed).** The passivity _opponent-perception_: a
-bot can perceive how close the FOE is to a passivity foul, so it can bait the forced commit and
-prep a counter. Introduces **`opponent.passivityRemaining`** — unlike B3's live self-read, this
-rides the **`L_act`-delayed ring-buffer layer** (the coherent delayed snapshot, invariant #4),
-exactly like `opponent.stamina` / `opponent.gassed` (C10 S4): `frameOf` records the derived
-countdown (or `ticksSinceOffense`) into the per-fighter history, `perceiveOpponent` serves it from
-the `oppAct` (lAct-delayed) frame — so it reads `tick − L_act`, live at `L_act = 0`, sentinel `0`
-unconfigured. This completes **Capability B**. Because it moves onto the delayed perception layer
-(new `Frame` field vs derived-on-read, jitter interaction, the observe-after-commit tick) rather
-than B3's live derivation, it wants a short **`find-gaps` pass before `planning`**: open questions
-are (a) record the raw `ticksSinceOffense` and derive on serve vs record the countdown into the
-frame (mirror C10 S4b's `isGassedAt`-style derive-on-serve, avoiding a new `Frame` field), (b) how
-`limit` reaches `perceiveOpponent` (a `match`/`limit` param, like S4b's `rules` param), (c) the
-sentinel + interpreter-100% story (static reader, A3/B3 precedent), (d) jitter/observe-after-commit
-semantics on the delayed layer. Byte-identical absent `match.passivity` (sentinel `0`);
-`docs/spec.md` regen + drift test (like A3/B3).
+**Next: C1 — senshu first-blood tiebreak.** The Parking-Lot **bargain**: a tiny first-blood latch
+that decisively resolves a level bout at the cap — the WKF _senshu_ rule — and cheaply closes the
+benchmark's `"draw"` gap, **fully independent** of the jogai/passivity spatial+anti-stall work. A
+fighter latches senshu the first time it scores an unanswered point (the FIRST scorer of the bout;
+a same-tick mutual first score ⇒ **no** senshu); at the cap, if the point gap is level, the winner
+is the senshu-holder (`endReason "senshu"`), and with no senshu-holder it stays `"draw"`. Config
+toggle under `match` (e.g. `match.senshu`), byte-identical absent it. NO overtime (that's C2), NO
+perception (that's C3). This is Capability C's FIRST slice and a net-new tie-resolution mechanic
+(a new `endReason "senshu"`, a first-blood latch, a level-at-cap resolution) — so it wants a
+**`find-gaps` pass before `planning`**: open questions include (a) the exact latch semantics
+(first unanswered score vs first score; the simultaneous-first-score tiebreak = none), (b) the
+level-at-cap resolution order vs the existing `winGap`/`time` `endReason`s (senshu only decides a
+LEVEL bout at the cap; a gap/time winner is unaffected), (c) does senshu **persist** across
+yame/jogai/passivity resets (it should — it's a bout-level scoreboard fact like `points`/
+`penaltyCount`), (d) config shape (a bare `match.senshu: true` toggle vs an object), (e) whether
+senshu can flip if the trailing fighter later evens the score (WKF: senshu is lost when the
+opponent draws level — resolve this precisely). Byte-identical absent the config key; replay-stable
++ swap-symmetric; `docs/spec.md` prose deferred to Capability D (like A3/B3/B4's mechanical-only
+regen). NB C1 is a SCORING/officiating change (no DSL read surface unless C3), so the `dsl.ts` TCB
+stays untouched.
 
-After B4: **C** (tie-resolution: senshu + overtime) → **D** (benchmark + spec adoption).
+After C1: **C2** (sudden-death overtime) → **C3/C4** (senshu/overtime perception) → **D** (benchmark
+`MATCH`/`INPUT_HASH` + `BENCHMARK_VERSION` adoption; spec teaches jogai/passivity/tie-break prose).
 
 Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
-(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **B4's `find-gaps`
-pass is DONE** (2026-07-02) — see the "B4 — resolved decisions & acceptance criteria" section above
-(D1–D4, AC-1…AC-6): DELAYED `L_act` read (D1, complementing A3's live `opponent.penalties`), raw
-`ticksSinceOffense` framed + derive-on-serve threading `match` into `perceiveOpponent` (D2, the
-`isGassedAt` precedent), coherent with B3's self read at `L_act = 0` (D3), sentinel `0` /
-interpreter-100% / mechanical-spec-regen (D4). **Next: `planning` B4** into PR-sized slices (expected:
-one slice — the delayed field + its perceive-layer wiring + the B3-style read tests + spec regen,
-mirroring C10 S4's delayed-opponent-read PRs and B3's single-slice perception PR).
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. **C1 has NOT yet had
+its `find-gaps` pass** — run `find-gaps` on C1 first (the open questions above), then `planning`
+into PR-sized slices (expected: one slice — the latch + level-at-cap resolution + `endReason
+"senshu"`, mirroring A1's single-slice officiating tracer). Precedent to mirror: every §7 slice is
+byte-identical when its `match` key is absent + replay-stable + swap-symmetric, with scoped mutation
+on the changed `sim.ts` officiating regions.
