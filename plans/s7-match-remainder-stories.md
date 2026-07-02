@@ -21,7 +21,17 @@ benchmark-adoption + spec-teaching slices.
   DSL/TCB surface. 770 tests; scoped `sim.ts` mutation 97.62% (changed-line 100%, lone
   survivor equivalent). Single-slice plan file (`jogai-warning-ladder.md`) deleted (record in
   git/PR #98). The A2 resolved-decisions section below is retained as the design record.
-- **A3 — jogai penalty perception — ⏭ NEXT.** Plan: `plans/penalty-perception.md`.
+- **A3 — jogai penalty perception — ✅ DONE** (PR #99, merged 2026-07-02;
+  `main`@`e8cc71c`). Two static live-scoreboard `FIELD_READERS` — `self.penalties`
+  (own bout foul count) + `opponent.penalties` (the foe's), both zero-delay off the live
+  fighter (like `opponent.points`, NOT the `L_act` ring buffer); `SelfState`/`OpponentState`
+  gain `penalties`, the delayed `viewFor`/perceive types widened to `Omit<…, "points" |
+  "penalties">`. Byte-identical absent `match.jogai` (sentinel `0`), live zero-delay,
+  interpreter stays 100% (static entries, no new branch). 776 tests; fresh scoped mutation
+  17/17 = 100% (`sim.ts:277-279` 1/1, `dsl.ts:111-126` 16/16). `docs/spec.md` regenerated
+  (2 fields join the read-surface list + JSON-schema enum; drift test green); penalty *prose*
+  teaching deferred to D2. Single-slice plan file (`penalty-perception.md`) deleted (record in
+  git/PR #99). **Capability A (jogai) is COMPLETE** (A1+A2+A3, PRs #97–#99).
 
 ## Parent
 
@@ -168,12 +178,93 @@ this slice (stays byte-identical; all penalty surfacing waits for A3's DSL reads
 Ladder constants (1 free warning, +1 pt/foul) hardcoded — `margin` stays the only `jogai` config. A1
 tests that cross ≥2 times and asserted "points unchanged" get updated (the 2nd crossing now scores).
 
+## B1 — resolved decisions & acceptance criteria (find-gaps 2026-07-02)
+
+Confirmed before planning B1 (passivity clock + reset-on-contact + re-engage reset). Feeds
+`planning` directly. **B1 scope:** the anti-stall METRIC + re-engage reset ONLY — **NO penalty,
+NO winGap, NO perception, NO new `endReason`** (penalty is B2, perception B3/B4). A passivity reset
+is a pure re-engage, exactly like A1's jogai reset.
+
+**Config:** `FightConfig.match.passivity?: { limit: number }` (ticks) — scoring-layer, NOT
+`Rules`/`CANONICAL_RULES` (`npm run fight` unaffected). `limit` is test-fixture-only until D.
+
+**State:** per-fighter `Fighter.ticksSinceOffense` (integer, init `0`), **always present** (like
+`penaltyCount`) so absent config ⇒ never touched ⇒ never framed ⇒ byte-identical. **NOT** reset by
+`resetToNeutral` (it persists like `points`/`penaltyCount` by default; the re-engage zeroing is an
+explicit officiating step, gated on passivity configured — see AC-7).
+
+**Resolved decisions (grill/find-gaps):**
+
+- **D1 — reset predicate: ATTACKER ONLY** (Q1). A fighter's clock resets iff *its own* committed
+  offense connected this tick: **`aOutcome !== null || aThrow !== null`** (strike hit/block/parry/
+  finish, OR a live grab). The fighter merely hit/defended-against does NOT reset — "no-OFFENSE
+  clock". A real back-and-forth resets both naturally (each attacks); a pure block-only turtle
+  eventually goes passive.
+- **D2 — increments EVERY tick, unconditionally** (Q2). No state gate — a committed/knocked-down
+  fighter still accrues (bounded: knockdown ≤ `knockdownDuration` ≪ a sane `limit`).
+- **D3 — stuffed/clash throw DOES reset** (Q3). Read **`aThrow`** (the pre-precedence `computeThrow`
+  result, a `const` frozen before `stuffIfDefeated`), **NOT** `aThrowFinal` — so a grab that was
+  live-but-voided (stuffed by a strike, or clashed) still resets the thrower. (An out-of-reach /
+  no-target grab returns `null` from `computeThrow` ⇒ still whiff-like ⇒ no reset.) This reads the
+  design's "reuses the union's **computed** outcomes" literally.
+- **D4 — fire boundary: `ticksSinceOffense > limit`** (Q4). Increment each tick, then reset-on-
+  contact, then check strictly-greater — so a fighter that connects on the `limit`-th contactless
+  tick avoids the foul; the foul fires on the first tick the clock exceeds `limit` (the limit+1-th
+  consecutive contactless tick).
+- **D5 — any re-engage zeros both clocks** (Q5). Every `resetToNeutral(both)` this bout — yame OR
+  jogai OR passivity — zeros **both** `ticksSinceOffense` (fresh engagement, swap-symmetric), gated
+  on `match?.passivity`. A scored-on fighter reset by yame does not carry a stale count.
+
+**Acceptance criteria:**
+
+- **AC-1 — far-apart stall fires.** Given `match.passivity.limit = L` and two bots that never
+  connect (idle, or move without reaching), Then on the first tick a clock exceeds `L` (post-
+  increment) `resetToNeutral(both)` fires and both clocks zero. (Frame at the firing tick shows the
+  pre-reset positions; both are back at `startX` from the next tick — the A1/jogai frame precedent.)
+- **AC-2 — contact resets, attacker-only.** Given a bot whose strike connects (hit/block/parry) on
+  tick T, Then its clock zeros at T and it needs `L+1` further contactless ticks to foul; the
+  opponent it merely hit / that merely defended does NOT reset (its clock keeps climbing).
+- **AC-3 — whiff-at-air does NOT reset** (the discriminator). Given a bot spamming an attack into
+  empty air (out of range ⇒ `aOutcome === null`) or a grab with no target, Then it still fouls at
+  `> L` — the whiff didn't reset. Proves "contact ≠ committing an attack".
+- **AC-4 — stuffed/clash throw resets** (D3). Given a thrower whose live grab (`aThrow !== null`) is
+  stuffed by an opposing strike or clashes with an opposing grab, Then its clock zeros that tick
+  despite the voided grab.
+- **AC-5 — unconditional increment** (D2). Given a fighter mid-committed-move or knocked-down that
+  never connects, Then its clock advances each of those ticks (no state gate).
+- **AC-6 — re-engage zeroing** (D5). Given a yame OR jogai OR passivity reset fires with passivity
+  configured, Then both clocks zero. (Absent `match.passivity`, the field is never touched.)
+- **AC-7 — at most one reset/tick, order, swap-symmetry.** The passivity block runs AFTER yame and
+  jogai; if either already reset this tick, passivity does NOT also reset (single
+  `resetToNeutral(both)` per tick). Both-passive same tick ⇒ one reset. Replay is swap-symmetric.
+- **AC-8 — byte-identical absent, stable present.** Absent `match.passivity` ⇒ byte-identical to
+  pre-B1 (field never framed). Present ⇒ replay-stable + swap-symmetric.
+- **AC-9 — no new surface.** B1 adds NO `FIELD_READER` (perception is B3/B4) and NO `endReason`
+  (a passivity reset re-engages; no penalty/winGap until B2). `dsl.ts` TCB untouched.
+
+**Implementation notes (not user-facing):** a 3rd officiating block after jogai, gated
+`if (match?.passivity)`. Per-tick (design §7a order): the clock increment + contact-reset sit in the
+"update clocks" step (with jogai edge-detect); the exceed-check + `resetToNeutral(both)` + zeroing
+sit in officiating AFTER the yame + jogai blocks, fired post-`events.push` (A1 frame precedent). A
+`resetThisTick` flag (or equivalent) coordinates the "at most one reset" contract and lets the yame/
+jogai reset sites also zero the clocks (gated). Contact-reset reads `aThrow` (not `aThrowFinal`).
+`limit` lives in test fixtures — no canonical wiring in B1.
+
 ## Next Step
 
-A1 and A2 are DONE (see Progress). **A3 — jogai penalty perception** is planned in
-`plans/penalty-perception.md`: `self.penalties` (own bout foul count) + `opponent.penalties`
-(the foe's), both **live zero-delay scoreboard** `FIELD_READERS` (like `opponent.points`, NOT the
-`L_act` ring buffer — penalties are public scoreboard facts). Completes Capability A. Then **B**
-(passivity — shares the `penaltyCount` ladder) → **C** (tie-resolution) → **D** (benchmark + spec).
+**Capability A (jogai) is COMPLETE** — A1 + A2 + A3 all DONE (PRs #97–#99; see Progress).
+
+**Next: Capability B — passivity (non-engagement penalty).** Branch `feat/passivity-clock`
+is cut for **B1 — clock + reset-on-contact + re-engage reset** (the anti-stall metric spine,
+NO penalty/perception yet — those are B2/B3/B4). B1 adds an optional `FightConfig.match.passivity.limit`
++ a per-fighter `ticksSinceOffense` clock reset **only on contact** (hit/block/parry/grab/sweep-connect
+— a whiff at air does NOT reset); exceeding `limit` ⇒ `resetToNeutral(both)` + reset both clocks.
+Byte-identical absent `match.passivity`; **no DSL surface in B1** (perception is B3/B4). B **reuses A2's
+shared `Fighter.penaltyCount` ladder** (why jogai came first). Officiating order (design §7a): resolve
+combat → update clocks (passivity, jogai edge-detect) → `events.push` → apply penalties → at most one
+`resetToNeutral(both)` → one `winGap` check. After B: **C** (tie-resolution) → **D** (benchmark + spec).
+
 Each planned implementation slice runs the full RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR cycle
-(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes.
+(`tdd` + `testing` + `mutation-testing` + `refactoring`) before code changes. B1 still needs a
+`find-gaps`/`planning` pass (the subtle "reset-on-contact only" metric — what counts as *contact*)
+before RED.

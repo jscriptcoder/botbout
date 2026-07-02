@@ -89,8 +89,14 @@ export type FightConfig = {
   // run to maxTicks. `jogai` (ring-out, A1): the legal region is `[margin, width−margin]`
   // (sub-units) over the UNCHANGED movement clamp; a fighter that crosses from in-bounds
   // into an outer `margin` strip triggers a yame-style reset of both fighters (no penalty
-  // yet). Absent `jogai` ⇒ no ring-out ⇒ byte-identical.
-  match?: { winGap: number; jogai?: { margin: number } };
+  // yet). Absent `jogai` ⇒ no ring-out ⇒ byte-identical. `passivity` (non-engagement, B1):
+  // a per-fighter no-offense clock; when either exceeds `limit` contactless ticks a
+  // yame-style reset re-engages both (no penalty yet). Absent `passivity` ⇒ byte-identical.
+  match?: {
+    winGap: number;
+    jogai?: { margin: number };
+    passivity?: { limit: number };
+  };
 };
 
 export type FightResult = {
@@ -136,6 +142,7 @@ type Fighter = {
   cancelRemaining: number; // on-contact cancel-window ticks left after a connect (0 = closed)
   stamina: number; // C10 conditioning meter; init to rules.stamina.max (0 when unconfigured)
   penaltyCount: number; // jogai/passivity fouls this bout (shared category-2 ladder); 1st free, 2+ ⇒ opponent +1
+  ticksSinceOffense: number; // B1 passivity no-offense clock; resets on contact, zeroed on any re-engage
 };
 
 // The perceived-attack-band encoding (invariant #4 layer): height-ordered so a
@@ -817,7 +824,10 @@ const isNeutral = (f: Fighter): boolean =>
 // Yame reset: snap a fighter's BODY back to its neutral start — its canonical opening
 // x (regardless of which side it drifted to), grounded, standing, no move, guard, or
 // windows. points, stamina, mem, and facing are untouched (score and conditioning
-// persist across the exchange; facing is auto-recomputed next tick).
+// persist across the exchange; facing is auto-recomputed next tick). The passivity
+// no-offense clock IS zeroed here (B1 D5): every re-engage — yame, jogai, or a passivity
+// reset itself — is a fresh engagement, and resetToNeutral's only callers are those
+// officiating sites. Absent passivity the clock is never incremented ⇒ zeroing 0 ⇒ byte-identical.
 const resetToNeutral = (f: Fighter, startX: number): void => {
   f.x = startX;
   f.y = 0;
@@ -827,6 +837,7 @@ const resetToNeutral = (f: Fighter, startX: number): void => {
   f.guardAge = 0;
   f.counterRemaining = 0;
   f.cancelRemaining = 0;
+  f.ticksSinceOffense = 0;
 };
 
 export function runFight(cfg: FightConfig): FightResult {
@@ -851,6 +862,7 @@ export function runFight(cfg: FightConfig): FightResult {
     cancelRemaining: 0,
     stamina: rules.stamina?.max ?? 0,
     penaltyCount: 0,
+    ticksSinceOffense: 0,
   };
 
   const b: Fighter = {
@@ -867,6 +879,7 @@ export function runFight(cfg: FightConfig): FightResult {
     cancelRemaining: 0,
     stamina: rules.stamina?.max ?? 0,
     penaltyCount: 0,
+    ticksSinceOffense: 0,
   };
 
   const events: FightEvent[] = [];
@@ -1037,6 +1050,19 @@ export function runFight(cfg: FightConfig): FightResult {
     a.cancelRemaining = Math.max(0, a.cancelRemaining - 1);
     b.cancelRemaining = Math.max(0, b.cancelRemaining - 1);
 
+    // Match mode: passivity clock (B1). Update the per-fighter no-offense clock BEFORE events.push
+    // (the design's "update clocks" step): tick it up, then ZERO it for a fighter that made contact
+    // this tick — a non-null strike outcome (hit/block/parry/finish) OR a live grab (aThrow, the
+    // pre-precedence computeThrow, so a stuffed/clashed throw still counts as engagement). A whiff at
+    // air (null outcome) does NOT reset. Attacker-only: each fighter's OWN offense resets its OWN
+    // clock; merely being hit does not. The exceed check + re-engage reset fires below, after jogai.
+    if (match?.passivity) {
+      a.ticksSinceOffense++;
+      b.ticksSinceOffense++;
+      if (aOutcome !== null || aThrow !== null) a.ticksSinceOffense = 0;
+      if (bOutcome !== null || bThrow !== null) b.ticksSinceOffense = 0;
+    }
+
     // 4. Record the integer event (the bot's RETURNED action, honoured or not).
     events.push({
       tick,
@@ -1119,6 +1145,22 @@ export function runFight(cfg: FightConfig): FightResult {
         aWasIn = aNowIn;
         bWasIn = bNowIn;
       }
+    }
+
+    // Match mode: passivity (non-engagement, B1). If either fighter's no-offense clock (updated
+    // pre-events above) has exceeded `limit` contactless ticks (strict `>` — the limit is the grace,
+    // so the foul fires on the limit+1-th), re-engage both with a yame-style reset. NO penalty /
+    // winGap yet (B2). Runs AFTER yame + jogai: a reset from either already ZEROED both clocks (via
+    // resetToNeutral), so this check reads 0 and cannot double-fire — at most one reset per tick.
+    // The reset zeroes the clocks again and clears the yame trigger (the exchange ended).
+    if (
+      match?.passivity &&
+      (a.ticksSinceOffense > match.passivity.limit ||
+        b.ticksSinceOffense > match.passivity.limit)
+    ) {
+      resetToNeutral(a, aStartX);
+      resetToNeutral(b, bStartX);
+      scored = false;
     }
   }
 

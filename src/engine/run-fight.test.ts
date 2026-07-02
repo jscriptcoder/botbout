@@ -6066,3 +6066,165 @@ describe("runFight — jogai penalty perception (story A3)", () => {
     expect(result.events.every((e) => e.a.action.type !== "crouch")).toBe(true);
   });
 });
+
+describe("runFight — passivity clock (story B1)", () => {
+  // The anti-stall lever: a per-fighter no-offense clock (ticksSinceOffense) that resets ONLY on
+  // making contact; when it exceeds match.passivity.limit, a resetToNeutral(both) re-engages the
+  // fighters (like A1's jogai reset — no penalty/winGap/perception in B1). Same harness as jogai:
+  // ring 600000, walkSpeed 4000, startGap 200000; aStartX 200000, bStartX 400000. A RETREATER
+  // drifts 4000/tick and — on a reset — snaps back to startX (visible one tick later, the A1/A2
+  // precedent: events[reset+1].a.x === aStartX − walkSpeed = 196000).
+
+  const ATTACKER = bot([], { type: "attack", move: "gyaku-zuki", band: "mid" });
+
+  // AC-1 / D4 / D5: two non-engaging bots (a RETREATER that only moves + an IDLE) never make
+  // contact, so both clocks climb and fire a re-engage reset the first tick a clock exceeds the
+  // limit (D4: strict > limit ⇒ first foul on the limit+1-th contactless tick). limit 3 ⇒ fire at
+  // tick 3 (clock 4 > 3), reset visible tick 4; the reset ZEROES the clocks (D5) so the NEXT fire is
+  // limit+1 later (tick 7, visible tick 8) — a period of 4, not an immediate re-fire.
+  it("resets both fighters to engaging distance when neither makes contact (period limit+1)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 12,
+        match: { winGap: 99, passivity: { limit: 3 } },
+      }),
+    );
+
+    expect(result.events[3].a.x).toBe(184000); // drifted 4 moves, no reset yet (kills >= vs >)
+    expect(result.events[4].a.x).toBe(196000); // 1st reset: snapped to 200000, moved once
+    expect(result.events[7].a.x).toBe(184000); // drifted again ⇒ NO re-fire at 4/5/6 (kills no-zeroing)
+    expect(result.events[8].a.x).toBe(196000); // 2nd reset: period 4 == limit+1 (D5 zeroing)
+  });
+
+  // reset-on-contact DEMANDED (strike): an actively-trading pair connects every cycle, so their
+  // clocks keep resetting and they NEVER go passive — adding passivity (with contact-reset working)
+  // must not perturb the fight at all. If a connecting strike did NOT reset the clock, the pair would
+  // foul and the reset would disrupt the exchange. Compared byte-for-byte against the no-passivity run.
+  it("does not perturb an actively-trading pair (a connecting strike resets the clock)", () => {
+    const base = getMockConfig({
+      botA: ATTACKER,
+      botB: ATTACKER,
+      maxTicks: 40,
+      match: { winGap: 99 },
+    });
+
+    const withoutPassivity = runFight(base);
+
+    const withPassivity = runFight({
+      ...base,
+      match: { winGap: 99, passivity: { limit: 15 } },
+    });
+
+    expect(withPassivity.events).toEqual(withoutPassivity.events);
+  });
+
+  // AC-2 / D1 attacker-only: A attacks and CONNECTS on B; B only advances (never attacks) and is
+  // repeatedly hit. Being hit is NOT engaging — only committing your OWN connecting offense resets
+  // your clock — so B still goes passive on its own schedule. limit 5 ⇒ A's tick-4 hit lands before
+  // B's foul (tick 5), exercising "the hit did not reset the defender". B (an AGGRESSOR advancing
+  // 4000/tick from 400000) snaps back to 400000 on the foul, visible at tick 6 (404000 − 4000... i.e.
+  // 400000 then one advance ⇒ 396000). Under a "reset the defender too" bug B would keep advancing.
+  it("does not reset a fighter that is merely hit — only its own connecting offense resets it (attacker-only)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: ATTACKER,
+        botB: AGGRESSOR,
+        maxTicks: 12,
+        match: { winGap: 99, passivity: { limit: 5 } },
+      }),
+    );
+
+    expect(result.events[4].a.points).toBe(1); // A's strike connected (setup is not vacuous)
+    expect(result.events[6].b.x).toBe(396000); // B reset at tick 5 despite being hit ⇒ attacker-only
+  });
+
+  // AC-2 / D1 (mirror + swap-symmetry): the SAME shape with the roles swapped — A only advances
+  // (never engages) while B attacks and connects. Now ONLY A's clock exceeds the limit, so the
+  // re-engage must fire on A's OWN term (proving the fire reads EACH fighter's clock, not just the
+  // other's): A (an AGGRESSOR advancing +x from 200000) snaps back to 200000 at its tick-5 foul,
+  // visible at tick 6 (200000 then one advance ⇒ 204000). B scoring confirms B is the engager here.
+  it("resets the sole passive fighter when only ITS clock exceeds the limit (either slot)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: AGGRESSOR,
+        botB: ATTACKER,
+        maxTicks: 12,
+        match: { winGap: 99, passivity: { limit: 5 } },
+      }),
+    );
+
+    expect(result.events[4].b.points).toBe(1); // B's strike connected (B is the engager)
+    expect(result.events[6].a.x).toBe(204000); // A reset at tick 5 on its own clock (A-side term)
+  });
+
+  // AC-6 / D5: a jogai reset re-arms (zeroes) the passivity clock too. With jogai (margin 100000) and
+  // passivity (limit 30) both live, the RETREATER crosses out at tick 25 ⇒ jogai reset (visible 26).
+  // That reset zeroes the passivity clock, so it climbs afresh and does NOT reach limit+1 before the
+  // next jogai crossing — no spurious passivity reset at tick 30. events[31] therefore shows continued
+  // drift from the tick-26 reset (196000 − 5·4000 = 176000), not a snap-back to 196000.
+  it("zeroes the passivity clock on a jogai re-engage reset (no spurious passivity reset)", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: RETREATER,
+        botB: IDLE,
+        maxTicks: 35,
+        match: { winGap: 99, jogai: { margin: 100000 }, passivity: { limit: 30 } },
+      }),
+    );
+
+    expect(result.events[26].a.x).toBe(196000); // jogai reset at tick 25 (A1/A2 behaviour)
+    expect(result.events[31].a.x).toBe(176000); // still drifting ⇒ the passivity clock was zeroed at 25
+  });
+
+  // AC-8 (inert): passivity configured but never triggered (a huge limit) is byte-identical to the
+  // same fight with no passivity key — the code path is inert until the clock exceeds the limit.
+  it("is byte-identical when the limit is never exceeded (inert)", () => {
+    const base = getMockConfig({
+      botA: RETREATER,
+      botB: IDLE,
+      maxTicks: 30,
+      match: { winGap: 99 },
+    });
+
+    const withoutPassivity = runFight(base);
+
+    const withHugeLimit = runFight({
+      ...base,
+      match: { winGap: 99, passivity: { limit: 100000 } },
+    });
+
+    expect(withHugeLimit.events).toEqual(withoutPassivity.events);
+  });
+
+  // AC-8 (replay-stable): a passivity fight is deterministic — identical event logs across runs.
+  it("is replay-stable with passivity active", () => {
+    const cfg = getMockConfig({
+      botA: RETREATER,
+      botB: IDLE,
+      maxTicks: 12,
+      match: { winGap: 99, passivity: { limit: 3 } },
+    });
+
+    expect(runFight(cfg).events).toEqual(runFight(cfg).events);
+  });
+
+  // AC-8 (swap-symmetric): the same non-engaging matchup resolves identically with the RETREATER in
+  // the B slot — B (retreating +x from 400000) snaps back to 400000 on each foul, mirroring the A-side
+  // period-limit+1 resets (events[4].b.x = 404000, events[8].b.x = 404000).
+  it("resets swap-symmetrically with the mover in the B slot", () => {
+    const result = runFight(
+      getMockConfig({
+        botA: IDLE,
+        botB: RETREATER,
+        maxTicks: 12,
+        match: { winGap: 99, passivity: { limit: 3 } },
+      }),
+    );
+
+    expect(result.events[3].b.x).toBe(416000); // drifted 4 moves (+x), no reset yet
+    expect(result.events[4].b.x).toBe(404000); // 1st reset mirror
+    expect(result.events[8].b.x).toBe(404000); // 2nd reset (period 4)
+  });
+});
